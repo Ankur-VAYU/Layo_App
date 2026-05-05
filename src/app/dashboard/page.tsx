@@ -67,6 +67,21 @@ export default function Dashboard() {
     setItems(items.filter(item => item.id !== id));
   };
 
+  const updateItemQuantity = (id: string, newQty: number) => {
+    if (newQty < 1) return;
+    setItems(items.map(item => {
+      if (item.id === id) {
+        const unitWeight = item.weight / item.quantity;
+        return { 
+          ...item, 
+          quantity: newQty, 
+          weight: unitWeight * newQty 
+        };
+      }
+      return item;
+    }));
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
@@ -287,7 +302,23 @@ export default function Dashboard() {
                             <div className={styles.itemName}>{item.subcategory}</div>
                             <div className={styles.itemCat}>{item.category}</div>
                           </td>
-                          <td>{item.quantity}</td>
+                          <td>
+                            <input 
+                              type="number" 
+                              min="1" 
+                              value={item.quantity}
+                              onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
+                              style={{ 
+                                width: '60px', 
+                                background: 'rgba(255,255,255,0.05)', 
+                                border: '1px solid var(--glass-border)', 
+                                color: '#fff', 
+                                padding: '4px 8px', 
+                                borderRadius: '4px',
+                                outline: 'none'
+                              }}
+                            />
+                          </td>
                           <td>{item.weight.toFixed(2)} kg</td>
                           <td>
                             <button onClick={() => removeItem(item.id)} className={styles.removeBtn}>×</button>
@@ -396,7 +427,23 @@ export default function Dashboard() {
                             <div className={styles.itemName}>{item.subcategory}</div>
                             <div className={styles.itemCat}>{item.category}</div>
                           </td>
-                          <td>{item.quantity}</td>
+                          <td>
+                            <input 
+                              type="number" 
+                              min="1" 
+                              value={item.quantity}
+                              onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
+                              style={{ 
+                                width: '60px', 
+                                background: 'rgba(255,255,255,0.05)', 
+                                border: '1px solid var(--glass-border)', 
+                                color: '#fff', 
+                                padding: '4px 8px', 
+                                borderRadius: '4px',
+                                outline: 'none'
+                              }}
+                            />
+                          </td>
                           <td>{item.weight.toFixed(2)} kg</td>
                           <td>
                             <button onClick={() => removeItem(item.id)} className={styles.removeBtn}>×</button>
