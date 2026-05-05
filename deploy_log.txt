@@ -1,0 +1,45 @@
+Retrieving project…
+Deploying ev-crm/layo
+Uploading [--------------------] (0.0B/44B)
+Uploading [====================] (44.0B/44B)
+Inspect: https://vercel.com/ev-crm/layo/2TvNNXLyNWHSgzdrZNUnToCxiSv6 [4s]
+Production: https://layo-7epq14hi1-ev-crm.vercel.app [4s]
+https://layo-7epq14hi1-ev-crm.vercel.appBuilding...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Previous build caches not available.
+Building: Downloading 44 deployment files...
+Building: Running "vercel build"
+Building: Vercel CLI 51.6.1
+Building: Installing dependencies...
+Building: added 356 packages in 10s
+Building: 140 packages are looking for funding
+Building: run `npm fund` for details
+Building: Detected Next.js version: 16.2.4
+Building: Running "npm run build"
+Building: > layo-web@0.1.0 build
+Building: > next build
+Building: Applying modifyConfig from Vercel
+Building: Attention: Next.js now collects completely anonymous telemetry regarding usage.
+Building: This information is used to shape Next.js' roadmap and prioritize features.
+Building: You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+Building: https://nextjs.org/telemetry
+Building: ▲ Next.js 16.2.4 (Turbopack)
+Building: Creating an optimized production build ...
+Building: ✓ Compiled successfully in 4.7s
+Building: Running TypeScript ...
+Building: Failed to type check.
+Building: ./src/app/dashboard/page.tsx:126:25
+Building: Type error: Property 'cost' does not exist on type '{ weight: string; rate: string; }'.
+Building: 124 |       destinationAddress,
+Building: 125 |       totalWeight: totals.weight,
+Building: > 126 |       totalCost: totals.cost
+Building: |                         ^
+Building: 127 |     };
+Building: 128 |     localStorage.setItem('layo_pending_shipment', JSON.stringify(shipmentData));
+Building: 129 |     router.push('/checkout');
+Building: Next.js build worker exited with code: 1 and signal: null
+Building: Error: Command "npm run build" exited with 1
+Error: Command "npm run build" exited with 1
