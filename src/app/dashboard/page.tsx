@@ -123,7 +123,7 @@ export default function Dashboard() {
       destinationCity,
       destinationAddress,
       totalWeight: totals.weight,
-      totalCost: totals.cost
+      totalCost: totals.rate
     };
     localStorage.setItem('layo_pending_shipment', JSON.stringify(shipmentData));
     router.push('/checkout');
