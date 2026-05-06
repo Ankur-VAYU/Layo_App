@@ -590,6 +590,182 @@
   color: var(--text-muted);
 }
 
+.lockerArea {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.lockerHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.preAlertBtn {
+  background: var(--primary);
+  color: var(--background);
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.preAlertBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(250, 204, 21, 0.3);
+}
+
+.packageGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+.emptyLocker {
+  grid-column: 1 / -1;
+  padding: 6rem 2rem;
+  text-align: center;
+  background: var(--glass);
+  border: 1px dashed var(--glass-border);
+  border-radius: 24px;
+}
+
+.lockerIcon {
+  font-size: 4rem;
+  margin-bottom: 1.5rem;
+  opacity: 0.5;
+}
+
+.packageCard {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: relative;
+  transition: all 0.3s;
+}
+
+.packageCard:hover {
+  border-color: var(--primary);
+  transform: translateY(-4px);
+}
+
+.pkgHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.statusTag {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+}
+
+.pending { background: rgba(250, 204, 21, 0.1); color: #facc15; }
+.arrived { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.shipped { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
+
+.pkgId {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.pkgItems {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.pkgMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+
+.virtualAddressMini {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.checkoutNote {
+  font-size: 0.8rem;
+  color: var(--secondary);
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  width: 100%;
+  max-width: 500px;
+  padding: 3rem;
+  border-radius: 24px;
+}
+
+.modal h2 { margin-bottom: 0.5rem; }
+.modal p { color: var(--text-muted); margin-bottom: 2rem; }
+
+.modalActions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.submitBtn {
+  flex: 1;
+  background: var(--primary);
+  border: none;
+  padding: 1rem;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cancelBtn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  color: white;
+  padding: 1rem;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.signOutBtn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
 @media (max-width: 1024px) {
   .container { padding: 2rem; }
   .content { grid-template-columns: 1fr; }
