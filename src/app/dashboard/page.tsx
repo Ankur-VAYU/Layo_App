@@ -35,6 +35,16 @@ export default function Dashboard() {
   const [parsingProgress, setParsingProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [selectedWarehouse, setSelectedWarehouse] = useState('');
+  const [orderId, setOrderId] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+
+  const warehouses = [
+    { id: 'wh-del', city: 'Delhi NCR (Gurgaon)', address: 'Plot 42, Sector 18, Udyog Vihar', pincode: '122015', contact: '+91 97745 81632' },
+    { id: 'wh-mum', city: 'Mumbai (Bhiwandi)', address: 'Gala 12, Jai Bhagwan Complex', pincode: '421302', contact: '+91 97745 81632' },
+    { id: 'wh-blr', city: 'Bangalore (Whitefield)', address: 'Building 7, Export Promotion Park', pincode: '560066', contact: '+91 97745 81632' }
+  ];
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
@@ -126,10 +136,11 @@ export default function Dashboard() {
 
   const isCheckoutDisabled = useMemo(() => {
     if (isParsing) return true;
+    if (!selectedWarehouse) return true;
     if (mode === 'selection') return items.length === 0 || !destinationCity || !destinationAddress;
     if (mode === 'scan') return uploadedFiles.length === 0 || !destinationCity || !destinationAddress;
     return !destinationCity || !destinationAddress;
-  }, [mode, items, uploadedFiles, destinationCity, destinationAddress, isParsing]);
+  }, [mode, items, uploadedFiles, destinationCity, destinationAddress, isParsing, selectedWarehouse]);
 
   const handleCheckout = () => {
     const shipmentData = {
@@ -137,6 +148,9 @@ export default function Dashboard() {
       mode,
       destinationCity,
       destinationAddress,
+      indiaWarehouse: selectedWarehouse,
+      externalOrderId: orderId,
+      externalTracking: trackingNumber,
       totalWeight: totals.weight,
       totalCost: totals.rate
     };
@@ -200,7 +214,42 @@ export default function Dashboard() {
           </div>
 
           <div className={styles.addressSection}>
-            <h3>1. Delivery Destination (Canada)</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3>1. India Warehouse (Where to send your goods)</h3>
+            </div>
+            <div className={styles.formGrid}>
+              <div className={styles.inputGroup}>
+                <label>Select Layo Warehouse</label>
+                <select 
+                  value={selectedWarehouse} 
+                  onChange={(e) => setSelectedWarehouse(e.target.value)}
+                  className="glass"
+                >
+                  <option value="" disabled>Choose warehouse city</option>
+                  {warehouses.map(wh => <option key={wh.id} value={wh.id}>{wh.city}</option>)}
+                </select>
+              </div>
+
+              {selectedWarehouse && (
+                <div className={`${styles.virtualAddressCard} animate-in`} style={{ gridColumn: 'span 2' }}>
+                  <div className={styles.cardBadge}>Your Virtual Address in India</div>
+                  <div className={styles.addressDisplay}>
+                    <strong>Name:</strong> {user?.user_metadata?.full_name || 'Your Name'} / <span style={{ color: 'var(--primary)' }}>LAYO-{user?.id?.substr(0, 5).toUpperCase() || '5592'}</span><br/>
+                    <strong>Address:</strong> {warehouses.find(w => w.id === selectedWarehouse)?.address}<br/>
+                    <strong>City:</strong> {warehouses.find(w => w.id === selectedWarehouse)?.city}<br/>
+                    <strong>Pincode:</strong> {warehouses.find(w => w.id === selectedWarehouse)?.pincode}<br/>
+                    <strong>Phone:</strong> {warehouses.find(w => w.id === selectedWarehouse)?.contact}
+                  </div>
+                  <p className={styles.addressNote}>⚠️ <strong>Important:</strong> You must include the <strong>LAYO ID</strong> in the name field when ordering from Amazon/Myntra.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.divider}></div>
+
+          <div className={styles.addressSection}>
+            <h3>2. Delivery Destination (Canada)</h3>
             <div className={styles.formGrid}>
               <div className={styles.inputGroup}>
                 <label>Destination City</label>
@@ -228,10 +277,38 @@ export default function Dashboard() {
 
           <div className={styles.divider}></div>
 
+          <div className={styles.addressSection}>
+            <h3>3. Indian Order Reference (Optional)</h3>
+            <div className={styles.formGrid}>
+              <div className={styles.inputGroup}>
+                <label>E-commerce Order ID</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. 405-1234567"
+                  value={orderId}
+                  onChange={(e) => setOrderId(e.target.value)}
+                  className="glass"
+                />
+              </div>
+              <div className={styles.inputGroup}>
+                <label>Tracking Number (if known)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. DELHIVERY12345"
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value)}
+                  className="glass"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.divider}></div>
+
           {mode === 'selection' && (
               <div className={styles.selectionGrid}>
                 <div className={styles.addItemForm}>
-                  <h3>2. Add Items to Ship</h3>
+                  <h3>4. Add Items to Ship</h3>
                   <div className={styles.formGrid} style={{ marginBottom: '1.5rem' }}>
                     <div className={styles.inputGroup}>
                       <label>Category</label>

@@ -552,6 +552,44 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+.virtualAddressCard {
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  padding: 2rem;
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.cardBadge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--primary);
+  color: var(--background);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.5rem 1rem;
+  border-bottom-left-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+}
+
+.addressDisplay {
+  font-family: 'Inter', sans-serif;
+  line-height: 1.8;
+  color: var(--foreground);
+  font-size: 1.1rem;
+}
+
+.addressNote {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 @media (max-width: 1024px) {
   .container { padding: 2rem; }
   .content { grid-template-columns: 1fr; }
