@@ -771,3 +771,51 @@
   .content { grid-template-columns: 1fr; }
   .quoteSidebar { position: relative; top: 0; }
 }
+.progressContainer {
+  margin-bottom: 3rem;
+  position: relative;
+}
+
+.progressBar {
+  height: 4px;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+  box-shadow: 0 0 10px var(--primary);
+}
+
+.stepLabels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.activeStep {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.previewCard {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-top: 1rem;
+}
+
+.previewBadge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.05rem;
+}
+
+.previewContent {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--foreground);
+}

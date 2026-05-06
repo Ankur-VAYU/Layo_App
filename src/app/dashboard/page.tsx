@@ -39,6 +39,21 @@ export default function Dashboard() {
     { id: 'wh-blr', city: 'Bangalore (Whitefield)', address: 'Building 7, Export Promotion Park', pincode: '560066', contact: '+91 97745 81632' }
   ];
 
+  const [orderId, setOrderId] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [currentStep, setCurrentStep] = useState(1);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  useEffect(() => {
+    if (selectedWarehouse && currentStep === 1) setCurrentStep(2);
+    if (destinationCity && destinationAddress && currentStep === 2) setCurrentStep(3);
+  }, [selectedWarehouse, destinationCity, destinationAddress, currentStep]);
+
   const canadaCities = ['Toronto (GTA)', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa', 'Edmonton', 'Winnipeg'];
   const categories = Object.keys(shippingData);
   const subcategories = currentCategory ? Object.keys(shippingData[currentCategory]) : [];
@@ -86,13 +101,13 @@ export default function Dashboard() {
       destinationCity,
       destinationAddress,
       indiaWarehouse: selectedWarehouse,
+      externalOrderId: orderId,
+      externalTracking: trackingNumber,
       totalWeight: totals.weight,
       totalCost: totals.rate
     };
     localStorage.setItem('layo_pending_shipment', JSON.stringify(shipmentData));
     router.push('/checkout');
-  };
-
   return (
     <main className={styles.container}>
       <header className={styles.header}>
@@ -109,14 +124,23 @@ export default function Dashboard() {
 
       <section className={styles.content}>
         <div className={styles.selectionArea}>
-          <h1 className="gradient-text">Create Shipment</h1>
-          <p className={styles.subtitle}>Complete your shipment details first, then use our India warehouse address to shop.</p>
+          <div className={styles.progressContainer}>
+            <div className={styles.progressBar} style={{ width: `${(currentStep / 3) * 100}%` }}></div>
+            <div className={styles.stepLabels}>
+              <span className={currentStep >= 1 ? styles.activeStep : ''}>1. Warehouse</span>
+              <span className={currentStep >= 2 ? styles.activeStep : ''}>2. Destination</span>
+              <span className={currentStep >= 3 ? styles.activeStep : ''}>3. Items</span>
+            </div>
+          </div>
+
+          <h1 className="gradient-text">Complete Your Shipment</h1>
+          <p className={styles.subtitle}>Provide your details to get your unique India shipping address.</p>
 
           <div className={styles.addressSection}>
-            <h3>1. India Warehouse (Select Origin)</h3>
+            <h3>1. India Warehouse (Drop-off Point)</h3>
             <div className={styles.formGrid}>
               <div className={styles.inputGroup}>
-                <label>Choose Drop-off City</label>
+                <label>Select Origin City</label>
                 <select 
                   value={selectedWarehouse} 
                   onChange={(e) => setSelectedWarehouse(e.target.value)}
@@ -126,6 +150,17 @@ export default function Dashboard() {
                   {warehouses.map(wh => <option key={wh.id} value={wh.id}>{wh.city}</option>)}
                 </select>
               </div>
+
+              {selectedWarehouse && (
+                <div className={`${styles.previewCard} animate-in`} style={{ gridColumn: 'span 2' }}>
+                  <div className={styles.previewBadge}>Preview of your Virtual Address</div>
+                  <div className={styles.previewContent}>
+                    <strong>{user?.user_metadata?.full_name || 'Your Name'} / LAYO-{user?.id?.substr(0, 5).toUpperCase() || '5592'}</strong><br/>
+                    {warehouses.find(w => w.id === selectedWarehouse)?.address}, {warehouses.find(w => w.id === selectedWarehouse)?.city}
+                  </div>
+                  <p style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '0.5rem' }}>Full address details will be shared after checkout.</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -152,6 +187,32 @@ export default function Dashboard() {
                   placeholder="Street address, Apt, Postal Code"
                   value={destinationAddress}
                   onChange={(e) => setDestinationAddress(e.target.value)}
+                  className="glass"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.divider}></div>
+            <h3>3. Indian Order Reference (Optional)</h3>
+            <div className={styles.formGrid}>
+              <div className={styles.inputGroup}>
+                <label>E-commerce Order ID</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. 405-1234567"
+                  value={orderId}
+                  onChange={(e) => setOrderId(e.target.value)}
+                  className="glass"
+                />
+              </div>
+              <div className={styles.inputGroup}>
+                <label>Tracking Number (if known)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. DELHIVERY12345"
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value)}
                   className="glass"
                 />
               </div>
