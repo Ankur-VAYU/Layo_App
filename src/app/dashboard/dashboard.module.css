@@ -93,7 +93,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 2rem;
-  margin-bottom: 4rem;
+  margin-bottom: 2rem;
 }
 
 .inputGroup {
@@ -120,41 +120,43 @@
   border-radius: 12px;
 }
 
+.selectionGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+@media (max-width: 1200px) {
+  .selectionGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .addItemForm {
   background: var(--glass);
-  padding: 2rem;
+  padding: 1.5rem;
   border-radius: 16px;
   border: 1px solid var(--glass-border);
-  margin-bottom: 3rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
 }
 
 .addBtn {
-  align-self: flex-end;
+  align-self: flex-start;
   background: var(--secondary);
   color: white;
   border: none;
-  padding: 0.8rem 2rem;
+  padding: 0.8rem 1.5rem;
   border-radius: 8px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.3s;
 }
 
-.addBtn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  filter: brightness(1.1);
-}
-
-.addBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .itemsList {
-  margin-top: 2rem;
+  margin-top: 0;
 }
 
 .itemsList h3 {

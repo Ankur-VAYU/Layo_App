@@ -229,107 +229,109 @@ export default function Dashboard() {
           <div className={styles.divider}></div>
 
           {mode === 'selection' && (
-            <div className="animate-in">
-              <h3>2. Add Items to Ship</h3>
-              <div className={styles.addItemForm}>
-                <div className={styles.formGrid}>
-                  <div className={styles.inputGroup}>
-                    <label>Category</label>
-                    <select 
-                      value={currentCategory} 
-                      onChange={(e) => {
-                        setCurrentCategory(e.target.value);
-                        setCurrentSubcategory('');
-                      }}
-                      className="glass"
-                    >
-                      <option value="" disabled>Select category</option>
-                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
+              <div className={styles.selectionGrid}>
+                <div className={styles.addItemForm}>
+                  <h3>2. Add Items to Ship</h3>
+                  <div className={styles.formGrid} style={{ marginBottom: '1.5rem' }}>
+                    <div className={styles.inputGroup}>
+                      <label>Category</label>
+                      <select 
+                        value={currentCategory} 
+                        onChange={(e) => {
+                          setCurrentCategory(e.target.value);
+                          setCurrentSubcategory('');
+                        }}
+                        className="glass"
+                      >
+                        <option value="" disabled>Select category</option>
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
 
-                  <div className={styles.inputGroup}>
-                    <label>Sub-category</label>
-                    <select 
-                      value={currentSubcategory} 
-                      onChange={(e) => setCurrentSubcategory(e.target.value)}
-                      className="glass"
-                      disabled={!currentCategory}
-                    >
-                      <option value="" disabled>Select sub-category</option>
-                      {subcategories.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
+                    <div className={styles.inputGroup}>
+                      <label>Sub-category</label>
+                      <select 
+                        value={currentSubcategory} 
+                        onChange={(e) => setCurrentSubcategory(e.target.value)}
+                        className="glass"
+                        disabled={!currentCategory}
+                      >
+                        <option value="" disabled>Select sub-category</option>
+                        {subcategories.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
 
-                  <div className={styles.inputGroup}>
-                    <label>Quantity</label>
-                    <input 
-                      type="number" 
-                      min="1" 
-                      value={currentQuantity}
-                      onChange={(e) => setCurrentQuantity(parseInt(e.target.value) || 1)}
-                      className="glass"
-                    />
+                    <div className={styles.inputGroup}>
+                      <label>Quantity</label>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        value={currentQuantity || ''}
+                        onChange={(e) => setCurrentQuantity(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                        onFocus={(e) => e.target.select()}
+                        className="glass"
+                      />
+                    </div>
                   </div>
+                  <button 
+                    className={styles.addBtn} 
+                    onClick={addItem}
+                    disabled={!currentCategory || !currentSubcategory || !currentQuantity}
+                  >
+                    {items.length > 0 ? '+ Add more items' : '+ Add Item'}
+                  </button>
                 </div>
-                <button 
-                  className={styles.addBtn} 
-                  onClick={addItem}
-                  disabled={!currentCategory || !currentSubcategory}
-                >
-                  + Add Item
-                </button>
-              </div>
 
-              <div className={styles.itemsList}>
-                <h3>Items in Shipment</h3>
-                {items.length === 0 ? (
-                  <p className={styles.emptyMsg}>No items added yet.</p>
-                ) : (
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Qty</th>
-                        <th>Est. Weight</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map(item => (
-                        <tr key={item.id}>
-                          <td>
-                            <div className={styles.itemName}>{item.subcategory}</div>
-                            <div className={styles.itemCat}>{item.category}</div>
-                          </td>
-                          <td>
-                            <input 
-                              type="number" 
-                              min="1" 
-                              value={item.quantity}
-                              onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
-                              style={{ 
-                                width: '60px', 
-                                background: 'rgba(255,255,255,0.05)', 
-                                border: '1px solid var(--glass-border)', 
-                                color: '#fff', 
-                                padding: '4px 8px', 
-                                borderRadius: '4px',
-                                outline: 'none'
-                              }}
-                            />
-                          </td>
-                          <td>{item.weight.toFixed(2)} kg</td>
-                          <td>
-                            <button onClick={() => removeItem(item.id)} className={styles.removeBtn}>×</button>
-                          </td>
+                <div className={styles.itemsList}>
+                  <h3>Items in Shipment</h3>
+                  {items.length === 0 ? (
+                    <p className={styles.emptyMsg}>No items added yet.</p>
+                  ) : (
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th>Qty</th>
+                          <th>Weight</th>
+                          <th></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                      </thead>
+                      <tbody>
+                        {items.map(item => (
+                          <tr key={item.id}>
+                            <td>
+                              <div className={styles.itemName}>{item.subcategory}</div>
+                              <div className={styles.itemCat}>{item.category}</div>
+                            </td>
+                            <td>
+                              <input 
+                                type="number" 
+                                min="1" 
+                                value={item.quantity || ''}
+                                onChange={(e) => updateItemQuantity(item.id, e.target.value === '' ? 0 : parseInt(e.target.value))}
+                                onFocus={(e) => e.target.select()}
+                                style={{ 
+                                  width: '60px', 
+                                  background: 'rgba(255,255,255,0.05)', 
+                                  border: '1px solid var(--glass-border)', 
+                                  color: '#fff', 
+                                  padding: '4px 8px', 
+                                  borderRadius: '4px',
+                                  outline: 'none'
+                                }}
+                              />
+                            </td>
+                            <td>{item.weight.toFixed(1)} kg</td>
+                            <td>
+                              <button onClick={() => removeItem(item.id)} className={styles.removeBtn}>×</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
-            </div>
           )}
 
           {mode === 'whatsapp' && (
@@ -431,8 +433,9 @@ export default function Dashboard() {
                             <input 
                               type="number" 
                               min="1" 
-                              value={item.quantity}
-                              onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value) || 1)}
+                              value={item.quantity || ''}
+                              onChange={(e) => updateItemQuantity(item.id, e.target.value === '' ? 0 : parseInt(e.target.value))}
+                              onFocus={(e) => e.target.select()}
                               style={{ 
                                 width: '60px', 
                                 background: 'rgba(255,255,255,0.05)', 
