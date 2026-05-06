@@ -10,64 +10,84 @@ import { supabase } from '@/lib/supabase';
 
 const shippingData = shippingDataRaw as Record<string, Record<string, number>>;
 
-interface Package {
+interface Item {
   id: string;
-  vendor: string;
-  expectedItems: string;
-  trackingNumber?: string;
-  status: 'pending' | 'arrived' | 'shipped';
-  warehouseId: string;
-  weight?: number;
-  arrivalDate?: string;
+  category: string;
+  subcategory: string;
+  quantity: number;
+  weight: number;
 }
+
+type ShipmentMode = 'selection' | 'whatsapp' | 'scan';
 
 export default function Dashboard() {
   const router = useRouter();
   const { user, loading } = useAuth();
   
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [showPreAlert, setShowPreAlert] = useState(false);
+  const [mode, setMode] = useState<ShipmentMode>('selection');
+  const [items, setItems] = useState<Item[]>([]);
+  const [currentCategory, setCurrentCategory] = useState('');
+  const [currentSubcategory, setCurrentSubcategory] = useState('');
+  const [currentQuantity, setCurrentQuantity] = useState(1);
+  const [destinationCity, setDestinationCity] = useState('');
+  const [destinationAddress, setDestinationAddress] = useState('');
+  const [selectedWarehouse, setSelectedWarehouse] = useState('');
   
-  // Pre-alert Form State
-  const [vendor, setVendor] = useState('');
-  const [itemsDesc, setItemsDesc] = useState('');
-  const [selectedWH, setSelectedWH] = useState('');
-  const [preTracking, setPreTracking] = useState('');
-
   const warehouses = [
     { id: 'wh-del', city: 'Delhi NCR (Gurgaon)', address: 'Plot 42, Sector 18, Udyog Vihar', pincode: '122015', contact: '+91 97745 81632' },
     { id: 'wh-mum', city: 'Mumbai (Bhiwandi)', address: 'Gala 12, Jai Bhagwan Complex', pincode: '421302', contact: '+91 97745 81632' },
     { id: 'wh-blr', city: 'Bangalore (Whitefield)', address: 'Building 7, Export Promotion Park', pincode: '560066', contact: '+91 97745 81632' }
   ];
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    }
-  }, [user, loading, router]);
+  const canadaCities = ['Toronto (GTA)', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa', 'Edmonton', 'Winnipeg'];
+  const categories = Object.keys(shippingData);
+  const subcategories = currentCategory ? Object.keys(shippingData[currentCategory]) : [];
 
-  const handlePreAlert = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newPkg: Package = {
+  const addItem = () => {
+    if (!currentCategory || !currentSubcategory || currentQuantity < 1) return;
+    const unitWeight = shippingData[currentCategory][currentSubcategory];
+    const newItem: Item = {
       id: Math.random().toString(36).substr(2, 9),
-      vendor,
-      expectedItems: itemsDesc,
-      trackingNumber: preTracking,
-      status: 'pending',
-      warehouseId: selectedWH
+      category: currentCategory,
+      subcategory: currentSubcategory,
+      quantity: currentQuantity,
+      weight: unitWeight * currentQuantity
     };
-    setPackages([newPkg, ...packages]);
-    setShowPreAlert(false);
-    setVendor('');
-    setItemsDesc('');
-    setPreTracking('');
+    setItems([...items, newItem]);
+    setCurrentSubcategory('');
+    setCurrentQuantity(1);
   };
 
+  const removeItem = (id: string) => {
+    setItems(items.filter(item => item.id !== id));
+  };
+
+  const updateItemQuantity = (id: string, newQty: number) => {
+    if (newQty < 1) return;
+    setItems(items.map(item => {
+      if (item.id === id) {
+        const unitWeight = item.weight / item.quantity;
+        return { ...item, quantity: newQty, weight: unitWeight * newQty };
+      }
+      return item;
+    }));
+  };
+
+  const totals = useMemo(() => {
+    const weight = items.reduce((sum, item) => sum + item.weight, 0);
+    const rate = Math.ceil(weight * 3000);
+    return { weight: weight.toFixed(2), rate: rate.toLocaleString() };
+  }, [items]);
+
   const handleCheckout = () => {
-    const arrivedPackages = packages.filter(p => p.status === 'arrived');
     const shipmentData = {
-      packages: arrivedPackages,
-      totalWeight: arrivedPackages.reduce((sum, p) => sum + (p.weight || 0), 0),
+      items,
+      mode,
+      destinationCity,
+      destinationAddress,
+      indiaWarehouse: selectedWarehouse,
+      totalWeight: totals.weight,
+      totalCost: totals.rate
     };
     localStorage.setItem('layo_pending_shipment', JSON.stringify(shipmentData));
     router.push('/checkout');
@@ -88,133 +108,197 @@ export default function Dashboard() {
       </header>
 
       <section className={styles.content}>
-        <div className={styles.lockerArea}>
-          <div className={styles.lockerHeader}>
-            <div>
-              <h1 className="gradient-text">My India Locker</h1>
-              <p className={styles.subtitle}>Manage your incoming packages and ship them to Canada together.</p>
+        <div className={styles.selectionArea}>
+          <h1 className="gradient-text">Create Shipment</h1>
+          <p className={styles.subtitle}>Complete your shipment details first, then use our India warehouse address to shop.</p>
+
+          <div className={styles.addressSection}>
+            <h3>1. India Warehouse (Select Origin)</h3>
+            <div className={styles.formGrid}>
+              <div className={styles.inputGroup}>
+                <label>Choose Drop-off City</label>
+                <select 
+                  value={selectedWarehouse} 
+                  onChange={(e) => setSelectedWarehouse(e.target.value)}
+                  className="glass"
+                >
+                  <option value="" disabled>Select India Warehouse</option>
+                  {warehouses.map(wh => <option key={wh.id} value={wh.id}>{wh.city}</option>)}
+                </select>
+              </div>
             </div>
-            <button className={styles.preAlertBtn} onClick={() => setShowPreAlert(true)}>
-              + Register Incoming Package
-            </button>
           </div>
 
-          <div className={styles.packageGrid}>
-            {packages.length === 0 ? (
-              <div className={styles.emptyLocker}>
-                <div className={styles.lockerIcon}>📦</div>
-                <h3>Your locker is empty</h3>
-                <p>Register a package before ordering from an Indian e-commerce site to get your virtual address.</p>
-                <button className={styles.preAlertBtn} onClick={() => setShowPreAlert(true)} style={{ marginTop: '1.5rem' }}>
-                  Get Started
-                </button>
+          <div className={styles.divider}></div>
+
+          <div className={styles.addressSection}>
+            <h3>2. Delivery Destination (Canada)</h3>
+            <div className={styles.formGrid}>
+              <div className={styles.inputGroup}>
+                <label>Destination City</label>
+                <select 
+                  value={destinationCity} 
+                  onChange={(e) => setDestinationCity(e.target.value)}
+                  className="glass"
+                >
+                  <option value="" disabled>Select region</option>
+                  {canadaCities.map(city => <option key={city} value={city}>{city}</option>)}
+                </select>
               </div>
-            ) : (
-              packages.map(pkg => (
-                <div key={pkg.id} className={`${styles.packageCard} glass`}>
-                  <div className={styles.pkgHeader}>
-                    <span className={`${styles.statusTag} ${styles[pkg.status]}`}>{pkg.status}</span>
-                    <span className={styles.pkgId}>ID: {pkg.id}</span>
-                  </div>
-                  <h3>{pkg.vendor}</h3>
-                  <p className={styles.pkgItems}>{pkg.expectedItems}</p>
-                  <div className={styles.pkgMeta}>
-                    <span>📍 {warehouses.find(w => w.id === pkg.warehouseId)?.city}</span>
-                    {pkg.trackingNumber && <span>🚚 {pkg.trackingNumber}</span>}
-                  </div>
-                  {pkg.status === 'pending' && (
-                    <div className={styles.virtualAddressMini}>
-                      <strong>Ship to:</strong> {user?.user_metadata?.full_name} / LAYO-{user?.id?.substr(0, 5).toUpperCase()}
-                    </div>
-                  )}
+              <div className={styles.inputGroup} style={{ gridColumn: 'span 2' }}>
+                <label>Full Delivery Address</label>
+                <input 
+                  type="text" 
+                  placeholder="Street address, Apt, Postal Code"
+                  value={destinationAddress}
+                  onChange={(e) => setDestinationAddress(e.target.value)}
+                  className="glass"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.divider}></div>
+
+          <div className={styles.selectionGrid}>
+            <div className={styles.addItemForm}>
+              <h3>3. Add Items to Ship</h3>
+              <div className={styles.formGrid} style={{ marginBottom: '1.5rem' }}>
+                <div className={styles.inputGroup}>
+                  <label>Category</label>
+                  <select 
+                    value={currentCategory} 
+                    onChange={(e) => {
+                      setCurrentCategory(e.target.value);
+                      setCurrentSubcategory('');
+                    }}
+                    className="glass"
+                  >
+                    <option value="" disabled>Select category</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
-              ))
-            )}
+
+                <div className={styles.inputGroup}>
+                  <label>Sub-category</label>
+                  <select 
+                    value={currentSubcategory} 
+                    onChange={(e) => setCurrentSubcategory(e.target.value)}
+                    className="glass"
+                    disabled={!currentCategory}
+                  >
+                    <option value="" disabled>Select sub-category</option>
+                    {subcategories.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+
+                <div className={styles.inputGroup}>
+                  <label>Quantity</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    value={currentQuantity || ''}
+                    onChange={(e) => setCurrentQuantity(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    className="glass"
+                  />
+                </div>
+              </div>
+              <button 
+                className={styles.addBtn} 
+                onClick={addItem}
+                disabled={!currentCategory || !currentSubcategory || !currentQuantity}
+              >
+                {items.length > 0 ? '+ Add more items' : '+ Add Item'}
+              </button>
+            </div>
+
+            <div className={styles.itemsList}>
+              <h3>Items in Shipment</h3>
+              {items.length === 0 ? (
+                <p className={styles.emptyMsg}>No items added yet.</p>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Qty</th>
+                      <th>Weight</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map(item => (
+                      <tr key={item.id}>
+                        <td>
+                          <div className={styles.itemName}>{item.subcategory}</div>
+                          <div className={styles.itemCat}>{item.category}</div>
+                        </td>
+                        <td>
+                          <input 
+                            type="number" 
+                            min="1" 
+                            value={item.quantity || ''}
+                            onChange={(e) => updateItemQuantity(item.id, e.target.value === '' ? 0 : parseInt(e.target.value))}
+                            onFocus={(e) => e.target.select()}
+                            style={{ 
+                              width: '60px', 
+                              background: 'rgba(255,255,255,0.05)', 
+                              border: '1px solid var(--glass-border)', 
+                              color: '#fff', 
+                              padding: '4px 8px', 
+                              borderRadius: '4px',
+                              outline: 'none'
+                            }}
+                          />
+                        </td>
+                        <td>{item.weight.toFixed(1)} kg</td>
+                        <td>
+                          <button onClick={() => removeItem(item.id)} className={styles.removeBtn}>×</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
 
         <aside className={styles.quoteSidebar}>
           <div className={`${styles.quoteCard} glass`}>
-            <h3>Consolidation Summary</h3>
+            <h3>Shipment Summary</h3>
             <div className={styles.summaryItem}>
-              <span>Packages in Locker</span>
-              <span>{packages.length}</span>
+              <span>Total Items</span>
+              <span>{items.reduce((sum, i) => sum + i.quantity, 0)}</span>
             </div>
             <div className={styles.summaryItem}>
-              <span>Arrived & Ready</span>
-              <span>{packages.filter(p => p.status === 'arrived').length}</span>
-            </div>
-            <div className={styles.summaryItem}>
-              <span>Total Est. Weight</span>
-              <span>{packages.reduce((sum, p) => sum + (p.weight || 0), 0).toFixed(2)} kg</span>
+              <span>Total Weight</span>
+              <span>{totals.weight} kg</span>
             </div>
             
             <div className={styles.divider}></div>
             
+            <div className={styles.totalSection}>
+              <span>Estimated Cost</span>
+              <span className={styles.price}>{items.length > 0 ? `₹${totals.rate}` : '---'}</span>
+            </div>
+            
             <button 
               className={styles.checkoutBtn} 
-              disabled={packages.filter(p => p.status === 'arrived').length === 0}
+              disabled={items.length === 0 || !destinationCity || !destinationAddress || !selectedWarehouse}
               onClick={handleCheckout}
             >
-              Ship Arrived Items to Canada
+              Secure Checkout
             </button>
-            <p className={styles.checkoutNote}>
-              Tip: Wait for all your items to arrive to save up to 40% on shipping.
-            </p>
+            
+            <div className={styles.safetyBadge}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              End-to-End Encrypted & Insured
+            </div>
           </div>
         </aside>
       </section>
-
-      {showPreAlert && (
-        <div className={styles.modalOverlay}>
-          <div className={`${styles.modal} glass`}>
-            <h2>Register Incoming Package</h2>
-            <p>Tell us what you're buying so we can match it when it arrives.</p>
-            <form onSubmit={handlePreAlert}>
-              <div className={styles.inputGroup}>
-                <label>Where are you buying from?</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Amazon, Myntra, Ajio" 
-                  value={vendor}
-                  onChange={(e) => setVendor(e.target.value)}
-                  required
-                />
-              </div>
-              <div className={styles.inputGroup}>
-                <label>What's inside? (Item description)</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. 3 Cotton Shirts, 1 Saree" 
-                  value={itemsDesc}
-                  onChange={(e) => setItemsDesc(e.target.value)}
-                  required
-                />
-              </div>
-              <div className={styles.inputGroup}>
-                <label>Target Warehouse</label>
-                <select value={selectedWH} onChange={(e) => setSelectedWH(e.target.value)} required>
-                  <option value="" disabled>Select India Warehouse</option>
-                  {warehouses.map(wh => <option key={wh.id} value={wh.id}>{wh.city}</option>)}
-                </select>
-              </div>
-              <div className={styles.inputGroup}>
-                <label>Tracking ID (if available)</label>
-                <input 
-                  type="text" 
-                  placeholder="Paste it here if you already have it" 
-                  value={preTracking}
-                  onChange={(e) => setPreTracking(e.target.value)}
-                />
-              </div>
-              <div className={styles.modalActions}>
-                <button type="button" onClick={() => setShowPreAlert(false)} className={styles.cancelBtn}>Cancel</button>
-                <button type="submit" className={styles.submitBtn}>Register & Get Address</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
