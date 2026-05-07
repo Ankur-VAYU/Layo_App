@@ -901,3 +901,109 @@
   padding-top: 0.5rem;
   border-top: 1px solid var(--glass-border);
 }
+
+.radioGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.radioLabel {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  padding: 1rem;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: all 0.3s;
+  font-weight: 600;
+}
+
+.radioActive {
+  border-color: var(--primary);
+  background: rgba(250, 204, 21, 0.1);
+  color: var(--primary);
+}
+
+.radioLabel input {
+  accent-color: var(--primary);
+}
+
+.pasteBtn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  opacity: 0.6;
+  transition: opacity 0.3s;
+}
+
+.pasteBtn:hover {
+  opacity: 1;
+}
+
+.qtyInput {
+  width: 60px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.savingsBanner {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 1.5rem;
+  border-radius: 16px;
+  margin-bottom: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.savingsBadge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: #10b981;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.1rem;
+}
+
+.savingsBanner p {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.savingsBanner strong {
+  color: #10b981;
+  font-size: 1.2rem;
+}
+
+.consolidationCard {
+  margin-top: 2rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  padding: 1.25rem;
+  border-radius: 12px;
+}
+
+.consolidationCard h4 {
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.consolidationCard p {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0;
+}
