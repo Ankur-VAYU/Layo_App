@@ -35,15 +35,22 @@ export default function Checkout() {
     // 1. Simulate Payment (2 seconds)
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // 2. Save to Supabase (if keys exist)
+    // 2. Save to Supabase
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No authenticated user");
+
       const { data, error } = await supabase
         .from('shipments')
         .insert([
           {
+            user_id: user.id,
             mode: orderData.mode,
             destination_city: orderData.destinationCity || 'Unknown',
             destination_address: orderData.destinationAddress || orderData.address,
+            india_warehouse: orderData.indiaWarehouse,
+            external_order_id: orderData.externalOrderId,
+            external_tracking: orderData.externalTracking,
             total_weight: parseFloat(orderData.totalWeight || orderData.weight),
             total_cost: parseInt((orderData.totalCost || orderData.cost).replace(/,/g, '')),
             items: orderData.items,
@@ -52,10 +59,13 @@ export default function Checkout() {
           }
         ]);
       
-      if (error) throw error;
+      if (error) {
+        console.error("DB Insert Error:", error);
+        throw error;
+      }
     } catch (err) {
-      console.warn("Supabase insert failed (likely due to missing keys/table):", err);
-      // We continue to success screen for demo purposes even if DB fails
+      console.warn("Supabase insert failed. This usually happens if columns like user_id or india_warehouse haven't been added to your table yet. Error:", err);
+      // We continue to success screen for demo purposes
     }
 
     setIsProcessing(false);

@@ -39,6 +39,9 @@ export default function Dashboard() {
     { id: 'wh-blr', city: 'Bangalore (Whitefield)', address: 'Building 7, Export Promotion Park', pincode: '560066', contact: '+91 97745 81632' }
   ];
 
+  const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [isFetching, setIsFetching] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [currentStep, setCurrentStep] = useState(1);
@@ -46,8 +49,23 @@ export default function Dashboard() {
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
+    } else if (user) {
+      fetchShipments();
     }
   }, [user, loading, router]);
+
+  const fetchShipments = async () => {
+    setIsFetching(true);
+    const { data, error } = await supabase
+      .from('shipments')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (!error && data) {
+      setShipments(data);
+    }
+    setIsFetching(false);
+  };
 
   useEffect(() => {
     if (selectedWarehouse && currentStep === 1) setCurrentStep(2);
@@ -108,6 +126,8 @@ export default function Dashboard() {
     };
     localStorage.setItem('layo_pending_shipment', JSON.stringify(shipmentData));
     router.push('/checkout');
+  };
+
   return (
     <main className={styles.container}>
       <header className={styles.header}>
@@ -124,7 +144,64 @@ export default function Dashboard() {
 
       <section className={styles.content}>
         <div className={styles.selectionArea}>
-          <div className={styles.progressContainer}>
+          <div className={styles.tabSwitcher}>
+            <button 
+              className={`${styles.tab} ${activeTab === 'new' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('new')}
+            >
+              New Shipment
+            </button>
+            <button 
+              className={`${styles.tab} ${activeTab === 'history' ? styles.activeTab : ''}`}
+              onClick={() => setActiveTab('history')}
+            >
+              My Shipments ({shipments.length})
+            </button>
+          </div>
+
+          {activeTab === 'history' ? (
+            <div className={styles.historyList}>
+              <h1 className="gradient-text">Shipment History</h1>
+              <p className={styles.subtitle}>Track your previous orders and their current status.</p>
+              
+              {shipments.length === 0 ? (
+                <div className={styles.emptyHistory}>
+                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📦</div>
+                  <h3>No shipments found</h3>
+                  <p>When you create a shipment, it will appear here.</p>
+                  <button onClick={() => setActiveTab('new')} className={styles.addBtn} style={{ marginTop: '1.5rem' }}>
+                    Create First Shipment
+                  </button>
+                </div>
+              ) : (
+                <div className={styles.historyGrid}>
+                  {shipments.map((s) => (
+                    <div key={s.id} className={`${styles.historyCard} glass`}>
+                      <div className={styles.cardHeader}>
+                        <span className={styles.statusBadge}>{s.status}</span>
+                        <span className={styles.date}>{new Date(s.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className={styles.cardBody}>
+                        <h3>To: {s.destination_city}</h3>
+                        <p>{s.destination_address}</p>
+                        <div className={styles.cardMeta}>
+                          <span>⚖️ {s.total_weight}kg</span>
+                          <span>💰 ₹{s.total_cost.toLocaleString()}</span>
+                        </div>
+                        {s.external_order_id && (
+                          <div className={styles.orderRef}>
+                            ID: {s.external_order_id}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className={styles.progressContainer}>
             <div className={styles.progressBar} style={{ width: `${(currentStep / 3) * 100}%` }}></div>
             <div className={styles.stepLabels}>
               <span className={currentStep >= 1 ? styles.activeStep : ''}>1. Warehouse</span>
@@ -194,6 +271,8 @@ export default function Dashboard() {
           </div>
 
           <div className={styles.divider}></div>
+
+          <div className={styles.addressSection}>
             <h3>3. Indian Order Reference (Optional)</h3>
             <div className={styles.formGrid}>
               <div className={styles.inputGroup}>
@@ -323,7 +402,8 @@ export default function Dashboard() {
                 </table>
               )}
             </div>
-          </div>
+            </>
+          )}
         </div>
 
         <aside className={styles.quoteSidebar}>
