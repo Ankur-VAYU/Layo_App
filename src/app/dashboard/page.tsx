@@ -33,14 +33,9 @@ export default function Dashboard() {
   const [destinationAddress, setDestinationAddress] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState('');
   
-  const warehouses = [
-    { id: 'wh-del', city: 'Delhi NCR (Gurgaon)', address: 'Plot 42, Sector 18, Udyog Vihar', pincode: '122015', contact: '+91 97745 81632' },
-    { id: 'wh-mum', city: 'Mumbai (Bhiwandi)', address: 'Gala 12, Jai Bhagwan Complex', pincode: '421302', contact: '+91 97745 81632' },
-    { id: 'wh-blr', city: 'Bangalore (Whitefield)', address: 'Building 7, Export Promotion Park', pincode: '560066', contact: '+91 97745 81632' }
-  ];
-
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
   const [shipments, setShipments] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -50,20 +45,19 @@ export default function Dashboard() {
     if (!loading && !user) {
       router.push('/login');
     } else if (user) {
-      fetchShipments();
+      fetchDashboardData();
     }
   }, [user, loading, router]);
 
-  const fetchShipments = async () => {
+  const fetchDashboardData = async () => {
     setIsFetching(true);
-    const { data, error } = await supabase
-      .from('shipments')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const [ships, whs] = await Promise.all([
+      supabase.from('shipments').select('*').order('created_at', { ascending: false }),
+      supabase.from('warehouses').select('*')
+    ]);
     
-    if (!error && data) {
-      setShipments(data);
-    }
+    if (ships.data) setShipments(ships.data);
+    if (whs.data) setWarehouses(whs.data);
     setIsFetching(false);
   };
 
@@ -402,9 +396,10 @@ export default function Dashboard() {
                 </table>
               )}
             </div>
-            </>
-          )}
-        </div>
+          </div>
+        </>
+      )}
+    </div>
 
         <aside className={styles.quoteSidebar}>
           <div className={`${styles.quoteCard} glass`}>
