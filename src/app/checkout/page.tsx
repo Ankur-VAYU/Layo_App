@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import styles from './checkout.module.css';
 import Logo from '@/components/Logo';
 import { supabase } from '@/lib/supabase';
@@ -87,7 +88,7 @@ export default function Checkout() {
             <p style={{ color: 'var(--text-muted)' }}>We have notified our India hub. You will receive a tracking link via WhatsApp shortly.</p>
           </div>
           <button className={styles.payBtn} onClick={() => router.push('/dashboard')}>
-            Back to Dashboard
+            Back to My Shipments
           </button>
         </div>
         <style jsx>{`
@@ -103,11 +104,12 @@ export default function Checkout() {
   return (
     <main className={styles.container}>
       <header className={styles.header}>
-        <a href="/" style={{ textDecoration: 'none' }}>
-          <Logo showTagline={false} />
-        </a>
-        <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Secure Checkout System
+        <Logo showTagline={false} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <Link href="/" style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textDecoration: 'none' }}>Home</Link>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Secure Checkout System
+          </div>
         </div>
       </header>
 

@@ -196,10 +196,10 @@ export default function Home() {
           <Link href="#services">Services</Link>
           <Link href="#solutions">Solutions</Link>
           <Link href="#about">About</Link>
-          {!loading && user && <Link href="/dashboard">Dashboard</Link>}
+          {!loading && user && <Link href="/dashboard">My Shipments</Link>}
         </nav>
         {!loading && user ? (
-          <Link href="/dashboard" className={styles.quoteBtn}>Dashboard</Link>
+          <Link href="/dashboard" className={styles.quoteBtn}>My Shipments</Link>
         ) : (
           <Link href="/login" className={styles.quoteBtn}>Sign In</Link>
         )}

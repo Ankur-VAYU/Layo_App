@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import styles from './dashboard.module.css';
 import shippingDataRaw from './shipping_data.json';
 import Logo from '@/components/Logo';
@@ -35,6 +36,15 @@ export default function Dashboard() {
   const [currentPriceINR, setCurrentPriceINR] = useState<number | ''>('');
   const [currentQuantity, setCurrentQuantity] = useState(1);
   
+  // Custom enhanced states
+  const [showOrderNumberError, setShowOrderNumberError] = useState(false);
+  const [showDraftModal, setShowDraftModal] = useState(false);
+  const [warehouseAction, setWarehouseAction] = useState<'ship' | 'hold' | null>(null);
+  const [morePackages, setMorePackages] = useState<number | null>(null);
+  const [tempAction, setTempAction] = useState<'ship' | 'hold' | null>(null);
+  const [tempMore, setTempMore] = useState<number | null>(null);
+  const [showWarehouseModal, setShowWarehouseModal] = useState(false);
+  
   const [originType, setOriginType] = useState<OriginType>('online');
   const [storeName, setStoreName] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
@@ -61,14 +71,31 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     setIsFetching(true);
-    const [ships, whs] = await Promise.all([
-      supabase.from('shipments').select('*').order('created_at', { ascending: false }),
-      supabase.from('warehouses').select('*')
-    ]);
-    
-    if (ships.data) setShipments(ships.data);
-    if (whs.data) setWarehouses(whs.data);
-    setIsFetching(false);
+    try {
+      const [ships, whs] = await Promise.all([
+        supabase.from('shipments').select('*').order('created_at', { ascending: false }),
+        supabase.from('warehouses').select('*')
+      ]);
+      
+      if (ships.data) setShipments(ships.data);
+      if (whs.data) {
+        setWarehouses(whs.data);
+      } else {
+        setWarehouses([
+          { id: 'wh1', city: 'Delhi', pincode: '110001', address: 'Plot 42, Layo Hub, Okhla Phase 3' },
+          { id: 'wh2', city: 'Mumbai', pincode: '400001', address: 'Gala 5, Hub 2, Andheri East' }
+        ]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch dashboard data from Supabase:", err);
+      // Fallback data when offline/unreachable
+      setWarehouses([
+        { id: 'wh1', city: 'Delhi', pincode: '110001', address: 'Plot 42, Layo Hub, Okhla Phase 3' },
+        { id: 'wh2', city: 'Mumbai', pincode: '400001', address: 'Gala 5, Hub 2, Andheri East' }
+      ]);
+    } finally {
+      setIsFetching(false);
+    }
   };
 
   useEffect(() => {
@@ -82,17 +109,7 @@ export default function Dashboard() {
   const addItem = () => {
     if (!currentCategory || !currentSubcategory || currentQuantity < 1) return;
     
-    let unitWeight = shippingData[currentCategory][currentSubcategory];
-    
-    // Promo Logic: First 5 "Small Accessories" are 0g
-    if (currentSubcategory.includes("Small Accessories")) {
-      const existingAccessories = items.filter(i => i.subcategory.includes("Small Accessories")).reduce((sum, i) => sum + i.quantity, 0);
-      if (existingAccessories < 5) {
-        const freeCount = Math.min(currentQuantity, 5 - existingAccessories);
-        // We'll split the weight if only some are free, but for simplicity in this demo:
-        if (existingAccessories + currentQuantity <= 5) unitWeight = 0;
-      }
-    }
+    const unitWeight = shippingData[currentCategory][currentSubcategory];
 
     const newItem: Item = {
       id: Math.random().toString(36).substr(2, 9),
@@ -117,17 +134,79 @@ export default function Dashboard() {
     if (newQty < 1) return;
     setItems(items.map(item => {
       if (item.id === id) {
-        const unitWeight = item.weight / item.quantity;
+        const unitWeight = shippingData[item.category][item.subcategory];
         return { ...item, quantity: newQty, weight: unitWeight * newQty };
       }
       return item;
     }));
   };
 
+  const getItemWeight = (item: Item) => {
+    let unitWeight = shippingData[item.category]?.[item.subcategory] || 0.2;
+    if (item.subcategory.includes("Small Accessories")) {
+      const accessoriesBefore = items
+        .slice(0, items.findIndex(i => i.id === item.id))
+        .filter(i => i.subcategory.includes("Small Accessories"))
+        .reduce((sum, i) => sum + i.quantity, 0);
+      
+      let itemWeight = 0;
+      for (let q = 0; q < item.quantity; q++) {
+        const currentCount = accessoriesBefore + q + 1;
+        if (currentCount > 5) {
+          itemWeight += 0.05;
+        } else {
+          itemWeight += 0;
+        }
+      }
+      return itemWeight;
+    }
+    return unitWeight * item.quantity;
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setOrderNumber(text);
+      setShowOrderNumberError(false);
+      if (storeName && text && currentStep === 1) setCurrentStep(2);
+    } catch (err) {
+      console.error('Failed to read clipboard', err);
+    }
+  };
+
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const isFormIncomplete = items.length > 0 || storeName || senderName || selectedWarehouse || destinationAddress;
+    if (isFormIncomplete) {
+      e.preventDefault();
+      setShowDraftModal(true);
+    }
+  };
+
   const totals = useMemo(() => {
-    const weight = items.reduce((sum, item) => sum + item.weight, 0);
+    let totalWeight = 0;
+    let smallAccessoriesCount = 0;
+
+    items.forEach(item => {
+      let unitWeight = shippingData[item.category]?.[item.subcategory] || 0.2;
+      
+      if (item.subcategory.includes("Small Accessories")) {
+        let itemWeight = 0;
+        for (let q = 0; q < item.quantity; q++) {
+          smallAccessoriesCount++;
+          if (smallAccessoriesCount > 5) {
+            itemWeight += 0.05;
+          } else {
+            itemWeight += 0;
+          }
+        }
+        totalWeight += itemWeight;
+      } else {
+        totalWeight += unitWeight * item.quantity;
+      }
+    });
+
     // Unified Shipping Estimate in CAD (approx 45 CAD per kg for this demo)
-    const rateCAD = Math.ceil(weight * 45);
+    const rateCAD = Math.ceil(totalWeight * 45);
     
     // Savings Calculator: Compare to Canadian retail (hidden 5x multiplier for demo)
     const totalSpentINR = items.reduce((sum, i) => sum + (i.pricePaidINR || 0) * i.quantity, 0);
@@ -135,13 +214,19 @@ export default function Dashboard() {
     const valueReclaimed = Math.max(0, estimatedValueCAD - rateCAD - (totalSpentINR / 60));
 
     return { 
-      weight: weight.toFixed(2), 
+      weight: totalWeight.toFixed(2), 
       rateCAD: rateCAD.toLocaleString(),
       valueReclaimed: Math.ceil(valueReclaimed).toLocaleString()
     };
   }, [items]);
 
   const handleCheckout = () => {
+    if (originType === 'online' && !orderNumber.trim()) {
+      setShowOrderNumberError(true);
+      const el = document.getElementById('orderNumberField');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
     const shipmentData = {
       items,
       mode,
@@ -155,7 +240,9 @@ export default function Dashboard() {
       indiaWarehouse: selectedWarehouse,
       totalWeight: totals.weight,
       totalCostCAD: totals.rateCAD,
-      valueReclaimed: totals.valueReclaimed
+      valueReclaimed: totals.valueReclaimed,
+      warehouseAction,
+      morePackages
     };
     localStorage.setItem('layo_pending_shipment', JSON.stringify(shipmentData));
     router.push('/checkout');
@@ -167,8 +254,9 @@ export default function Dashboard() {
   return (
     <main className={styles.container}>
       <header className={styles.header}>
-        <Logo showTagline={false} />
+        <Logo showTagline={false} onClick={handleLogoClick} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <Link href="/" style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textDecoration: 'none' }}>Home</Link>
           {user && (
             <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
               Welcome, <strong>{user.user_metadata?.full_name || user.email}</strong>
@@ -279,7 +367,7 @@ export default function Dashboard() {
                           className="glass"
                         />
                       </div>
-                      <div className={styles.inputGroup}>
+                      <div className={styles.inputGroup} id="orderNumberField">
                         <label>Order Number</label>
                         <div style={{ position: 'relative' }}>
                           <input 
@@ -288,12 +376,42 @@ export default function Dashboard() {
                             value={orderNumber}
                             onChange={(e) => {
                               setOrderNumber(e.target.value);
+                              setShowOrderNumberError(false);
                               if (storeName && e.target.value && currentStep === 1) setCurrentStep(2);
                             }}
-                            className="glass"
-                            style={{ paddingRight: '40px' }}
+                            className={`glass ${showOrderNumberError ? styles.inputError : ''}`}
+                            style={{ paddingRight: '45px' }}
                           />
+                          <button 
+                            type="button" 
+                            onClick={handlePaste}
+                            className={styles.pasteBtn}
+                            title="Paste from clipboard"
+                            style={{
+                              position: 'absolute',
+                              right: '8px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              background: 'none',
+                              border: 'none',
+                              color: '#facc15',
+                              cursor: 'pointer',
+                              fontSize: '1.1rem',
+                              padding: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            📋
+                          </button>
                         </div>
+                        {showOrderNumberError && (
+                          <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.25rem', textTransform: 'none' }}>
+                            Please paste your Order Number so our warehouse can instantly identify your package when it arrives.
+                          </p>
+                        )}
                       </div>
                     </>
                   ) : (
@@ -505,7 +623,7 @@ export default function Dashboard() {
                                 className={styles.qtyInput}
                               />
                             </td>
-                            <td>{item.weight.toFixed(1)} kg</td>
+                            <td>{getItemWeight(item).toFixed(2)} kg</td>
                             <td>
                               <button onClick={() => removeItem(item.id)} className={styles.removeBtn}>×</button>
                             </td>
@@ -548,7 +666,7 @@ export default function Dashboard() {
             
             <button 
               className={styles.checkoutBtn} 
-              disabled={items.length === 0 || !destinationCity || !destinationAddress || !selectedWarehouse}
+              disabled={items.length === 0 || !destinationCity || !destinationAddress || !selectedWarehouse || !warehouseAction}
               onClick={handleCheckout}
             >
               Pay Deposit & Book
@@ -557,6 +675,61 @@ export default function Dashboard() {
             <div className={styles.consolidationCard}>
               <h4>Free 30-Day Hold & Combine</h4>
               <p>Shop at your own pace! We will hold up to 4 packages for free and ship them together to maximize your savings.</p>
+              
+              <div style={{ marginTop: '1rem' }}>
+                {warehouseAction ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <p style={{ fontSize: '0.85rem', color: '#facc15', margin: 0, fontWeight: 500 }}>
+                      {warehouseAction === 'ship' 
+                        ? 'Action: 🚀 Ship Immediately.' 
+                        : `Action: 📦 Holding for ${morePackages} more package(s).`}
+                    </p>
+                    <button 
+                      onClick={() => {
+                        setTempAction(warehouseAction);
+                        setTempMore(morePackages || 1);
+                        setShowWarehouseModal(true);
+                      }}
+                      className={styles.setActionButton}
+                      style={{
+                        background: 'rgba(250, 204, 21, 0.15)',
+                        border: '1px solid #facc15',
+                        color: '#facc15',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        width: '100%'
+                      }}
+                    >
+                      [ Edit ]
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => {
+                      setTempAction('ship');
+                      setTempMore(1);
+                      setShowWarehouseModal(true);
+                    }}
+                    className={styles.setActionButton}
+                    style={{
+                      background: '#facc15',
+                      border: 'none',
+                      color: '#0d2045',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      width: '100%'
+                    }}
+                  >
+                    [ Set Warehouse Action ]
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className={styles.safetyBadge}>
@@ -566,6 +739,171 @@ export default function Dashboard() {
           </div>
         </aside>
       </section>
+
+      {/* Warehouse Action Modal */}
+      {showWarehouseModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowWarehouseModal(false)}>
+          <div className={styles.calculatorCard} style={{ maxWidth: '500px', background: '#091530', border: '1px solid rgba(255, 255, 255, 0.1)', padding: '2rem', borderRadius: '16px', position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <button className={styles.closeBtn} onClick={() => setShowWarehouseModal(false)} style={{ position: 'absolute', right: '1.5rem', top: '1.5rem', background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+            
+            <div className={styles.calcHeader}>
+              <span className={styles.sectionLabel} style={{ color: '#facc15', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05rem' }}>Set Warehouse Action</span>
+              <h2 className={styles.sectionTitle} style={{ fontSize: '1.75rem', marginTop: '0.5rem', color: '#fff' }}>Choose your shipping preference</h2>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
+              <div 
+                onClick={() => setTempAction('ship')}
+                style={{
+                  padding: '1.25rem',
+                  borderRadius: '12px',
+                  border: `2px solid ${tempAction === 'ship' ? '#facc15' : 'rgba(255, 255, 255, 0.1)'}`,
+                  background: tempAction === 'ship' ? 'rgba(250, 204, 21, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <h4 style={{ color: '#fff', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  🚀 Ship it immediately
+                </h4>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Don't wait. Send it to Canada as soon as the weight is verified.
+                </p>
+              </div>
+
+              <div 
+                onClick={() => setTempAction('hold')}
+                style={{
+                  padding: '1.25rem',
+                  borderRadius: '12px',
+                  border: `2px solid ${tempAction === 'hold' ? '#facc15' : 'rgba(255, 255, 255, 0.1)'}`,
+                  background: tempAction === 'hold' ? 'rgba(250, 204, 21, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <h4 style={{ color: '#fff', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  📦 Hold & Combine (Free for 30 Days)
+                </h4>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Wait for my other packages so they ship in one box to maximize savings.
+                </p>
+              </div>
+
+              {tempAction === 'hold' && (
+                <div style={{ padding: '1rem', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                  <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: '#fff', fontWeight: 500 }}>
+                    How many MORE packages are you waiting for?
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {[1, 2, 3].map(num => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setTempMore(num)}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem',
+                          background: tempMore === num ? '#facc15' : 'rgba(255, 255, 255, 0.05)',
+                          color: tempMore === num ? '#0d2045' : '#fff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setWarehouseAction(tempAction);
+                  setMorePackages(tempAction === 'hold' ? tempMore : null);
+                  setShowWarehouseModal(false);
+                }}
+                className={styles.addBtn}
+                style={{
+                  width: '100%',
+                  padding: '1rem',
+                  background: '#facc15',
+                  color: '#0d2045',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  marginTop: '1rem'
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Draft Intercept Modal */}
+      {showDraftModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowDraftModal(false)}>
+          <div className={styles.calculatorCard} style={{ maxWidth: '500px', background: '#091530', border: '1px solid rgba(255, 255, 255, 0.1)', padding: '2rem', borderRadius: '16px', position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <button className={styles.closeBtn} onClick={() => setShowDraftModal(false)} style={{ position: 'absolute', right: '1.5rem', top: '1.5rem', background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+            <div className={styles.calcHeader}>
+              <span className={styles.sectionLabel} style={{ color: '#facc15', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05rem' }}>Save Your Progress?</span>
+              <h2 className={styles.sectionTitle} style={{ fontSize: '1.75rem', marginTop: '0.5rem', color: '#fff' }}>You haven't finished booking.</h2>
+            </div>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.95rem', lineHeight: '1.6', marginTop: '1rem' }}>
+              Save these details as a draft so you don't lose your work?
+            </p>
+            <div className={styles.modalActions} style={{ display: 'flex', gap: '1rem' }}>
+              <button 
+                onClick={async () => {
+                  try {
+                    const { data: { user: currentUser } } = await supabase.auth.getUser();
+                    if (currentUser) {
+                      await supabase.from('shipments').insert([
+                        {
+                          user_id: currentUser.id,
+                          mode: mode,
+                          destination_city: destinationCity || 'Draft City',
+                          destination_address: destinationAddress || 'Draft Address',
+                          india_warehouse: selectedWarehouse || null,
+                          external_order_id: orderNumber || null,
+                          total_weight: parseFloat(totals.weight),
+                          total_cost: parseInt(totals.rateCAD.replace(/,/g, '')) * 60,
+                          items: items,
+                          status: 'Draft Estimate'
+                        }
+                      ]);
+                    }
+                  } catch (err) {
+                    console.error("Error saving draft:", err);
+                  }
+                  localStorage.removeItem('layo_pending_shipment');
+                  router.push('/');
+                }}
+                className={styles.addBtn}
+                style={{ flex: 1, padding: '1rem', textAlign: 'center', justifyContent: 'center', background: '#facc15', color: '#0d2045', fontWeight: 'bold' }}
+              >
+                Save to Drafts
+              </button>
+              <button 
+                onClick={() => {
+                  localStorage.removeItem('layo_pending_shipment');
+                  router.push('/');
+                }}
+                className={styles.signOutBtn}
+                style={{ flex: 1, padding: '1rem', textAlign: 'center', justifyContent: 'center' }}
+              >
+                No, Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -1,12 +1,14 @@
 import React from 'react';
+import Link from 'next/link';
 
 interface LogoProps {
   className?: string;
   showTagline?: boolean;
   variant?: 'header' | 'footer';
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }
 
-export default function Logo({ className, showTagline = false, variant = 'header' }: LogoProps) {
+export default function Logo({ className, showTagline = false, variant = 'header', onClick }: LogoProps) {
   const primaryColor = '#facc15';
 
   const LogoIcon = ({ size = 48 }: { size?: number }) => (
@@ -38,7 +40,18 @@ export default function Logo({ className, showTagline = false, variant = 'header
   );
 
   return (
-    <div className={className} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+    <Link 
+      href="/" 
+      className={className} 
+      onClick={onClick}
+      style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'flex-start',
+        textDecoration: 'none',
+        cursor: 'pointer'
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <LogoIcon size={variant === 'footer' ? 40 : 48} />
         <span style={{ 
@@ -60,6 +73,6 @@ export default function Logo({ className, showTagline = false, variant = 'header
           letterSpacing: '0.01em'
         }}>Distance, decoded.</span>
       )}
-    </div>
+    </Link>
   );
 }
