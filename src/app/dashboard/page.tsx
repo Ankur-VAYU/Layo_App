@@ -60,6 +60,24 @@ export default function Dashboard() {
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [cadToInrRate, setCadToInrRate] = useState(70.4);
+
+  useEffect(() => {
+    const fetchExchangeRate = async () => {
+      try {
+        const res = await fetch('https://open.er-api.com/v6/latest/CAD');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.rates && data.rates.INR) {
+            setCadToInrRate(data.rates.INR);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch live exchange rate, using fallback 70.4", err);
+      }
+    };
+    fetchExchangeRate();
+  }, []);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -208,7 +226,7 @@ export default function Dashboard() {
     
     // Savings Calculator: INR price entered → compare to Canadian retail (5x markup assumption)
     const totalSpentINR = items.reduce((sum, i) => sum + (i.pricePaidINR || 0) * i.quantity, 0);
-    const spentCAD = totalSpentINR / 83; // ~83 INR per CAD
+    const spentCAD = totalSpentINR / cadToInrRate;
     const canadaRetailCAD = spentCAD * 5;
     const valueReclaimed = Math.max(0, canadaRetailCAD - spentCAD - rateCAD);
 
@@ -218,7 +236,7 @@ export default function Dashboard() {
       rateDisplay: rateCAD > 0 ? `$${rateCAD.toFixed(2)} CAD` : '---',
       valueReclaimed: valueReclaimed > 0 ? valueReclaimed.toFixed(0) : '0',
     };
-  }, [items]);
+  }, [items, cadToInrRate]);
 
   const handleCheckout = () => {
     if (originType === 'online' && !orderNumber.trim()) {
@@ -242,7 +260,8 @@ export default function Dashboard() {
       totalCostCAD: totals.rateCAD,
       valueReclaimed: totals.valueReclaimed,
       warehouseAction,
-      morePackages
+      morePackages,
+      exchangeRate: cadToInrRate
     };
     localStorage.setItem('layo_pending_shipment', JSON.stringify(shipmentData));
     router.push('/checkout');
@@ -909,7 +928,7 @@ export default function Dashboard() {
                           india_warehouse: selectedWarehouse || null,
                           external_order_id: orderNumber || null,
                           total_weight: parseFloat(totals.weight),
-                          total_cost: parseInt(totals.rateCAD.replace(/,/g, '')) * 60,
+                          total_cost: Math.round(parseFloat(totals.rateCAD.replace(/,/g, '')) * cadToInrRate),
                           items: items,
                           status: 'Draft Estimate'
                         }

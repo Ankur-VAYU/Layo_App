@@ -41,20 +41,24 @@ export default function Checkout() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No authenticated user");
 
+      const costCAD = parseFloat(orderData.totalCostCAD || orderData.cost || '0');
+      const rate = parseFloat(orderData.exchangeRate || '70.4');
+      const totalCostINR = Math.round(costCAD * rate);
+
       const { data, error } = await supabase
         .from('shipments')
         .insert([
           {
             user_id: user.id,
-            mode: orderData.mode,
+            mode: orderData.mode || 'Selection',
             destination_city: orderData.destinationCity || 'Unknown',
             destination_address: orderData.destinationAddress || orderData.address,
             india_warehouse: orderData.indiaWarehouse,
-            external_order_id: orderData.externalOrderId,
-            external_tracking: orderData.externalTracking,
-            total_weight: parseFloat(orderData.totalWeight || orderData.weight),
-            total_cost: parseInt((orderData.totalCost || orderData.cost).replace(/,/g, '')),
-            items: orderData.items,
+            external_order_id: orderData.orderNumber || orderData.externalOrderId,
+            external_tracking: orderData.externalTracking || null,
+            total_weight: parseFloat(orderData.totalWeight || orderData.weight || '0'),
+            total_cost: totalCostINR,
+            items: orderData.items || [],
             status: 'paid',
             payment_method: paymentMethod
           }
@@ -65,7 +69,7 @@ export default function Checkout() {
         throw error;
       }
     } catch (err) {
-      console.warn("Supabase insert failed. This usually happens if columns like user_id or india_warehouse haven't been added to your table yet. Error:", err);
+      console.warn("Supabase insert failed. Error:", err);
       // We continue to success screen for demo purposes
     }
 
@@ -120,7 +124,7 @@ export default function Checkout() {
 
           <div className={styles.section}>
             <h2><span>📍</span> Delivery Details</h2>
-            <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}><strong>{orderData?.address}</strong></p>
+            <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}><strong>{orderData?.destinationAddress || orderData?.address}</strong></p>
             <p style={{ color: 'var(--text-muted)' }}>Estimated Delivery: 5-7 Business Days</p>
           </div>
 
@@ -192,26 +196,31 @@ export default function Checkout() {
             <h2>Order Summary</h2>
             <div className={styles.summaryItem}>
               <span>Shipment Mode</span>
-              <span>{orderData?.mode}</span>
+              <span>{orderData?.mode || 'Selection'}</span>
             </div>
             <div className={styles.summaryItem}>
               <span>Total Weight</span>
-              <span>{orderData?.weight} kg</span>
+              <span>{orderData?.totalWeight || orderData?.weight || '0.00'} kg</span>
             </div>
             <div className={styles.summaryItem}>
-              <span>Service Fee</span>
-              <span>₹1,500</span>
+              <span>Live Rate</span>
+              <span>1 CAD = ₹{(orderData?.exchangeRate || 70.4).toFixed(2)} INR</span>
             </div>
             <div className={styles.summaryItem}>
-              <span>Shipping Charge</span>
-              <span>₹{orderData?.cost}</span>
+              <span>Estimated Unified Shipping</span>
+              <span>${parseFloat(orderData?.totalCostCAD || orderData?.cost || '0').toFixed(2)} CAD</span>
             </div>
             
             <div className={styles.divider}></div>
             
             <div className={styles.total}>
               <h3>Total Amount</h3>
-              <h3>₹{orderData?.cost}</h3>
+              <div>
+                <h3 style={{ margin: 0 }}>${parseFloat(orderData?.totalCostCAD || orderData?.cost || '0').toFixed(2)} CAD</h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  ≈ ₹{Math.round(parseFloat(orderData?.totalCostCAD || orderData?.cost || '0') * parseFloat(orderData?.exchangeRate || '70.4')).toLocaleString()} INR
+                </span>
+              </div>
             </div>
 
             <button 
@@ -219,7 +228,7 @@ export default function Checkout() {
               onClick={handlePayment}
               disabled={isProcessing}
             >
-              {isProcessing ? 'Verifying Payment...' : `Pay ₹${orderData?.cost}`}
+              {isProcessing ? 'Verifying Payment...' : `Pay $${parseFloat(orderData?.totalCostCAD || orderData?.cost || '0').toFixed(2)} CAD`}
             </button>
 
             <div className={styles.safetyInfo}>
@@ -227,7 +236,7 @@ export default function Checkout() {
               <div className={styles.trustBadges}>
                 <span>VISA</span>
                 <span>MC</span>
-                <span>RAZORPAY</span>
+                <span>STRIPE</span>
               </div>
             </div>
           </div>
