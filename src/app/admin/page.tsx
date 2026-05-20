@@ -43,10 +43,25 @@ export default function AdminPortal() {
   const [whForm, setWhForm] = useState({ city: '', address: '', pincode: '', contact: '' });
   const [whSaving, setWhSaving] = useState(false);
   const [deletingWH, setDeletingWH] = useState<string | null>(null);
+  
+  const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com'];
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) router.push('/login');
-    else if (user) fetchAllData();
+    if (!loading) {
+      if (!user) {
+        router.push('/login');
+      } else if (!ADMIN_EMAILS.includes(user.email || '')) {
+        setIsAdmin(false);
+        const timer = setTimeout(() => {
+          router.push('/dashboard');
+        }, 4000);
+        return () => clearTimeout(timer);
+      } else {
+        setIsAdmin(true);
+        fetchAllData();
+      }
+    }
   }, [user, loading, router]);
 
   const fetchAllData = async () => {
@@ -110,11 +125,32 @@ export default function AdminPortal() {
     return { total, totalWeight, totalRevenue, byStatus };
   }, [shipments]);
 
-  if (loading || isFetching) {
+  if (loading || isFetching || (user && isAdmin === null)) {
     return (
       <div className={styles.loadingScreen}>
         <div className={styles.spinner}></div>
-        <p>Loading Admin Portal…</p>
+        <p>Verifying Credentials…</p>
+      </div>
+    );
+  }
+
+  if (isAdmin === false) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'radial-gradient(circle at top, #0f172a, #020617)', color: '#fff', textAlign: 'center', padding: '2rem' }}>
+        <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '2.5rem', borderRadius: '16px', maxWidth: '480px', backdropFilter: 'blur(10px)' }}>
+          <span style={{ fontSize: '3.5rem', display: 'block', marginBottom: '1rem' }}>🚫</span>
+          <h1 style={{ fontSize: '1.8rem', color: '#ef4444', marginBottom: '0.75rem' }}>Access Denied</h1>
+          <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', fontSize: '0.95rem' }}>
+            Your account (<strong>{user?.email}</strong>) does not have administrator privileges.
+          </p>
+          <p style={{ fontSize: '0.85rem', color: '#ef4444', marginTop: '1rem', fontWeight: 'bold' }}>
+            Only designated admin accounts (e.g. admin@layo.com or ankur@layo.com) are permitted.
+          </p>
+          <div style={{ marginTop: '2rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}></span>
+            Redirecting to My Shipments...
+          </div>
+        </div>
       </div>
     );
   }
