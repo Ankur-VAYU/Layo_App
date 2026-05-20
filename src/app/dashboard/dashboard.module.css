@@ -1001,6 +1001,40 @@
   font-size: 0.9rem;
 }
 
+.miniTracker {
+  display: flex;
+  align-items: center;
+  padding: 1rem 0 0.25rem;
+}
+
+.miniStep {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.miniDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.3s;
+}
+
+.miniLine {
+  flex: 1;
+  height: 2px;
+  transition: background 0.3s;
+}
+
+.miniStepLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  padding-bottom: 0.75rem;
+  color: #475569;
+}
+
 .consolidationCard p {
   font-size: 0.8rem;
   line-height: 1.5;

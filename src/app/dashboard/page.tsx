@@ -106,11 +106,12 @@ export default function Dashboard() {
   const canadaCities = ['Toronto (GTA)', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa', 'Edmonton', 'Winnipeg'];
   const ageGroups = ['Baby/Toddler (0-4)', 'Growing Kids', 'Teens', 'Adults'];
 
+  const ACCESSORY_KEY = 'Small Accessories (Socks, Innerwear, Ties, Light Towels)';
+  const ACCESSORY_PAID_WEIGHT = 0.050; // kg from the 6th unit onward
+
   const addItem = () => {
     if (!currentCategory || !currentSubcategory || currentQuantity < 1) return;
-    
     const unitWeight = shippingData[currentCategory][currentSubcategory];
-
     const newItem: Item = {
       id: Math.random().toString(36).substr(2, 9),
       category: currentCategory,
@@ -185,38 +186,37 @@ export default function Dashboard() {
   const totals = useMemo(() => {
     let totalWeight = 0;
     let smallAccessoriesCount = 0;
+    const ACCESSORY_KEY = 'Small Accessories (Socks, Innerwear, Ties, Light Towels)';
 
     items.forEach(item => {
-      let unitWeight = shippingData[item.category]?.[item.subcategory] || 0.2;
-      
-      if (item.subcategory.includes("Small Accessories")) {
+      const baseWeight = shippingData[item.category]?.[item.subcategory] ?? 0.2;
+      if (item.subcategory === ACCESSORY_KEY) {
+        // First 5 units across ALL accessory items = 0g. From 6th = 0.050kg each.
         let itemWeight = 0;
         for (let q = 0; q < item.quantity; q++) {
           smallAccessoriesCount++;
-          if (smallAccessoriesCount > 5) {
-            itemWeight += 0.05;
-          } else {
-            itemWeight += 0;
-          }
+          itemWeight += smallAccessoriesCount > 5 ? 0.050 : 0;
         }
         totalWeight += itemWeight;
       } else {
-        totalWeight += unitWeight * item.quantity;
+        totalWeight += baseWeight * item.quantity;
       }
     });
 
-    // Unified Shipping Estimate in CAD (approx 45 CAD per kg for this demo)
-    const rateCAD = Math.ceil(totalWeight * 45);
+    // Unified Shipping Estimate in CAD — $45 CAD/kg (internal rate, never shown as breakdown)
+    const rateCAD = +(totalWeight * 45).toFixed(2);
     
-    // Savings Calculator: Compare to Canadian retail (hidden 5x multiplier for demo)
+    // Savings Calculator: INR price entered → compare to Canadian retail (5x markup assumption)
     const totalSpentINR = items.reduce((sum, i) => sum + (i.pricePaidINR || 0) * i.quantity, 0);
-    const estimatedValueCAD = Math.ceil((totalSpentINR / 60) * 5); // 1 CAD = 60 INR approx
-    const valueReclaimed = Math.max(0, estimatedValueCAD - rateCAD - (totalSpentINR / 60));
+    const spentCAD = totalSpentINR / 83; // ~83 INR per CAD
+    const canadaRetailCAD = spentCAD * 5;
+    const valueReclaimed = Math.max(0, canadaRetailCAD - spentCAD - rateCAD);
 
-    return { 
-      weight: totalWeight.toFixed(2), 
-      rateCAD: rateCAD.toLocaleString(),
-      valueReclaimed: Math.ceil(valueReclaimed).toLocaleString()
+    return {
+      weight: totalWeight.toFixed(2),
+      rateCAD: rateCAD.toFixed(2),
+      rateDisplay: rateCAD > 0 ? `$${rateCAD.toFixed(2)} CAD` : '---',
+      valueReclaimed: valueReclaimed > 0 ? valueReclaimed.toFixed(0) : '0',
     };
   }, [items]);
 
@@ -285,41 +285,74 @@ export default function Dashboard() {
 
           {activeTab === 'history' ? (
             <div className={styles.historyList}>
-              <h1 className="gradient-text">Shipment History</h1>
-              <p className={styles.subtitle}>Track your previous orders and their current status.</p>
+              <h1 className="gradient-text">My Shipments</h1>
+              <p className={styles.subtitle}>Track all your booked and drafted packages in real time.</p>
               
               {shipments.length === 0 ? (
                 <div className={styles.emptyHistory}>
                   <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📦</div>
-                  <h3>No shipments found</h3>
-                  <p>When you create a shipment, it will appear here.</p>
+                  <h3>No shipments yet</h3>
+                  <p>Your booked and drafted packages will appear here.</p>
                   <button onClick={() => setActiveTab('new')} className={styles.addBtn} style={{ marginTop: '1.5rem' }}>
-                    Create First Shipment
+                    Book First Shipment
                   </button>
                 </div>
               ) : (
                 <div className={styles.historyGrid}>
-                  {shipments.map((s) => (
-                    <div key={s.id} className={`${styles.historyCard} glass`}>
-                      <div className={styles.cardHeader}>
-                        <span className={styles.statusBadge}>{s.status}</span>
-                        <span className={styles.date}>{new Date(s.created_at).toLocaleDateString()}</span>
-                      </div>
-                      <div className={styles.cardBody}>
-                        <h3>To: {s.destination_city}</h3>
-                        <p>{s.destination_address}</p>
-                        <div className={styles.cardMeta}>
-                          <span>⚖️ {s.total_weight}kg</span>
-                          <span>💰 CAD ${s.total_cost_cad || s.total_cost}</span>
+                  {shipments.map((s) => {
+                    const STEPS = ['draft', 'paid', 'arrived', 'shipped', 'delivered'];
+                    const STEP_LABELS = ['Draft', 'Paid', 'In India', 'Shipped', 'Delivered'];
+                    const STATUS_COLORS: Record<string,string> = { draft:'#64748b', paid:'#f59e0b', arrived:'#8b5cf6', shipped:'#3b82f6', delivered:'#10b981' };
+                    const currentIdx = STEPS.indexOf(s.status?.toLowerCase?.() ?? '');
+                    return (
+                      <div key={s.id} className={`${styles.historyCard} glass`}>
+                        <div className={styles.cardHeader}>
+                          <span
+                            className={styles.statusBadge}
+                            style={{ background: `${STATUS_COLORS[s.status?.toLowerCase?.()] ?? '#64748b'}22`, color: STATUS_COLORS[s.status?.toLowerCase?.()] ?? '#64748b' }}
+                          >
+                            {s.status}
+                          </span>
+                          <span className={styles.date}>{new Date(s.created_at).toLocaleDateString()}</span>
                         </div>
-                        {s.external_order_id && (
-                          <div className={styles.orderRef}>
-                            ID: {s.external_order_id}
+
+                        {/* 5-step mini tracker */}
+                        <div className={styles.miniTracker}>
+                          {STEPS.map((st, i) => (
+                            <div key={st} className={styles.miniStep}>
+                              <div
+                                className={styles.miniDot}
+                                style={{
+                                  background: i <= currentIdx ? (STATUS_COLORS[s.status?.toLowerCase?.()] ?? '#64748b') : '#1e293b',
+                                  boxShadow: i === currentIdx ? `0 0 8px ${STATUS_COLORS[s.status?.toLowerCase?.()] ?? '#64748b'}` : 'none',
+                                }}
+                              />
+                              {i < STEPS.length - 1 && (
+                                <div
+                                  className={styles.miniLine}
+                                  style={{ background: i < currentIdx ? (STATUS_COLORS[s.status?.toLowerCase?.()] ?? '#64748b') : '#1e293b' }}
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className={styles.miniStepLabels}>
+                          {STEP_LABELS.map((lbl, i) => (
+                            <span key={lbl} style={{ color: i <= currentIdx ? '#e2e8f0' : '#475569' }}>{lbl}</span>
+                          ))}
+                        </div>
+
+                        <div className={styles.cardBody}>
+                          <h3>→ {s.destination_city || 'Canada'}</h3>
+                          <p>{s.destination_address}</p>
+                          <div className={styles.cardMeta}>
+                            <span>⚖️ {s.total_weight} kg</span>
+                            <span>💰 ${s.total_cost_cad || s.total_cost} CAD</span>
                           </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -569,6 +602,9 @@ export default function Dashboard() {
                         onChange={(e) => setCurrentPriceINR(e.target.value === '' ? '' : parseInt(e.target.value))}
                         className="glass"
                       />
+                      <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '0.25rem 0 0', lineHeight: 1.4 }}>
+                        Enter this to see how much you are saving compared to Canadian prices!
+                      </p>
                     </div>
 
                     <div className={styles.inputGroup}>
@@ -639,7 +675,7 @@ export default function Dashboard() {
         </div>
 
         <aside className={styles.quoteSidebar}>
-          {parseFloat(totals.valueReclaimed.replace(/,/g, '')) > 0 && (
+          {parseFloat(totals.valueReclaimed) > 0 && (
             <div className={styles.savingsBanner}>
               <div className={styles.savingsBadge}>Arbitrage Advantage</div>
               <p>Estimated Value Reclaimed: <strong>~${totals.valueReclaimed} CAD!</strong></p>
@@ -660,8 +696,8 @@ export default function Dashboard() {
             <div className={styles.divider}></div>
             
             <div className={styles.totalSection}>
-              <span>Shipping Deposit</span>
-              <span className={styles.price}>{items.length > 0 ? `$${totals.rateCAD} CAD` : '---'}</span>
+              <span>Estimated Unified Shipping</span>
+              <span className={styles.price}>{items.length > 0 ? totals.rateDisplay : '---'}</span>
             </div>
             
             <button 

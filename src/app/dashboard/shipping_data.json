@@ -1,28 +1,28 @@
 {
   "Clothing": {
-    "Light Topwear (T-shirts, Shirts, Kurtis)": 0.2,
-    "Heavy Outerwear (Jackets, Sweaters, Coats)": 0.9,
-    "Light Bottoms (Shorts, Leggings, Pajamas)": 0.25,
-    "Heavy Bottoms (Jeans, Trousers, Joggers)": 0.5,
-    "Light Dresses & Sets (Casual Dresses)": 0.4,
-    "Heavy Ethnic & Party (Sarees, Lehengas)": 1.0,
-    "Heavy Winter Sets (Tracksuits, Snowsuits)": 1.3,
-    "Small Accessories (Socks, Innerwear, Ties)": 0.05
+    "Light Topwear (T-shirts, Shirts, Crop Tops, Kurtis)": 0.200,
+    "Heavy Outerwear (Jackets, Sweaters, Coats)": 0.900,
+    "Light Bottoms (Shorts, Leggings, Light Pajamas)": 0.250,
+    "Heavy Bottoms (Jeans, Trousers, Joggers)": 0.500,
+    "Light Dresses & Sets (Casual Dresses, Rompers)": 0.400,
+    "Heavy Ethnic & Party (Sarees, Lehengas, Heavy Suits, Gowns)": 1.000,
+    "Heavy Winter Sets (Tracksuits, Snowsuits, Heavy 2-Piece)": 1.300,
+    "Small Accessories (Socks, Innerwear, Ties, Light Towels)": 0.050
   },
   "Footwear": {
-    "Sandals/Flip-flops": 0.4,
-    "Casual Shoes/Sneakers": 0.8,
-    "Formal Shoes": 1.0,
-    "Boots": 1.5
+    "Sandals & Flip-flops": 0.400,
+    "Casual Shoes & Sneakers": 0.800,
+    "Formal Shoes": 1.000,
+    "Boots & Heavy Footwear": 1.500
   },
   "Jewelry": {
-    "Earrings/Rings": 0.05,
-    "Necklaces/Bangles": 0.2,
-    "Heavy Sets": 0.5
+    "Earrings & Rings (Small)": 0.050,
+    "Necklaces & Bangles": 0.200,
+    "Heavy Jewelry Sets": 0.500
   },
   "Home Decor": {
-    "Cushion Covers/Linens": 0.3,
-    "Artifacts (Small)": 0.5,
-    "Wall Hangings": 0.8
+    "Cushion Covers & Light Linens": 0.300,
+    "Small Artifacts & Decor": 0.500,
+    "Wall Hangings & Medium Decor": 0.800
   }
 }
