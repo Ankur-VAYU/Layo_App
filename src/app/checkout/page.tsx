@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './checkout.module.css';
 import Logo from '@/components/Logo';
-import { supabase } from '@/lib/supabase';
+import { supabase, insertShipment } from '@/lib/supabase';
 
 export default function Checkout() {
   const router = useRouter();
@@ -45,24 +45,20 @@ export default function Checkout() {
       const rate = parseFloat(orderData.exchangeRate || '70.4');
       const totalCostINR = Math.round(costCAD * rate);
 
-      const { data, error } = await supabase
-        .from('shipments')
-        .insert([
-          {
-            user_id: user.id,
-            mode: orderData.mode || 'Selection',
-            destination_city: orderData.destinationCity || 'Unknown',
-            destination_address: orderData.destinationAddress || orderData.address,
-            india_warehouse: orderData.indiaWarehouse,
-            external_order_id: orderData.orderNumber || orderData.externalOrderId,
-            external_tracking: orderData.externalTracking || null,
-            total_weight: parseFloat(orderData.totalWeight || orderData.weight || '0'),
-            total_cost: totalCostINR,
-            items: orderData.items || [],
-            status: 'paid',
-            payment_method: paymentMethod
-          }
-        ]);
+      const { data, error } = await insertShipment({
+        user_id: user.id,
+        mode: orderData.mode || 'Selection',
+        destination_city: orderData.destinationCity || 'Unknown',
+        destination_address: orderData.destinationAddress || orderData.address,
+        india_warehouse: orderData.indiaWarehouse,
+        external_order_id: orderData.orderNumber || orderData.externalOrderId,
+        external_tracking: orderData.externalTracking || null,
+        total_weight: parseFloat(orderData.totalWeight || orderData.weight || '0'),
+        total_cost: totalCostINR,
+        items: orderData.items || [],
+        status: 'paid',
+        payment_method: paymentMethod
+      });
       
       if (error) {
         console.error("DB Insert Error:", error);

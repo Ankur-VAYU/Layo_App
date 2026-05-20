@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './admin.module.css';
 import Logo from '@/components/Logo';
-import { supabase } from '@/lib/supabase';
+import { supabase, fetchShipments } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 
 const STATUS_STEPS = ['draft', 'paid', 'arrived', 'shipped', 'delivered'];
@@ -51,11 +51,11 @@ export default function AdminPortal() {
 
   const fetchAllData = async () => {
     setIsFetching(true);
-    const [ships, whs] = await Promise.all([
-      supabase.from('shipments').select('*').order('created_at', { ascending: false }),
+    const [shipsResult, whs] = await Promise.all([
+      fetchShipments(),
       supabase.from('warehouses').select('*').order('created_at', { ascending: true }),
     ]);
-    if (ships.data) setShipments(ships.data);
+    if (shipsResult.data) setShipments(shipsResult.data);
     if (whs.data) setWarehouses(whs.data);
     setIsFetching(false);
   };

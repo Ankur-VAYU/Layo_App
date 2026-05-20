@@ -7,7 +7,7 @@ import styles from './dashboard.module.css';
 import shippingDataRaw from './shipping_data.json';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase } from '@/lib/supabase';
+import { supabase, insertShipment, fetchShipments } from '@/lib/supabase';
 
 const shippingData = shippingDataRaw as Record<string, Record<string, number>>;
 
@@ -90,12 +90,12 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     setIsFetching(true);
     try {
-      const [ships, whs] = await Promise.all([
-        supabase.from('shipments').select('*').order('created_at', { ascending: false }),
+      const [shipsResult, whs] = await Promise.all([
+        fetchShipments(),
         supabase.from('warehouses').select('*')
       ]);
       
-      if (ships.data) setShipments(ships.data);
+      if (shipsResult.data) setShipments(shipsResult.data);
       if (whs.data) {
         setWarehouses(whs.data);
       } else {
@@ -919,20 +919,18 @@ export default function Dashboard() {
                   try {
                     const { data: { user: currentUser } } = await supabase.auth.getUser();
                     if (currentUser) {
-                      await supabase.from('shipments').insert([
-                        {
-                          user_id: currentUser.id,
-                          mode: mode,
-                          destination_city: destinationCity || 'Draft City',
-                          destination_address: destinationAddress || 'Draft Address',
-                          india_warehouse: selectedWarehouse || null,
-                          external_order_id: orderNumber || null,
-                          total_weight: parseFloat(totals.weight),
-                          total_cost: Math.round(parseFloat(totals.rateCAD.replace(/,/g, '')) * cadToInrRate),
-                          items: items,
-                          status: 'Draft Estimate'
-                        }
-                      ]);
+                      await insertShipment({
+                        user_id: currentUser.id,
+                        mode: mode,
+                        destination_city: destinationCity || 'Draft City',
+                        destination_address: destinationAddress || 'Draft Address',
+                        india_warehouse: selectedWarehouse || null,
+                        external_order_id: orderNumber || null,
+                        total_weight: parseFloat(totals.weight),
+                        total_cost: Math.round(parseFloat(totals.rateCAD.replace(/,/g, '')) * cadToInrRate),
+                        items: items,
+                        status: 'Draft Estimate'
+                      });
                     }
                   } catch (err) {
                     console.error("Error saving draft:", err);
