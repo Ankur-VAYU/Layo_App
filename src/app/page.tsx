@@ -14,6 +14,12 @@ export default function Home() {
   const [calcCategory, setCalcCategory] = useState('Apparel');
   const [calcWeight, setCalcWeight] = useState(1);
 
+  // States for Selection UI Showcase
+  const [selectedApproach, setSelectedApproach] = useState('accordion');
+  const [accOpen, setAccOpen] = useState({ baby: true, adult: false });
+  const [activeSubTab, setActiveSubTab] = useState('baby');
+  const [carouselIndex, setCarouselIndex] = useState(0);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -352,6 +358,274 @@ export default function Home() {
               <div className={styles.globePulse}></div>
               <Logo variant="header" showTagline={true} className={styles.aboutLogo} />
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Selection UI Showcase Section ── */}
+      <section id="showcase" className={styles.infoSection} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionLabel}>ESTIMATION INTERFACES</span>
+          <h2 className={styles.sectionTitle}>Smart Selection UI Approaches</h2>
+        </div>
+
+        <div className={styles.uiShowcaseContainer}>
+          {/* Approach Selector Sidebar */}
+          <div className={styles.approachSidebar}>
+            {[
+              { id: 'accordion', label: '1. Household Total (Accordion)' },
+              { id: 'tabbed', label: '2. Tabbed Navigation' },
+              { id: 'carousel', label: '3. Swipeable Carousel' },
+            ].map(approach => (
+              <button
+                key={approach.id}
+                className={`${styles.approachBtn} ${selectedApproach === approach.id ? styles.approachBtnActive : ''}`}
+                onClick={() => setSelectedApproach(approach.id)}
+              >
+                {approach.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Interactive Screen Preview */}
+          <div className={styles.showcasePreview}>
+            {selectedApproach === 'accordion' && (
+              <div className={styles.accordionShowcase}>
+                <div className={styles.savingsHook}>
+                  💡 You could save <strong>$574 CAD</strong> (₹40,400 INR) on your household wardrobe!
+                </div>
+                
+                {/* Accordion Item 1 */}
+                <div className={styles.accordionItem}>
+                  <button 
+                    className={styles.accordionHeader}
+                    onClick={() => setAccOpen(prev => ({ ...prev, baby: !prev.baby }))}
+                  >
+                    <span>👶 Babies & Toddlers Wardrobe</span>
+                    <span>{accOpen.baby ? '▲' : '▼'}</span>
+                  </button>
+                  {accOpen.baby && (
+                    <div className={styles.accordionBody}>
+                      <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>Combined Weight: <strong>5.2 kg</strong> | Est. Canada Retail: $310 CAD</p>
+                      <div className={styles.receiptGrid}>
+                        <div>
+                          <h4 style={{ color: '#ef4444', marginBottom: '0.5rem' }}>Standard Canada Retail</h4>
+                          <ul className={styles.receiptList}>
+                            <li>6x Rompers — $72 CAD</li>
+                            <li>4x Swaddles — $68 CAD</li>
+                            <li>4x Outerwear — $170 CAD</li>
+                            <li style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold' }}>Total: $310 CAD</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <h4 style={{ color: '#10b981', marginBottom: '0.5rem' }}>Layo Shipping via India</h4>
+                          <ul className={styles.receiptList}>
+                            <li>Purchased in India — $65 CAD</li>
+                            <li>Layo Shipping — $35 CAD</li>
+                            <li style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold', color: '#10b981' }}>Total: $100 CAD</li>
+                          </ul>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '1rem', color: '#facc15', fontWeight: '500' }}>
+                        🎉 Savings: $210 CAD (68% Off!)
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Accordion Item 2 */}
+                <div className={styles.accordionItem}>
+                  <button 
+                    className={styles.accordionHeader}
+                    onClick={() => setAccOpen(prev => ({ ...prev, adult: !prev.adult }))}
+                  >
+                    <span>👕 Adults Everyday Apparel</span>
+                    <span>{accOpen.adult ? '▲' : '▼'}</span>
+                  </button>
+                  {accOpen.adult && (
+                    <div className={styles.accordionBody}>
+                      <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>Combined Weight: <strong>8.5 kg</strong> | Est. Canada Retail: $514 CAD</p>
+                      <div className={styles.receiptGrid}>
+                        <div>
+                          <h4 style={{ color: '#ef4444', marginBottom: '0.5rem' }}>Standard Canada Retail</h4>
+                          <ul className={styles.receiptList}>
+                            <li>8x Tees & Polos — $144 CAD</li>
+                            <li>4x Casual Shirts — $170 CAD</li>
+                            <li>4x Denim Jeans — $200 CAD</li>
+                            <li style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold' }}>Total: $514 CAD</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <h4 style={{ color: '#10b981', marginBottom: '0.5rem' }}>Layo Shipping via India</h4>
+                          <ul className={styles.receiptList}>
+                            <li>Purchased in India — $90 CAD</li>
+                            <li>Layo Shipping — $60 CAD</li>
+                            <li style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold', color: '#10b981' }}>Total: $150 CAD</li>
+                          </ul>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '1rem', color: '#facc15', fontWeight: '500' }}>
+                        🎉 Savings: $364 CAD (71% Off!)
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {selectedApproach === 'tabbed' && (
+              <div className={styles.tabbedShowcase}>
+                <div className={styles.tabsHeader}>
+                  <button 
+                    className={`${styles.tabBtn} ${activeSubTab === 'baby' ? styles.tabBtnActive : ''}`}
+                    onClick={() => setActiveSubTab('baby')}
+                  >
+                    👶 Babies & Toddlers
+                  </button>
+                  <button 
+                    className={`${styles.tabBtn} ${activeSubTab === 'adult' ? styles.tabBtnActive : ''}`}
+                    onClick={() => setActiveSubTab('adult')}
+                  >
+                    👕 Adults Apparel
+                  </button>
+                </div>
+
+                <div className={styles.tabContent}>
+                  {activeSubTab === 'baby' ? (
+                    <div>
+                      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>👶 Babies & Toddlers Profile</h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Focuses on baby wardrobe buying cycles (rapid sizing changes).</p>
+                      <div className={styles.receiptGrid} style={{ marginTop: '1.5rem' }}>
+                        <div>
+                          <h4 style={{ color: '#ef4444', marginBottom: '0.25rem' }}>Canada Stores</h4>
+                          <p style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>$310 <span style={{ fontSize: '0.9rem' }}>CAD</span></p>
+                        </div>
+                        <div>
+                          <h4 style={{ color: '#10b981', marginBottom: '0.25rem' }}>Layo Cost</h4>
+                          <p style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>$100 <span style={{ fontSize: '0.9rem' }}>CAD</span></p>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '1.5rem', padding: '0.75rem', borderRadius: '8px', background: 'rgba(250,204,21,0.1)', color: '#facc15', textAlign: 'center', fontSize: '0.9rem' }}>
+                        💡 Direct Arbitrage Savings: <strong>$210 CAD (68% Off)</strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>👕 Adults Everyday Apparel</h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Focuses on adult essentials, denim, and semi-formal wear.</p>
+                      <div className={styles.receiptGrid} style={{ marginTop: '1.5rem' }}>
+                        <div>
+                          <h4 style={{ color: '#ef4444', marginBottom: '0.25rem' }}>Canada Stores</h4>
+                          <p style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>$514 <span style={{ fontSize: '0.9rem' }}>CAD</span></p>
+                        </div>
+                        <div>
+                          <h4 style={{ color: '#10b981', marginBottom: '0.25rem' }}>Layo Cost</h4>
+                          <p style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>$150 <span style={{ fontSize: '0.9rem' }}>CAD</span></p>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '1.5rem', padding: '0.75rem', borderRadius: '8px', background: 'rgba(250,204,21,0.1)', color: '#facc15', textAlign: 'center', fontSize: '0.9rem' }}>
+                        💡 Direct Arbitrage Savings: <strong>$364 CAD (71% Off)</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {selectedApproach === 'carousel' && (
+              <div className={styles.carouselShowcase}>
+                <div className={styles.carouselTrack}>
+                  {carouselIndex === 0 ? (
+                    <div className={styles.carouselCard}>
+                      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>👶 Slide 1: Babies & Toddlers</h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>Weight Estimate: 5.2 kg</p>
+                      <div className={styles.cardStat}>
+                        <div>
+                          <span>Canada Cost</span>
+                          <strong>$310 CAD</strong>
+                        </div>
+                        <div>
+                          <span>Layo Cost</span>
+                          <strong style={{ color: '#facc15' }}>$100 CAD</strong>
+                        </div>
+                      </div>
+                      <div className={styles.savingsLabel}>Save $210 CAD</div>
+                    </div>
+                  ) : (
+                    <div className={styles.carouselCard}>
+                      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>👕 Slide 2: Adults Apparel</h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>Weight Estimate: 8.5 kg</p>
+                      <div className={styles.cardStat}>
+                        <div>
+                          <span>Canada Cost</span>
+                          <strong>$514 CAD</strong>
+                        </div>
+                        <div>
+                          <span>Layo Cost</span>
+                          <strong style={{ color: '#facc15' }}>$150 CAD</strong>
+                        </div>
+                      </div>
+                      <div className={styles.savingsLabel}>Save $364 CAD</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className={styles.carouselControls}>
+                  <button 
+                    onClick={() => setCarouselIndex(0)} 
+                    className={`${styles.dot} ${carouselIndex === 0 ? styles.dotActive : ''}`}
+                    aria-label="Slide 1"
+                  />
+                  <button 
+                    onClick={() => setCarouselIndex(1)} 
+                    className={`${styles.dot} ${carouselIndex === 1 ? styles.dotActive : ''}`}
+                    aria-label="Slide 2"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Why Should Use Layo Section ── */}
+      <section id="why-layo" className={styles.infoSection} style={{ background: 'rgba(2, 6, 23, 0.6)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionLabel}>WHY CHOOSE US</span>
+          <h2 className={styles.sectionTitle}>Why Should You Use Layo?</h2>
+        </div>
+
+        <div className={styles.benefitsGrid}>
+          <div className={styles.benefitCard}>
+            <div className={styles.benefitIcon}>💰</div>
+            <h3>Direct Price Arbitrage</h3>
+            <p>
+              Non-branded quality goods are manufactured in India at a fraction of Western costs. Even after air shipping, you save 60% to 80% compared to Canadian retail shops.
+            </p>
+          </div>
+
+          <div className={styles.benefitCard}>
+            <div className={styles.benefitIcon}>📦</div>
+            <h3>Smart Consolidation</h3>
+            <p>
+              Shop from multiple online or offline Indian stores, send them to your Layo locker address, and we will package them together to optimize weight and minimize courier overhead.
+            </p>
+          </div>
+
+          <div className={styles.benefitCard}>
+            <div className={styles.benefitIcon}>💱</div>
+            <h3>Transparent Live Conversion</h3>
+            <p>
+              No hidden fees or markups. We fetch real-time bank conversion rates for CAD/INR, providing absolute clarity on your final landed costs before you book.
+            </p>
+          </div>
+
+          <div className={styles.benefitCard}>
+            <div className={styles.benefitIcon}>⚡</div>
+            <h3>Multi-Carrier Aggregator</h3>
+            <p>
+              We compile shipping quotes from top global delivery networks (DHL, FedEx, UPS) using our corporate volume accounts to pass direct discounts back to you.
+            </p>
           </div>
         </div>
       </section>
