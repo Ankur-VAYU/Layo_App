@@ -276,6 +276,7 @@ export default function Dashboard() {
         <Logo showTagline={false} onClick={handleLogoClick} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
           <Link href="/" style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textDecoration: 'none' }}>Home</Link>
+          <Link href="/admin" style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textDecoration: 'none' }}>Admin Portal</Link>
           {user && (
             <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
               Welcome, <strong>{user.user_metadata?.full_name || user.email}</strong>
