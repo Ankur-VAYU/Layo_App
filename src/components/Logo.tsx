@@ -13,21 +13,24 @@ export default function Logo({ className, showTagline = false, variant = 'header
 
   const LogoIcon = ({ size = 48 }: { size?: number }) => (
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Connected Nodes Icon */}
-      <circle cx="25" cy="50" r="12" fill={primaryColor} />
-      <circle cx="65" cy="25" r="12" fill={primaryColor} />
-      <circle cx="65" cy="75" r="12" fill={primaryColor} />
+      {/* Isolated Left Node */}
+      <circle cx="20" cy="50" r="12" fill={primaryColor} />
+      
+      {/* Connected Nodes */}
+      <circle cx="50" cy="25" r="12" fill={primaryColor} />
+      <circle cx="50" cy="75" r="12" fill={primaryColor} />
+      <circle cx="85" cy="50" r="12" fill={primaryColor} />
       
       {/* Connecting Blobs */}
       <path 
-        d="M25 50 Q 45 50 65 25" 
+        d="M85 50 Q 65 50 50 25" 
         stroke={primaryColor} 
         strokeWidth="24" 
         strokeLinecap="round" 
         opacity="1" 
       />
       <path 
-        d="M25 50 Q 45 50 65 75" 
+        d="M85 50 Q 65 50 50 75" 
         stroke={primaryColor} 
         strokeWidth="24" 
         strokeLinecap="round" 
@@ -35,7 +38,7 @@ export default function Logo({ className, showTagline = false, variant = 'header
       />
       
       {/* Inner smoothing/blend */}
-      <circle cx="45" cy="50" r="12" fill={primaryColor} />
+      <circle cx="65" cy="50" r="12" fill={primaryColor} />
     </svg>
   );
 
@@ -59,6 +62,7 @@ export default function Logo({ className, showTagline = false, variant = 'header
           fontSize: variant === 'footer' ? '42px' : '56px', 
           fontWeight: '500', 
           fontFamily: 'serif',
+          fontStyle: 'italic',
           lineHeight: '1',
           marginLeft: '4px'
         }}>Layo</span>
