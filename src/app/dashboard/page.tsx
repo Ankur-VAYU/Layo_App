@@ -253,7 +253,7 @@ export default function Dashboard() {
             const fullKey = `${rowKey}-${demo}`;
 
             newQtyState[fullKey] = (newQtyState[fullKey] ?? 0) + (qty as number);
-            newActiveDemoState[rowKey] = demo;
+            newActiveDemoState[catId] = demo;
             catsWithItems.add(catId);
           });
 
@@ -333,28 +333,20 @@ export default function Dashboard() {
       });
       setActiveDemoState(prev => {
         const next = { ...prev };
-        categoryData[key].subs.forEach((_, idx) => {
-          delete next[`${key}-${idx}`];
-        });
+        delete next[key];
         return next;
       });
     } else {
       newCategories.push(key);
-      // Initialize active demo tab to 'Adult' for each sub (qtys start at 0 implicitly)
-      setActiveDemoState(prev => {
-        const next = { ...prev };
-        categoryData[key].subs.forEach((_, idx) => {
-          next[`${key}-${idx}`] = 'Adult';
-        });
-        return next;
-      });
+      // Initialize active demo tab to 'Adult' per category
+      setActiveDemoState(prev => ({ ...prev, [key]: 'Adult' }));
     }
     setSelectedCategories(newCategories);
   };
 
-  // Adjust qty for the currently active demo tab of a row
-  const handleQtyChange = (rowKey: string, delta: number) => {
-    const demo = activeDemoState[rowKey] ?? 'Adult';
+  // Adjust qty for the currently active demo tab of a category
+  const handleQtyChange = (catKey: string, rowKey: string, delta: number) => {
+    const demo = activeDemoState[catKey] ?? 'Adult';
     const fullKey = `${rowKey}-${demo}`;
     setQtyState(prev => ({
       ...prev,
@@ -362,9 +354,9 @@ export default function Dashboard() {
     }));
   };
 
-  // Switch active demo tab for a row — qty for the new tab is independent
-  const handleDemoChange = (rowKey: string, demo: string) => {
-    setActiveDemoState(prev => ({ ...prev, [rowKey]: demo }));
+  // Switch active demo tab for a category — qty for the new tab is independent
+  const handleDemoChange = (catKey: string, demo: string) => {
+    setActiveDemoState(prev => ({ ...prev, [catKey]: demo }));
   };
 
   // Active configurations extractor
@@ -375,26 +367,45 @@ export default function Dashboard() {
       if (!cat) return;
       cat.subs.forEach((sub, idx) => {
         const rowKey = `${catKey}-${idx}`;
-        demographicOptions.forEach(opt => {
-          const qty = qtyState[`${rowKey}-${opt.label}`] ?? 0;
+        if (cat.requiresAge) {
+          demographicOptions.forEach(opt => {
+            const qty = qtyState[`${rowKey}-${opt.label}`] ?? 0;
+            if (qty > 0) {
+              list.push({
+                rowKey,
+                demoKey: `${rowKey}-${opt.label}`,
+                category: catKey,
+                categoryName: cat.name,
+                subcategory: sub.name,
+                qty,
+                demo: opt.label,
+                requiresAge: true,
+                promo: sub.promo,
+                oversized: sub.oversized,
+                isRestricted: sub.isRestricted || cat.isFoodGlobal,
+                weightGrams: sub.weight * opt.multiplier * qty,
+              });
+            }
+          });
+        } else {
+          const qty = qtyState[`${rowKey}-default`] ?? 0;
           if (qty > 0) {
-            const multiplier = cat.requiresAge ? opt.multiplier : 1.0;
             list.push({
               rowKey,
-              demoKey: `${rowKey}-${opt.label}`,
+              demoKey: `${rowKey}-default`,
               category: catKey,
               categoryName: cat.name,
               subcategory: sub.name,
               qty,
-              demo: opt.label,
-              requiresAge: cat.requiresAge,
+              demo: null,
+              requiresAge: false,
               promo: sub.promo,
               oversized: sub.oversized,
               isRestricted: sub.isRestricted || cat.isFoodGlobal,
-              weightGrams: sub.weight * multiplier * qty,
+              weightGrams: sub.weight * qty,
             });
           }
-        });
+        }
       });
     });
     return list;
@@ -1023,97 +1034,101 @@ export default function Dashboard() {
                   <div className="space-y-6 divide-y divide-white/5">
                     {selectedCategories.map(catKey => {
                       const cat = categoryData[catKey];
+                      const activeDemo = activeDemoState[catKey] ?? 'Adult';
                       return (
                         <div key={catKey} className="pt-6 first:pt-0">
-                          <h4 className="text-xs font-black text-primary uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-base leading-none">{cat.icon}</span>
-                            {cat.name}
-                          </h4>
+                          {/* Category header */}
+                          <div className="flex items-start justify-between mb-4 gap-3">
+                            <h4 className="text-xs font-black text-primary uppercase tracking-[0.2em] flex items-center gap-2 pt-0.5">
+                              <span className="material-symbols-outlined text-base leading-none">{cat.icon}</span>
+                              {cat.name}
+                            </h4>
 
-                          <div className="space-y-4">
+                            {/* Age tabs — one per category, same as estimator */}
+                            {cat.requiresAge && (
+                              <div className="flex items-center gap-1.5 bg-[#131313] rounded-full p-1 border border-white/10 flex-shrink-0">
+                                {demographicOptions.map(opt => {
+                                  const tabTotal = cat.subs.reduce((s, _, idx) =>
+                                    s + (qtyState[`${catKey}-${idx}-${opt.label}`] ?? 0), 0);
+                                  const isActive = activeDemo === opt.label;
+                                  return (
+                                    <button
+                                      key={opt.label}
+                                      onClick={() => handleDemoChange(catKey, opt.label)}
+                                      className={`relative px-3 py-1.5 text-[9px] font-bold rounded-full transition-all ${
+                                        isActive
+                                          ? 'bg-primary text-background shadow-sm'
+                                          : 'text-on-surface-variant hover:text-white'
+                                      }`}
+                                    >
+                                      {opt.label}
+                                      {tabTotal > 0 && !isActive && (
+                                        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary/80 text-background text-[7px] font-black flex items-center justify-center">
+                                          {tabTotal}
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-3">
                             {cat.subs.map((sub, idx) => {
                               const rowKey = `${catKey}-${idx}`;
-                              const activeDemo = activeDemoState[rowKey] ?? 'Adult';
-                              const currentQty = qtyState[`${rowKey}-${activeDemo}`] ?? 0;
-                              const totalQty = demographicOptions.reduce((s, o) => s + (qtyState[`${rowKey}-${o.label}`] ?? 0), 0);
+                              const currentQty = cat.requiresAge
+                                ? (qtyState[`${rowKey}-${activeDemo}`] ?? 0)
+                                : (qtyState[`${rowKey}-default`] ?? 0);
+                              const totalQty = cat.requiresAge
+                                ? demographicOptions.reduce((s, o) => s + (qtyState[`${rowKey}-${o.label}`] ?? 0), 0)
+                                : currentQty;
 
                               return (
                                 <div
                                   key={sub.name}
-                                  className={`p-5 rounded-xl border transition-all ${
+                                  className={`px-4 py-3.5 rounded-xl border transition-all flex justify-between items-center ${
                                     totalQty > 0
                                       ? 'border-primary/20 bg-surface-container-high border-l-4 border-l-primary'
-                                      : 'border-white/10 bg-[#1A1A1A]/70 border-l-transparent'
+                                      : 'border-white/10 bg-[#1A1A1A]/70'
                                   }`}
                                 >
-                                  <div className="flex justify-between items-center">
-                                    <div className="flex-grow pr-4">
-                                      <p className="font-bold text-sm text-white flex items-center gap-1.5">
-                                        {sub.name}
-                                        {(sub.oversized || sub.isRestricted || cat.isFoodGlobal) && (
-                                          <span
-                                            className="material-symbols-outlined text-xs text-primary leading-none cursor-help"
-                                            title="Special shipping check required"
-                                          >
-                                            info
-                                          </span>
-                                        )}
-                                      </p>
-                                      <p className="text-[10px] text-on-surface-variant opacity-70 mt-0.5 uppercase tracking-wider font-semibold">
-                                        Base Weight: {sub.weight}g
-                                      </p>
-                                    </div>
-
-                                    {/* Stepper — shows qty for the currently active demo tab only */}
-                                    <div className="flex items-center gap-3.5 bg-[#131313] rounded-full p-1.5 border border-white/10">
-                                      <button
-                                        onClick={() => handleQtyChange(rowKey, -1)}
-                                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/5 text-white transition-all active:scale-90"
-                                      >
-                                        <span className="material-symbols-outlined text-sm leading-none">remove</span>
-                                      </button>
-                                      <span className="w-5 text-center font-bold text-sm text-white">{currentQty}</span>
-                                      <button
-                                        onClick={() => handleQtyChange(rowKey, 1)}
-                                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/5 text-white transition-all active:scale-90"
-                                      >
-                                        <span className="material-symbols-outlined text-sm leading-none">add</span>
-                                      </button>
-                                    </div>
+                                  <div className="flex-grow pr-4">
+                                    <p className="font-bold text-sm text-white flex items-center gap-1.5">
+                                      {sub.name}
+                                      {(sub.oversized || sub.isRestricted || cat.isFoodGlobal) && (
+                                        <span
+                                          className="material-symbols-outlined text-xs text-primary leading-none cursor-help"
+                                          title="Special shipping check required"
+                                        >
+                                          info
+                                        </span>
+                                      )}
+                                    </p>
+                                    <p className="text-[10px] text-on-surface-variant opacity-70 mt-0.5 uppercase tracking-wider font-semibold">
+                                      {sub.weight}g
+                                    </p>
                                   </div>
 
-                                  {/* Age group tabs — each tab has its own independent qty */}
-                                  {cat.requiresAge && (
-                                    <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
-                                      <label className="text-[9px] uppercase font-bold text-on-surface-variant block tracking-wider">
-                                        Age Group
-                                      </label>
-                                      <div className="grid grid-cols-4 gap-1.5">
-                                        {demographicOptions.map(opt => {
-                                          const tabQty = qtyState[`${rowKey}-${opt.label}`] ?? 0;
-                                          const isActive = activeDemo === opt.label;
-                                          return (
-                                            <button
-                                              key={opt.label}
-                                              onClick={() => handleDemoChange(rowKey, opt.label)}
-                                              className={`py-2 text-[9px] font-bold rounded-lg border transition-all relative ${
-                                                isActive
-                                                  ? 'bg-primary text-background border-primary shadow-sm'
-                                                  : 'bg-[#131313] border-white/10 text-on-surface-variant hover:border-white/20'
-                                              }`}
-                                            >
-                                              {opt.label}
-                                              {tabQty > 0 && !isActive && (
-                                                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-primary/80 text-background text-[8px] font-black flex items-center justify-center">
-                                                  {tabQty}
-                                                </span>
-                                              )}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  )}
+                                  <div className="flex items-center gap-3.5 bg-[#131313] rounded-full p-1.5 border border-white/10">
+                                    <button
+                                      onClick={() => cat.requiresAge
+                                        ? handleQtyChange(catKey, rowKey, -1)
+                                        : setQtyState(prev => ({ ...prev, [`${rowKey}-default`]: Math.max(0, (prev[`${rowKey}-default`] ?? 0) - 1) }))}
+                                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/5 text-white transition-all active:scale-90"
+                                    >
+                                      <span className="material-symbols-outlined text-sm leading-none">remove</span>
+                                    </button>
+                                    <span className="w-5 text-center font-bold text-sm text-white">{currentQty}</span>
+                                    <button
+                                      onClick={() => cat.requiresAge
+                                        ? handleQtyChange(catKey, rowKey, 1)
+                                        : setQtyState(prev => ({ ...prev, [`${rowKey}-default`]: (prev[`${rowKey}-default`] ?? 0) + 1 }))}
+                                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/5 text-white transition-all active:scale-90"
+                                    >
+                                      <span className="material-symbols-outlined text-sm leading-none">add</span>
+                                    </button>
+                                  </div>
                                 </div>
                               );
                             })}
