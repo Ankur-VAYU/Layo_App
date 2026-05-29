@@ -203,52 +203,62 @@ export default function Home() {
         </section>
 
         {/* ── Level 2: The Proof (Smart Haul Carousel) ── */}
-        {cards.length > 0 && (
-          <section className="pb-4 px-6">
-            {/* Card */}
-            <div className="flex items-center gap-3">
-              {/* Prev */}
-              <button
-                onClick={() => setSelectedCardId(cards[(cards.findIndex(c => c.id === (selectedCardId ?? cards[0].id)) - 1 + cards.length) % cards.length].id)}
-                className="flex-shrink-0 w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center transition-all"
-              >
-                <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: 20 }}>chevron_left</span>
-              </button>
+        {cards.length > 0 && (() => {
+          const activeIdx = cards.findIndex(c => c.id === (selectedCardId ?? cards[0].id));
+          const nextIdx   = (activeIdx + 1) % cards.length;
+          const prevIdx   = (activeIdx - 1 + cards.length) % cards.length;
+          return (
+            <section className="pb-4 px-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                {/* Prev */}
+                <button
+                  onClick={() => setSelectedCardId(cards[prevIdx].id)}
+                  className="flex-shrink-0 w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center transition-all"
+                >
+                  <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: 20 }}>chevron_left</span>
+                </button>
 
-              {/* Active card */}
-              <div className="flex-1">
-                <SmartHaulCard
-                  key={(selectedCardId ?? cards[0].id)}
-                  card={cards.find(c => c.id === (selectedCardId ?? cards[0].id)) ?? cards[0]}
-                  selected={true}
-                  onSelect={() => {}}
-                />
+                {/* Cards: 1 on mobile, 2 on sm+ */}
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <SmartHaulCard
+                    key={cards[activeIdx].id}
+                    card={cards[activeIdx]}
+                    selected={true}
+                    onSelect={() => {}}
+                  />
+                  {/* Second card — only visible sm+ */}
+                  <div className="hidden sm:block">
+                    <SmartHaulCard
+                      key={cards[nextIdx].id + '-secondary'}
+                      card={cards[nextIdx]}
+                      selected={false}
+                      onSelect={() => setSelectedCardId(cards[nextIdx].id)}
+                    />
+                  </div>
+                </div>
+
+                {/* Next */}
+                <button
+                  onClick={() => setSelectedCardId(cards[nextIdx].id)}
+                  className="flex-shrink-0 w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center transition-all"
+                >
+                  <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: 20 }}>chevron_right</span>
+                </button>
               </div>
 
-              {/* Next */}
-              <button
-                onClick={() => setSelectedCardId(cards[(cards.findIndex(c => c.id === (selectedCardId ?? cards[0].id)) + 1) % cards.length].id)}
-                className="flex-shrink-0 w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center transition-all"
-              >
-                <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: 20 }}>chevron_right</span>
-              </button>
-            </div>
-
-            {/* Dot indicators */}
-            <div className="flex justify-center gap-2 mt-4">
-              {cards.map((card, i) => {
-                const activeId = selectedCardId ?? cards[0].id;
-                return (
+              {/* Dot indicators */}
+              <div className="flex justify-center gap-2 mt-4">
+                {cards.map((card) => (
                   <button
                     key={card.id}
                     onClick={() => setSelectedCardId(card.id)}
-                    className={`rounded-full transition-all duration-300 ${card.id === activeId ? 'w-5 h-2 bg-primary' : 'w-2 h-2 bg-white/20 hover:bg-white/40'}`}
+                    className={`rounded-full transition-all duration-300 ${card.id === cards[activeIdx].id ? 'w-5 h-2 bg-primary' : 'w-2 h-2 bg-white/20 hover:bg-white/40'}`}
                   />
-                );
-              })}
-            </div>
-          </section>
-        )}
+                ))}
+              </div>
+            </section>
+          );
+        })()}
 
       </main>
 
