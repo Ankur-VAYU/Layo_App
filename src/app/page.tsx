@@ -218,21 +218,28 @@ export default function Home() {
                   <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: 20 }}>chevron_left</span>
                 </button>
 
-                {/* Cards: 1 on mobile, 2 on sm+ */}
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Cards: 1 on mobile, 2 on sm+, 3 on lg+ */}
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <SmartHaulCard
                     key={cards[activeIdx].id}
                     card={cards[activeIdx]}
                     selected={true}
                     onSelect={() => {}}
                   />
-                  {/* Second card — only visible sm+ */}
                   <div className="hidden sm:block">
                     <SmartHaulCard
-                      key={cards[nextIdx].id + '-secondary'}
+                      key={cards[nextIdx].id + '-2'}
                       card={cards[nextIdx]}
                       selected={false}
                       onSelect={() => setSelectedCardId(cards[nextIdx].id)}
+                    />
+                  </div>
+                  <div className="hidden lg:block">
+                    <SmartHaulCard
+                      key={cards[(nextIdx + 1) % cards.length].id + '-3'}
+                      card={cards[(nextIdx + 1) % cards.length]}
+                      selected={false}
+                      onSelect={() => setSelectedCardId(cards[(nextIdx + 1) % cards.length].id)}
                     />
                   </div>
                 </div>
