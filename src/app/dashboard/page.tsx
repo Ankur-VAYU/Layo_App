@@ -266,8 +266,8 @@ export default function Dashboard() {
             if (draft.senderName)  setSenderName(draft.senderName);
             if (draft.orderNumber) setOrderNumber(draft.orderNumber);
             if (draft.origin)      setOriginType(draft.origin);
-            // Jump straight to item config
-            setCurrentStep(4);
+            // Start from Step 1 so user fills warehouse + delivery address
+            setCurrentStep(1);
           }
 
           localStorage.removeItem('layo_pending_shipment_draft');

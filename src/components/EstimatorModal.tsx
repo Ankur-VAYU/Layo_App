@@ -135,6 +135,21 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
     }
   }, [origin, storeName, orderNumber, senderName, qtys, ageGroups]);
 
+  /* ── Close: reset state and clear draft ── */
+  const handleClose = () => {
+    setQtys({});
+    setAgeGroups({});
+    setOpenCats([]);
+    setOrigin('online');
+    setStoreName('');
+    setOrderNumber('');
+    setSenderName('');
+    setShowLoginPrompt(false);
+    setPromoOnlyError(false);
+    localStorage.removeItem('layo_anon_draft');
+    onClose();
+  };
+
   /* ── Helpers ── */
   // key already includes age: `${catId}-${typeIdx}-${age}`
   const changeQty = (key: string, delta: number) =>
@@ -246,7 +261,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
             <h2 className="font-bold text-base text-white">Build Your Layo Box</h2>
             <p className="text-[10px] text-on-surface-variant">Get an instant shipping estimate</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-on-surface-variant hover:text-white transition-all">
+          <button onClick={handleClose} className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-on-surface-variant hover:text-white transition-all">
             <span className="material-symbols-outlined text-base">close</span>
           </button>
         </div>

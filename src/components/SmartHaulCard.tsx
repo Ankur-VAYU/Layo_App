@@ -57,7 +57,7 @@ export default function SmartHaulCard({ card, selected, onSelect }: Props) {
   return (
     <div
       onClick={onSelect}
-      className={`snap-item flex-shrink-0 w-[300px] sm:w-[320px] rounded-2xl overflow-hidden flex flex-col cursor-pointer transition-all duration-300 ${
+      className={`snap-item w-full rounded-2xl overflow-hidden flex flex-col cursor-pointer transition-all duration-300 ${
         selected
           ? 'bg-[#1e1c0f] border-2 border-primary shadow-[0_0_28px_rgba(242,202,80,0.25)]'
           : 'bg-[#1a1a1a] border border-white/10 hover:border-primary/30'
