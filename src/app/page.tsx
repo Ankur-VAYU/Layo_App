@@ -1,729 +1,311 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import styles from "./page.module.css";
-import Link from "next/link";
-import Image from "next/image";
-import Logo from "@/components/Logo";
-import { useAuth } from "@/components/AuthProvider";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import Logo from '@/components/Logo';
+import SmartHaulCard from '@/components/SmartHaulCard';
+import EstimatorModal from '@/components/EstimatorModal';
+import { useAuth } from '@/components/AuthProvider';
+import { supabase } from '@/lib/supabase';
+import { loadHaulCards, HaulCard } from '@/lib/haul-cards';
 
 export default function Home() {
+  const router = useRouter();
   const { user, loading } = useAuth();
-  const [mounted, setMounted] = useState(false);
-  const [isCalcOpen, setIsCalcOpen] = useState(false);
-  const [calcCategory, setCalcCategory] = useState('Apparel');
-  const [calcWeight, setCalcWeight] = useState(1);
-
-  // States for Selection UI Showcase
-  const [selectedApproach, setSelectedApproach] = useState('accordion');
-  const [accOpen, setAccOpen] = useState({ baby: true, adult: false });
-  const [activeSubTab, setActiveSubTab] = useState('baby');
-  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [cards, setCards] = useState<HaulCard[]>([]);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [showDraftIntercept, setShowDraftIntercept] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    setCards(loadHaulCards().filter(c => c.status === 'active'));
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const ambientDots = useMemo(() => {
-    if (!mounted) return [];
-    return [...Array(60)].map((_, i) => ({
-      cx: Math.random() * 1440,
-      cy: Math.random() * 810,
-      r: Math.random() * 1.5 + 0.5,
-      dur: `${Math.random() * 3 + 2}s`,
-      opacity: Math.random() * 0.4 + 0.1,
-      fill: i % 3 === 0 ? "#facc15" : "#4a90d9"
-    }));
-  }, [mounted]);
+  const userInitial = user
+    ? (user.user_metadata?.full_name?.charAt(0) || user.email?.charAt(0) || 'U').toUpperCase()
+    : null;
 
-  const savings = useMemo(() => {
-    const baseIndia = calcCategory === 'Jewelry' ? 5000 : calcCategory === 'Home Decor' ? 4000 : 2000;
-    const baseCanada = baseIndia * 5;
-    const layoShipping = calcWeight * 3000;
-    const totalLayo = (baseIndia * calcWeight) + layoShipping;
-    const totalCanada = baseCanada * calcWeight;
-    const netSavings = totalCanada - totalLayo;
-    const percent = Math.round((netSavings / totalCanada) * 100);
-    return { totalLayo, totalCanada, netSavings, percent };
-  }, [calcCategory, calcWeight]);
+  const handleLogoClick = (e: React.MouseEvent) => {
+    const draft = localStorage.getItem('layo_anon_draft');
+    if (draft && modalOpen) {
+      e.preventDefault();
+      setShowDraftIntercept(true);
+    }
+  };
+
+  const saveDraftAndClose = () => {
+    setShowDraftIntercept(false);
+    setModalOpen(false);
+  };
+
+  const discardAndClose = () => {
+    localStorage.removeItem('layo_anon_draft');
+    setShowDraftIntercept(false);
+    setModalOpen(false);
+  };
 
   return (
-    <main className={styles.main}>
-      {/* ── Background: World Map + City Lights ── */}
-      <div className={styles.bgLayer} aria-hidden="true">
-        <svg
-          className={styles.worldMapSvg}
-          viewBox="0 0 1440 810"
-          xmlns="http://www.w3.org/2000/svg"
-          preserveAspectRatio="xMidYMid slice"
+    <div className="bg-[#131313] text-on-background min-h-screen flex flex-col overflow-x-hidden">
+
+      {/* ───────────────────────────────────────────
+          ZONE A · Minimal Header (fixed, top 10vh)
+      ─────────────────────────────────────────── */}
+      <header
+        className={`fixed top-0 left-0 w-full h-[10vh] z-[100] flex items-center justify-between px-5 md:px-8 transition-all duration-300 ${
+          scrolled ? 'bg-[#131313]/95 backdrop-blur-md border-b border-white/10 shadow-xl' : 'bg-transparent'
+        }`}
+      >
+        {/* Left: Hamburger */}
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors"
         >
-          <defs>
-            <radialGradient id="cityGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#ffe066" stopOpacity="0.9" />
-              <stop offset="100%" stopColor="#ffe066" stopOpacity="0" />
-            </radialGradient>
-            <radialGradient id="bgGrad" cx="50%" cy="50%" r="80%">
-              <stop offset="0%" stopColor="#0d2045" />
-              <stop offset="100%" stopColor="#050a14" />
-            </radialGradient>
-            <filter id="blur2">
-              <feGaussianBlur stdDeviation="2" />
-            </filter>
-            <filter id="blur4">
-              <feGaussianBlur stdDeviation="4" />
-            </filter>
-            <filter id="blur8">
-              <feGaussianBlur stdDeviation="8" />
-            </filter>
-          </defs>
+          <span className="material-symbols-outlined text-2xl">menu</span>
+        </button>
 
-          {/* Background */}
-          <rect width="1440" height="810" fill="url(#bgGrad)" />
-
-          {/* ── Continent Shapes ── */}
-          <g fill="#102e52" stroke="#1e5080" strokeWidth="0.6" opacity="0.92">
-            {/* North America */}
-            <path d="M 80 80 L 130 60 L 200 55 L 280 70 L 330 90 L 350 120 L 340 160 L 310 200 L 290 240 L 260 280 L 230 320 L 200 360 L 170 380 L 150 360 L 120 330 L 100 300 L 90 260 L 70 220 L 60 180 L 65 140 L 80 80 Z" />
-            {/* Greenland */}
-            <path d="M 320 30 L 370 20 L 420 30 L 430 60 L 410 90 L 370 95 L 330 80 L 315 55 Z" />
-            {/* South America */}
-            <path d="M 200 390 L 240 370 L 280 380 L 310 410 L 320 460 L 310 510 L 290 560 L 260 610 L 230 650 L 200 670 L 180 650 L 175 600 L 180 550 L 175 490 L 180 440 L 190 400 Z" />
-            {/* Europe */}
-            <path d="M 530 80 L 560 70 L 600 65 L 640 70 L 670 90 L 680 120 L 660 150 L 630 170 L 600 175 L 570 165 L 545 145 L 530 120 L 525 95 Z" />
-            {/* UK / Ireland */}
-            <path d="M 500 90 L 515 80 L 525 90 L 520 110 L 505 115 L 495 105 Z" />
-            {/* Scandinavia */}
-            <path d="M 560 40 L 590 30 L 620 35 L 640 55 L 630 80 L 605 90 L 575 85 L 555 65 Z" />
-            {/* Africa */}
-            <path d="M 530 200 L 570 190 L 610 195 L 640 210 L 660 240 L 665 280 L 660 330 L 645 380 L 620 430 L 590 470 L 560 500 L 530 510 L 510 495 L 495 460 L 490 410 L 492 360 L 495 310 L 500 260 L 510 220 Z" />
-            {/* Asia (main body) */}
-            <path d="M 680 60 L 750 45 L 840 40 L 940 50 L 1020 70 L 1080 90 L 1120 120 L 1130 160 L 1110 200 L 1080 230 L 1040 250 L 1000 260 L 950 265 L 900 260 L 860 250 L 820 240 L 780 230 L 750 215 L 720 195 L 700 170 L 685 140 L 678 100 Z" />
-            {/* Indian Subcontinent */}
-            <path d="M 860 260 L 890 265 L 910 285 L 915 315 L 900 350 L 880 380 L 858 395 L 840 385 L 830 360 L 828 325 L 835 292 L 848 270 Z" />
-            {/* Southeast Asia */}
-            <path d="M 950 265 L 990 270 L 1020 290 L 1030 320 L 1015 345 L 990 355 L 965 345 L 950 320 L 948 290 Z" />
-            {/* Australia */}
-            <path d="M 1060 390 L 1120 370 L 1190 375 L 1240 400 L 1260 440 L 1255 490 L 1230 530 L 1185 555 L 1130 560 L 1075 545 L 1045 510 L 1040 465 L 1050 420 Z" />
-            {/* Japan */}
-            <path d="M 1110 140 L 1130 130 L 1150 140 L 1155 165 L 1140 185 L 1115 185 L 1105 165 Z" />
-            {/* Middle East */}
-            <path d="M 680 170 L 720 165 L 760 170 L 780 195 L 775 225 L 750 240 L 720 240 L 695 225 L 680 200 Z" />
-          </g>
-
-          {/* ── Grid lines (perspective) ── */}
-          <g stroke="#1a3a5c" strokeWidth="0.5" opacity="0.6">
-            {[...Array(20)].map((_, i) => (
-              <line key={`h${i}`} x1="0" y1={i * 40} x2="1440" y2={i * 40} />
-            ))}
-            {[...Array(30)].map((_, i) => (
-              <line key={`v${i}`} x1={i * 48} y1="0" x2={i * 48} y2="810" />
-            ))}
-          </g>
-
-          {/* ── City Lights ── */}
-          <CityLight cx={175} cy={185} r={8} />
-          <CityLight cx={155} cy={175} r={6} />
-          <CityLight cx={120} cy={200} r={5} />
-          <CityLight cx={170} cy={160} r={5} />
-          <CityLight cx={160} cy={170} r={4} />
-          <CityLight cx={185} cy={195} r={4} />
-          <CityLight cx={540} cy={115} r={6} />
-          <CityLight cx={565} cy={110} r={5} />
-          <CityLight cx={595} cy={105} r={5} />
-          <CityLight cx={625} cy={115} r={4} />
-          <CityLight cx={560} cy={120} r={3} />
-          <CityLight cx={580} cy={130} r={4} />
-          <CityLight cx={610} cy={125} r={3} />
-          <CityLight cx={1100} cy={155} r={7} />
-          <CityLight cx={1090} cy={165} r={5} />
-          <CityLight cx={1010} cy={200} r={6} />
-          <CityLight cx={1020} cy={215} r={5} />
-          <CityLight cx={990} cy={195} r={4} />
-          <CityLight cx={960} cy={175} r={4} />
-          <CityLight cx={750} cy={155} r={5} />
-          <CityLight cx={700} cy={200} r={4} />
-          <CityLight cx={720} cy={210} r={3} />
-          <CityLight cx={820} cy={295} r={6} />
-          <CityLight cx={830} cy={270} r={5} />
-          <CityLight cx={840} cy={320} r={4} />
-          <CityLight cx={815} cy={310} r={3} />
-          <CityLight cx={1155} cy={490} r={6} />
-          <CityLight cx={1130} cy={495} r={4} />
-          <CityLight cx={1115} cy={440} r={3} />
-          <CityLight cx={710} cy={215} r={5} />
-          <CityLight cx={695} cy={205} r={3} />
-          <CityLight cx={565} cy={415} r={4} />
-          <CityLight cx={570} cy={220} r={4} />
-          <CityLight cx={545} cy={280} r={3} />
-
-          {/* ── India & Canada Pins ── */}
-          <circle cx={930} cy={380} r={10} fill="#facc15" filter="url(#blur4)" opacity={0.35} />
-          <circle cx={930} cy={380} r={5} fill="#facc15" opacity={0.7} />
-          <circle cx={930} cy={380} r={2.5} fill="#fff" />
-          <text x={943} y={376} fill="white" fontSize="12" fontWeight="700" fontFamily="sans-serif">INDIA</text>
-          <circle cx={168} cy={163} r={10} fill="#facc15" filter="url(#blur4)" opacity={0.35} />
-          <circle cx={168} cy={163} r={5} fill="#facc15" opacity={0.7} />
-          <circle cx={168} cy={163} r={2.5} fill="#fff" />
-          <text x={100} y={154} fill="white" fontSize="12" fontWeight="700" fontFamily="sans-serif">CANADA</text>
-          <text x={100} y={168} fill="#94a3b8" fontSize="9" fontFamily="sans-serif">(Toronto/Vancouver)</text>
-
-          {/* ── India→Canada Arc ── */}
-          <path d="M 930 380 Q 600 -60 168 163" fill="none" stroke="#facc15" strokeWidth="12" opacity="0.1" filter="url(#blur8)" />
-          <path d="M 930 380 Q 600 -60 168 163" fill="none" stroke="#ffe066" strokeWidth="6" opacity="0.3" filter="url(#blur4)" />
-          <path d="M 930 380 Q 600 -60 168 163" fill="none" stroke="#fff" strokeWidth="1" opacity="0.8" />
-          <path d="M 930 380 Q 600 -60 168 163" fill="none" stroke="#facc15" strokeWidth="2" strokeDasharray="10 8" opacity="1" />
-
-          {/* Animated dot along arc */}
-          <circle r="4" fill="#facc15" filter="url(#blur2)">
-            <animateMotion dur="4s" repeatCount="indefinite" path="M 930 380 Q 600 -60 168 163" />
-          </circle>
-
-          {/* Extra ambient dots (more density) */}
-          {ambientDots.map((dot, i) => (
-            <circle
-              key={i}
-              cx={dot.cx}
-              cy={dot.cy}
-              r={dot.r}
-              fill={dot.fill}
-              opacity={dot.opacity}
-            >
-              <animate attributeName="opacity" values="0.1;0.5;0.1" dur={dot.dur} repeatCount="indefinite" />
-            </circle>
-          ))}
-        </svg>
-      </div>
-
-      {/* ── Header ── */}
-      <header className={styles.header}>
-        <Logo showTagline={false} />
-        <nav className={styles.nav}>
-          <Link href="/" className={styles.navActive}>Home</Link>
-          <Link href="#services">Services</Link>
-          <Link href="#solutions">Solutions</Link>
-          <Link href="#about">About</Link>
-          {!loading && user && <Link href="/dashboard">My Shipments</Link>}
-        </nav>
-        {!loading && user ? (
-          <Link href="/dashboard" className={styles.quoteBtn}>My Shipments</Link>
-        ) : (
-          <Link href="/login" className={styles.quoteBtn}>Sign In</Link>
-        )}
-      </header>
-
-      {/* ── Hero Content ── */}
-      <section className={styles.hero}>
-        {/* Category Icons */}
-        <div className={styles.categoryRow}>
-          <div className={styles.catItem}>
-            <div className={styles.catIconWrapper}>
-              <Image src="/apparel-v2.png" alt="Apparel" width={120} height={120} className={styles.catImage} />
-            </div>
-            <span>APPAREL</span>
-          </div>
-          <div className={styles.catItem}>
-            <div className={styles.catIconWrapper}>
-              <Image src="/value-goods-v2.png" alt="Value Goods" width={120} height={120} className={styles.catImage} />
-            </div>
-            <span>VALUE GOODS</span>
-          </div>
-          <div className={styles.catItem}>
-            <div className={styles.catIconWrapper}>
-              <Image src="/secure-parcels-v2.png" alt="Secure Parcels" width={120} height={120} className={styles.catImage} />
-            </div>
-            <span>SECURE PARCELS</span>
-          </div>
+        {/* Centre: Logo */}
+        <div onClick={handleLogoClick} className="cursor-pointer">
+          <Logo showTagline={false} />
         </div>
 
-        <h1 className={styles.heroTitle}>DISTANCE, DECODED</h1>
-        <p className={styles.heroSub}>Seamless Global Logistics connecting India to Canada and beyond</p>
-
-        <div className={styles.ctaRow}>
-          <Link href="/dashboard" className={styles.ctaBtn}>
-            START SHIPPING FROM INDIA <span className={styles.ctaIcon}>↗</span>
-          </Link>
-          <button className={styles.ctaBtn} onClick={() => setIsCalcOpen(true)}>
-            CALCULATE SAVINGS <span className={styles.ctaIcon}>🗓</span>
+        {/* Right: Shipping box + bell */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => router.push('/dashboard')}
+            title="My Shipments"
+            className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors relative"
+          >
+            <span className="material-symbols-outlined text-2xl">package_2</span>
+          </button>
+          <button className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors relative">
+            <span className="material-symbols-outlined text-2xl">notifications</span>
+            <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-primary" />
           </button>
         </div>
-      </section>
+      </header>
 
-      {/* ── Solutions Section ── */}
-      <section id="solutions" className={styles.infoSection}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionLabel}>SOLUTIONS</span>
-          <h2 className={styles.sectionTitle}>The Layo Advantage</h2>
+      {/* ───────────────────────────────────────────
+          Left Sidebar (slide-out)
+      ─────────────────────────────────────────── */}
+      {/* Backdrop */}
+      <div
+        onClick={() => setSidebarOpen(false)}
+        className={`fixed inset-0 bg-black/60 z-[110] transition-opacity duration-300 ${
+          sidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      />
+      <aside
+        className={`fixed top-0 left-0 h-full w-72 bg-[#1a1a1a] z-[120] border-r border-white/10 shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Sidebar header */}
+        <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+          <Logo showTagline={false} />
+          <button onClick={() => setSidebarOpen(false)} className="text-on-surface-variant hover:text-white transition-colors">
+            <span className="material-symbols-outlined">close</span>
+          </button>
         </div>
-        <div className={styles.solutionsGrid}>
-          <div className={styles.solutionCard}>
-            <div className={styles.solIcon}>💰</div>
-            <h3>Price Disparity</h3>
-            <p>Apparel and home goods in Canada are often 6-7x more expensive. Layo brings you Indian prices with international speed.</p>
-          </div>
-          <div className={styles.solutionCard}>
-            <div className={styles.solIcon}>✨</div>
-            <h3>Cultural Variety</h3>
-            <p>Don't miss out on ethnic wear, jewelry, and decor. Get authentic Indian quality delivered to your Canadian doorstep.</p>
-          </div>
-          <div className={styles.solutionCard}>
-            <div className={styles.solIcon}>⚡</div>
-            <h3>Logistic Hurdles</h3>
-            <p>No more complex shipping forms or high individual rates. We aggregate the best carriers for a seamless experience.</p>
-          </div>
-        </div>
-      </section>
 
-      {/* ── Services Section ── */}
-      <section id="services" className={styles.infoSection}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionLabel}>SERVICES</span>
-          <h2 className={styles.sectionTitle}>Flexible Shipping Options</h2>
-        </div>
-        <div className={styles.servicesRow}>
-          <div className={styles.serviceItem}>
-            <div className={styles.serviceImgWrapper}>
-              <div className={styles.serviceIconLarge}>📦</div>
-            </div>
-            <div className={styles.serviceContent}>
-              <h3>Selection Dashboard</h3>
-              <p>A simplified selection flow with instant estimation based on weight and standard box sizes.</p>
-              <ul className={styles.serviceList}>
-                <li>Instant Quotes</li>
-                <li>Categorized Goods</li>
-                <li>Secure Tracking</li>
-              </ul>
-            </div>
-          </div>
-          <div className={styles.serviceItem}>
-            <div className={styles.serviceImgWrapper}>
-              <div className={styles.serviceIconLarge}>💬</div>
-            </div>
-            <div className={styles.serviceContent}>
-              <h3>WhatsApp Concierge</h3>
-              <p>Share product links or details directly via WhatsApp. Our team handles the parsing and order generation.</p>
-              <ul className={styles.serviceList}>
-                <li>White-glove Service</li>
-                <li>Zero Forms</li>
-                <li>Direct Communication</li>
-              </ul>
-            </div>
-          </div>
-          <div className={styles.serviceItem}>
-            <div className={styles.serviceImgWrapper}>
-              <div className={styles.serviceIconLarge}>📄</div>
-            </div>
-            <div className={styles.serviceContent}>
-              <h3>Digital Documentation</h3>
-              <p>Upload invoices or delivery details. Our AI extracts customs data to generate your labels automatically.</p>
-              <ul className={styles.serviceList}>
-                <li>AI-Powered Extraction</li>
-                <li>Document Support</li>
-                <li>Automated Customs</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── About Section ── */}
-      <section id="about" className={styles.infoSection}>
-        <div className={styles.aboutContainer}>
-          <div className={styles.aboutContent}>
-            <span className={styles.sectionLabel}>ABOUT LAYO</span>
-            <h2 className={styles.sectionTitle}>Bridging Borders, Simplifying Logistics</h2>
-            <p className={styles.aboutText}>
-              Layo is a premium logistics aggregator platform designed to solve the significant price disparity for essential goods between India and Canada. 
-              We act as a strategic mid-player, bringing together diverse courier partners onto a single unified interface.
-            </p>
-            <p className={styles.aboutText}>
-              Our mission is to provide seamless trans-continental delivery for Non-Resident Indians (NRIs) and customers in Canada, ensuring high-quality Indian goods reach you at a fraction of the cost.
-            </p>
-            <div className={styles.aboutStats}>
-              <div className={styles.statItem}>
-                <span className={styles.statNum}>50%</span>
-                <span className={styles.statDesc}>Average Savings</span>
+        {/* User identity */}
+        <div className="px-5 py-4 border-b border-white/5">
+          {loading ? (
+            <div className="h-10 bg-white/5 rounded-xl animate-pulse" />
+          ) : user ? (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full border border-primary/30 bg-surface-container flex items-center justify-center text-primary font-bold text-sm">
+                {userInitial}
               </div>
-              <div className={styles.statItem}>
-                <span className={styles.statNum}>100+</span>
-                <span className={styles.statDesc}>Item Categories</span>
-              </div>
-              <div className={styles.statItem}>
-                <span className={styles.statNum}>24/7</span>
-                <span className={styles.statDesc}>Concierge Support</span>
+              <div>
+                <p className="text-sm font-bold text-white">{user.user_metadata?.full_name || user.email?.split('@')[0]}</p>
+                <p className="text-[10px] text-primary font-bold uppercase tracking-widest">Platinum Member</p>
               </div>
             </div>
-          </div>
-          <div className={styles.aboutVisual}>
-            <div className={styles.visualGlobe}>
-              <div className={styles.globePulse}></div>
-              <Logo variant="header" showTagline={true} className={styles.aboutLogo} />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Selection UI Showcase Section ── */}
-      <section id="showcase" className={styles.infoSection} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionLabel}>ESTIMATION INTERFACES</span>
-          <h2 className={styles.sectionTitle}>Smart Selection UI Approaches</h2>
+          ) : (
+            <Link href="/login" onClick={() => setSidebarOpen(false)} className="flex items-center gap-2 text-primary font-bold text-sm hover:underline">
+              <span className="material-symbols-outlined text-base">login</span>
+              Sign In / Create Account
+            </Link>
+          )}
         </div>
 
-        <div className={styles.uiShowcaseContainer}>
-          {/* Approach Selector Sidebar */}
-          <div className={styles.approachSidebar}>
+        {/* Nav items */}
+        <nav className="flex-grow px-3 py-4 space-y-1">
+          {[
+            { icon: 'inventory_2', label: 'My Shipments', href: '/dashboard' },
+            { icon: 'person', label: 'My Profile & Addresses', href: '/dashboard' },
+            { icon: 'payment', label: 'Payment Methods', href: '/dashboard' },
+            { icon: 'lightbulb', label: 'The Layo Logic', href: '/' },
+            { icon: 'support_agent', label: 'Contact Us', href: '/' },
+          ].map(item => (
+            <Link
+              key={item.label}
+              href={item.href}
+              onClick={() => setSidebarOpen(false)}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl text-on-surface-variant hover:bg-white/5 hover:text-white transition-all text-sm font-semibold"
+            >
+              <span className="material-symbols-outlined text-lg leading-none">{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Sign out */}
+        <div className="px-3 pb-6 border-t border-white/5 pt-4">
+          {user ? (
+            <button
+              onClick={() => { supabase.auth.signOut(); setSidebarOpen(false); }}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-all w-full text-sm font-semibold"
+            >
+              <span className="material-symbols-outlined text-lg leading-none">logout</span>
+              Settings / Log Out
+            </button>
+          ) : (
+            <p className="text-[10px] text-on-surface-variant text-center px-4">Sign in to access your shipments</p>
+          )}
+        </div>
+      </aside>
+
+      {/* ───────────────────────────────────────────
+          ZONE B · Discovery Feed (middle 75%)
+          pt-[10vh] pb-[15vh] for header/footer
+      ─────────────────────────────────────────── */}
+      <main className="flex-grow pt-[10vh] pb-[18vh]">
+
+        {/* ── Level 1: The Hook ── */}
+        <section className="px-6 md:px-10 pt-10 pb-6">
+          <h1
+            className="text-[38px] md:text-[54px] font-bold leading-none text-white mb-6"
+            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+          >
+            Buy Indian.<br />
+            <span className="text-primary">Ship Smart.</span>
+          </h1>
+          {/* Quick-stat row */}
+          <div className="flex gap-5 flex-wrap">
             {[
-              { id: 'accordion', label: '1. Household Total (Accordion)' },
-              { id: 'tabbed', label: '2. Tabbed Navigation' },
-              { id: 'carousel', label: '3. Swipeable Carousel' },
-            ].map(approach => (
-              <button
-                key={approach.id}
-                className={`${styles.approachBtn} ${selectedApproach === approach.id ? styles.approachBtnActive : ''}`}
-                onClick={() => setSelectedApproach(approach.id)}
-              >
-                {approach.label}
-              </button>
+              { value: '↓70%', label: 'vs Canada retail' },
+              { value: '$12', label: 'per kg to Canada' },
+              { value: '30d', label: 'free hold & combine' },
+            ].map(stat => (
+              <div key={stat.label} className="flex flex-col">
+                <span className="text-[22px] font-black text-primary leading-none">{stat.value}</span>
+                <span className="text-[11px] text-on-surface-variant font-semibold mt-0.5">{stat.label}</span>
+              </div>
             ))}
           </div>
+        </section>
 
-          {/* Interactive Screen Preview */}
-          <div className={styles.showcasePreview}>
-            {selectedApproach === 'accordion' && (
-              <div className={styles.accordionShowcase}>
-                <div className={styles.savingsHook}>
-                  💡 You could save <strong>$574 CAD</strong> (₹40,400 INR) on your household wardrobe!
-                </div>
-                
-                {/* Accordion Item 1 */}
-                <div className={styles.accordionItem}>
-                  <button 
-                    className={styles.accordionHeader}
-                    onClick={() => setAccOpen(prev => ({ ...prev, baby: !prev.baby }))}
-                  >
-                    <span>👶 Babies & Toddlers Wardrobe</span>
-                    <span>{accOpen.baby ? '▲' : '▼'}</span>
-                  </button>
-                  {accOpen.baby && (
-                    <div className={styles.accordionBody}>
-                      <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>Combined Weight: <strong>5.2 kg</strong> | Est. Canada Retail: $310 CAD</p>
-                      <div className={styles.receiptGrid}>
-                        <div>
-                          <h4 style={{ color: '#ef4444', marginBottom: '0.5rem' }}>Standard Canada Retail</h4>
-                          <ul className={styles.receiptList}>
-                            <li>6x Rompers — $72 CAD</li>
-                            <li>4x Swaddles — $68 CAD</li>
-                            <li>4x Outerwear — $170 CAD</li>
-                            <li style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold' }}>Total: $310 CAD</li>
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 style={{ color: '#10b981', marginBottom: '0.5rem' }}>Layo Shipping via India</h4>
-                          <ul className={styles.receiptList}>
-                            <li>Purchased in India — $65 CAD</li>
-                            <li>Layo Shipping — $35 CAD</li>
-                            <li style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold', color: '#10b981' }}>Total: $100 CAD</li>
-                          </ul>
-                        </div>
-                      </div>
-                      <div style={{ marginTop: '1rem', color: '#facc15', fontWeight: '500' }}>
-                        🎉 Savings: $210 CAD (68% Off!)
-                      </div>
-                    </div>
-                  )}
-                </div>
+        {/* ── Level 2: The Proof (Smart Haul Carousel) ── */}
+        {cards.length > 0 && (
+          <section className="pb-4 px-6">
+            {/* Card */}
+            <div className="flex items-center gap-3">
+              {/* Prev */}
+              <button
+                onClick={() => setSelectedCardId(cards[(cards.findIndex(c => c.id === (selectedCardId ?? cards[0].id)) - 1 + cards.length) % cards.length].id)}
+                className="flex-shrink-0 w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center transition-all"
+              >
+                <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: 20 }}>chevron_left</span>
+              </button>
 
-                {/* Accordion Item 2 */}
-                <div className={styles.accordionItem}>
-                  <button 
-                    className={styles.accordionHeader}
-                    onClick={() => setAccOpen(prev => ({ ...prev, adult: !prev.adult }))}
-                  >
-                    <span>👕 Adults Everyday Apparel</span>
-                    <span>{accOpen.adult ? '▲' : '▼'}</span>
-                  </button>
-                  {accOpen.adult && (
-                    <div className={styles.accordionBody}>
-                      <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>Combined Weight: <strong>8.5 kg</strong> | Est. Canada Retail: $514 CAD</p>
-                      <div className={styles.receiptGrid}>
-                        <div>
-                          <h4 style={{ color: '#ef4444', marginBottom: '0.5rem' }}>Standard Canada Retail</h4>
-                          <ul className={styles.receiptList}>
-                            <li>8x Tees & Polos — $144 CAD</li>
-                            <li>4x Casual Shirts — $170 CAD</li>
-                            <li>4x Denim Jeans — $200 CAD</li>
-                            <li style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold' }}>Total: $514 CAD</li>
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 style={{ color: '#10b981', marginBottom: '0.5rem' }}>Layo Shipping via India</h4>
-                          <ul className={styles.receiptList}>
-                            <li>Purchased in India — $90 CAD</li>
-                            <li>Layo Shipping — $60 CAD</li>
-                            <li style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem', marginTop: '0.5rem', fontWeight: 'bold', color: '#10b981' }}>Total: $150 CAD</li>
-                          </ul>
-                        </div>
-                      </div>
-                      <div style={{ marginTop: '1rem', color: '#facc15', fontWeight: '500' }}>
-                        🎉 Savings: $364 CAD (71% Off!)
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {/* Active card */}
+              <div className="flex-1">
+                <SmartHaulCard
+                  key={(selectedCardId ?? cards[0].id)}
+                  card={cards.find(c => c.id === (selectedCardId ?? cards[0].id)) ?? cards[0]}
+                  selected={true}
+                  onSelect={() => {}}
+                />
               </div>
-            )}
 
-            {selectedApproach === 'tabbed' && (
-              <div className={styles.tabbedShowcase}>
-                <div className={styles.tabsHeader}>
-                  <button 
-                    className={`${styles.tabBtn} ${activeSubTab === 'baby' ? styles.tabBtnActive : ''}`}
-                    onClick={() => setActiveSubTab('baby')}
-                  >
-                    👶 Babies & Toddlers
-                  </button>
-                  <button 
-                    className={`${styles.tabBtn} ${activeSubTab === 'adult' ? styles.tabBtnActive : ''}`}
-                    onClick={() => setActiveSubTab('adult')}
-                  >
-                    👕 Adults Apparel
-                  </button>
-                </div>
-
-                <div className={styles.tabContent}>
-                  {activeSubTab === 'baby' ? (
-                    <div>
-                      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>👶 Babies & Toddlers Profile</h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Focuses on baby wardrobe buying cycles (rapid sizing changes).</p>
-                      <div className={styles.receiptGrid} style={{ marginTop: '1.5rem' }}>
-                        <div>
-                          <h4 style={{ color: '#ef4444', marginBottom: '0.25rem' }}>Canada Stores</h4>
-                          <p style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>$310 <span style={{ fontSize: '0.9rem' }}>CAD</span></p>
-                        </div>
-                        <div>
-                          <h4 style={{ color: '#10b981', marginBottom: '0.25rem' }}>Layo Cost</h4>
-                          <p style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>$100 <span style={{ fontSize: '0.9rem' }}>CAD</span></p>
-                        </div>
-                      </div>
-                      <div style={{ marginTop: '1.5rem', padding: '0.75rem', borderRadius: '8px', background: 'rgba(250,204,21,0.1)', color: '#facc15', textAlign: 'center', fontSize: '0.9rem' }}>
-                        💡 Direct Arbitrage Savings: <strong>$210 CAD (68% Off)</strong>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>👕 Adults Everyday Apparel</h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Focuses on adult essentials, denim, and semi-formal wear.</p>
-                      <div className={styles.receiptGrid} style={{ marginTop: '1.5rem' }}>
-                        <div>
-                          <h4 style={{ color: '#ef4444', marginBottom: '0.25rem' }}>Canada Stores</h4>
-                          <p style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>$514 <span style={{ fontSize: '0.9rem' }}>CAD</span></p>
-                        </div>
-                        <div>
-                          <h4 style={{ color: '#10b981', marginBottom: '0.25rem' }}>Layo Cost</h4>
-                          <p style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>$150 <span style={{ fontSize: '0.9rem' }}>CAD</span></p>
-                        </div>
-                      </div>
-                      <div style={{ marginTop: '1.5rem', padding: '0.75rem', borderRadius: '8px', background: 'rgba(250,204,21,0.1)', color: '#facc15', textAlign: 'center', fontSize: '0.9rem' }}>
-                        💡 Direct Arbitrage Savings: <strong>$364 CAD (71% Off)</strong>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {selectedApproach === 'carousel' && (
-              <div className={styles.carouselShowcase}>
-                <div className={styles.carouselTrack}>
-                  {carouselIndex === 0 ? (
-                    <div className={styles.carouselCard}>
-                      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>👶 Slide 1: Babies & Toddlers</h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>Weight Estimate: 5.2 kg</p>
-                      <div className={styles.cardStat}>
-                        <div>
-                          <span>Canada Cost</span>
-                          <strong>$310 CAD</strong>
-                        </div>
-                        <div>
-                          <span>Layo Cost</span>
-                          <strong style={{ color: '#facc15' }}>$100 CAD</strong>
-                        </div>
-                      </div>
-                      <div className={styles.savingsLabel}>Save $210 CAD</div>
-                    </div>
-                  ) : (
-                    <div className={styles.carouselCard}>
-                      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>👕 Slide 2: Adults Apparel</h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>Weight Estimate: 8.5 kg</p>
-                      <div className={styles.cardStat}>
-                        <div>
-                          <span>Canada Cost</span>
-                          <strong>$514 CAD</strong>
-                        </div>
-                        <div>
-                          <span>Layo Cost</span>
-                          <strong style={{ color: '#facc15' }}>$150 CAD</strong>
-                        </div>
-                      </div>
-                      <div className={styles.savingsLabel}>Save $364 CAD</div>
-                    </div>
-                  )}
-                </div>
-
-                <div className={styles.carouselControls}>
-                  <button 
-                    onClick={() => setCarouselIndex(0)} 
-                    className={`${styles.dot} ${carouselIndex === 0 ? styles.dotActive : ''}`}
-                    aria-label="Slide 1"
-                  />
-                  <button 
-                    onClick={() => setCarouselIndex(1)} 
-                    className={`${styles.dot} ${carouselIndex === 1 ? styles.dotActive : ''}`}
-                    aria-label="Slide 2"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Why Should Use Layo Section ── */}
-      <section id="why-layo" className={styles.infoSection} style={{ background: 'rgba(2, 6, 23, 0.6)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionLabel}>WHY CHOOSE US</span>
-          <h2 className={styles.sectionTitle}>Why Should You Use Layo?</h2>
-        </div>
-
-        <div className={styles.benefitsGrid}>
-          <div className={styles.benefitCard}>
-            <div className={styles.benefitIcon}>💰</div>
-            <h3>Direct Price Arbitrage</h3>
-            <p>
-              Non-branded quality goods are manufactured in India at a fraction of Western costs. Even after air shipping, you save 60% to 80% compared to Canadian retail shops.
-            </p>
-          </div>
-
-          <div className={styles.benefitCard}>
-            <div className={styles.benefitIcon}>📦</div>
-            <h3>Smart Consolidation</h3>
-            <p>
-              Shop from multiple online or offline Indian stores, send them to your Layo locker address, and we will package them together to optimize weight and minimize courier overhead.
-            </p>
-          </div>
-
-          <div className={styles.benefitCard}>
-            <div className={styles.benefitIcon}>💱</div>
-            <h3>Transparent Live Conversion</h3>
-            <p>
-              No hidden fees or markups. We fetch real-time bank conversion rates for CAD/INR, providing absolute clarity on your final landed costs before you book.
-            </p>
-          </div>
-
-          <div className={styles.benefitCard}>
-            <div className={styles.benefitIcon}>⚡</div>
-            <h3>Multi-Carrier Aggregator</h3>
-            <p>
-              We compile shipping quotes from top global delivery networks (DHL, FedEx, UPS) using our corporate volume accounts to pass direct discounts back to you.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Footer ── */}
-      <footer className={styles.footer}>
-        <p className={styles.footerTagline}>Global Network. Express Delivery. Guaranteed Safety.</p>
-        <div className={styles.footerCenter}>
-          <Logo variant="footer" showTagline={false} />
-          <div className={styles.socialIcons}>
-            <span>f</span><span>𝕏</span><span>📷</span><span>▶</span>
-          </div>
-        </div>
-        <div className={styles.footerRight}>
-          <Link href="/dashboard">Privacy</Link>
-          <Link href="/dashboard">Terms</Link>
-          <span>© 2024 Layo Logistics</span>
-        </div>
-      </footer>
-
-      {/* ── Savings Calculator Modal ── */}
-      {isCalcOpen && (
-        <div className={styles.modalOverlay} onClick={() => setIsCalcOpen(false)}>
-          <div className={styles.calculatorCard} onClick={e => e.stopPropagation()}>
-            <button className={styles.closeBtn} onClick={() => setIsCalcOpen(false)}>×</button>
-            
-            <div className={styles.calcHeader}>
-              <span className={styles.sectionLabel}>Layo Savings Calculator</span>
-              <h2 className={styles.sectionTitle}>See how much you save</h2>
+              {/* Next */}
+              <button
+                onClick={() => setSelectedCardId(cards[(cards.findIndex(c => c.id === (selectedCardId ?? cards[0].id)) + 1) % cards.length].id)}
+                className="flex-shrink-0 w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center transition-all"
+              >
+                <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: 20 }}>chevron_right</span>
+              </button>
             </div>
 
-            <div className={styles.calcGrid}>
-              <div className={styles.calcInputs}>
-                <div className={styles.inputBox}>
-                  <label>Category of Goods</label>
-                  <select value={calcCategory} onChange={e => setCalcCategory(e.target.value)}>
-                    <option value="Apparel">Apparel & Clothing</option>
-                    <option value="Jewelry">Jewelry & Accessories</option>
-                    <option value="Home Decor">Home Decor & Handicrafts</option>
-                  </select>
-                </div>
-                <div className={styles.inputBox}>
-                  <label>Estimated Weight (kg)</label>
-                  <input 
-                    type="number" 
-                    min="1" 
-                    max="50" 
-                    value={calcWeight} 
-                    onChange={e => setCalcWeight(Number(e.target.value))} 
+            {/* Dot indicators */}
+            <div className="flex justify-center gap-2 mt-4">
+              {cards.map((card, i) => {
+                const activeId = selectedCardId ?? cards[0].id;
+                return (
+                  <button
+                    key={card.id}
+                    onClick={() => setSelectedCardId(card.id)}
+                    className={`rounded-full transition-all duration-300 ${card.id === activeId ? 'w-5 h-2 bg-primary' : 'w-2 h-2 bg-white/20 hover:bg-white/40'}`}
                   />
-                </div>
-                <Link href="/dashboard" className={styles.quoteBtn} style={{ textAlign: 'center' }}>
-                  Start Shipping Now
-                </Link>
-              </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
-              <div className={styles.resultsArea}>
-                <div className={styles.comparisonBar}>
-                  <div className={styles.barLabel}>
-                    <span>Layo Total Cost</span>
-                    <span>₹{savings.totalLayo.toLocaleString()}</span>
-                  </div>
-                  <div className={styles.barTrack}>
-                    <div className={styles.barFill} style={{ width: '40%', background: '#facc15' }}></div>
-                  </div>
-                </div>
+      </main>
 
-                <div className={styles.comparisonBar}>
-                  <div className={styles.barLabel}>
-                    <span>Canada Retail Cost</span>
-                    <span>₹{savings.totalCanada.toLocaleString()}</span>
-                  </div>
-                  <div className={styles.barTrack}>
-                    <div className={styles.barFill} style={{ width: '100%', background: 'rgba(255,255,255,0.2)' }}></div>
-                  </div>
-                </div>
+      {/* ───────────────────────────────────────────
+          ZONE C · Sticky Action Bar (bottom 15%)
+      ─────────────────────────────────────────── */}
+      <div className="fixed bottom-0 left-0 w-full z-50 px-5 py-4 bg-gradient-to-t from-[#131313] via-[#131313]/95 to-transparent pt-8">
+        <div className="flex gap-3 max-w-lg mx-auto">
+          {/* Calculate — opens estimator */}
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex-1 flex items-center justify-center gap-2 bg-white/8 border border-white/15 text-white font-bold text-sm uppercase tracking-widest py-4 rounded-2xl hover:bg-white/12 active:scale-[0.98] transition-all"
+          >
+            <span className="material-symbols-outlined text-xl leading-none text-primary">calculate</span>
+            Calculate
+          </button>
 
-                <div className={styles.savingsBadge}>
-                  <span className={styles.savingsLabel}>YOU SAVE APPROXIMATELY</span>
-                  <span className={styles.savingsValue}>₹{savings.netSavings.toLocaleString()}</span>
-                  <span className={styles.savingsLabel}>{savings.percent}% OFF CANADIAN PRICES</span>
-                </div>
-              </div>
+          {/* Start Shipping — goes to dashboard */}
+          <button
+            onClick={() => user ? router.push('/dashboard') : router.push('/signup')}
+            className="flex-[2] flex items-center justify-center gap-2 bg-primary text-background font-bold text-sm uppercase tracking-widest py-4 rounded-2xl hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_8px_30px_rgba(242,202,80,0.35)]"
+          >
+            <span className="material-symbols-outlined text-xl leading-none">local_shipping</span>
+            Start Shipping
+          </button>
+        </div>
+      </div>
+
+      {/* ── Estimator Modal ── */}
+      <EstimatorModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+
+      {/* ── Draft Intercept Modal ── */}
+      {showDraftIntercept && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[300] flex items-center justify-center p-6">
+          <div className="bg-[#1a1a1a] border border-white/15 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-white">Save Your Progress?</h3>
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              You haven't finished booking. Save these details as a draft?
+            </p>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={saveDraftAndClose}
+                className="w-full py-3 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 transition-all"
+              >
+                Save to Drafts
+              </button>
+              <button
+                onClick={discardAndClose}
+                className="w-full py-3 border border-white/15 text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-white/5 transition-all"
+              >
+                No
+              </button>
             </div>
           </div>
         </div>
       )}
-    </main>
-  );
-}
 
-/** Inline helper – renders a glowing city-light circle */
-function CityLight({ cx, cy, r = 4, label }: { cx: number; cy: number; r?: number; label?: string }) {
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={r * 2.5} fill="#ffe066" opacity={0.08} />
-      <circle cx={cx} cy={cy} r={r * 1.4} fill="#ffe066" opacity={0.18} />
-      <circle cx={cx} cy={cy} r={r * 0.7} fill="#fff8c0" opacity={0.7} />
-    </g>
+    </div>
   );
 }

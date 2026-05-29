@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import styles from './checkout.module.css';
 import Logo from '@/components/Logo';
 import { supabase, insertShipment } from '@/lib/supabase';
 
@@ -12,6 +11,7 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [orderId] = useState(() => `LAYO-${Math.floor(100000000 + Math.random() * 900000000)}`);
   const [orderData, setOrderData] = useState<any>(null);
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export default function Checkout() {
     if (savedData) {
       setOrderData(JSON.parse(savedData));
     } else {
-      // Fallback/Mock
+      // Fallback
       setOrderData({
         weight: "2.75",
         cost: "8,250",
@@ -33,10 +33,10 @@ export default function Checkout() {
   const handlePayment = async () => {
     setIsProcessing(true);
     
-    // 1. Simulate Payment (2 seconds)
+    // Simulate Payment
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // 2. Save to Supabase
+    // Save to Supabase
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No authenticated user");
@@ -45,7 +45,7 @@ export default function Checkout() {
       const rate = parseFloat(orderData.exchangeRate || '70.4');
       const totalCostINR = Math.round(costCAD * rate);
 
-      const { data, error } = await insertShipment({
+      const { error } = await insertShipment({
         user_id: user.id,
         mode: orderData.mode || 'Selection',
         destination_city: orderData.destinationCity || 'Unknown',
@@ -66,7 +66,6 @@ export default function Checkout() {
       }
     } catch (err) {
       console.warn("Supabase insert failed. Error:", err);
-      // We continue to success screen for demo purposes
     }
 
     setIsProcessing(false);
@@ -76,168 +75,170 @@ export default function Checkout() {
 
   if (isSuccess) {
     return (
-      <main className={styles.container}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', textAlign: 'center' }}>
-          <div style={{ width: '100px', height: '100px', background: '#10b981', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '2rem', fontSize: '3rem', animation: 'scaleUp 0.5s ease' }}>
+      <main className="min-h-screen bg-background text-on-background flex flex-col items-center justify-center p-6 text-center font-sans">
+        <div className="bg-surface-container border border-white/10 rounded-2xl w-full max-w-md p-8 shadow-2xl space-y-6 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white text-3xl font-bold mb-2 animate-bounce">
             ✓
           </div>
-          <h1 className="gradient-text">Payment Successful!</h1>
-          <p className={styles.subtitle}>Your shipment order has been placed successfully.</p>
-          <div className={styles.section} style={{ maxWidth: '500px', width: '100%' }}>
-            <p style={{ marginBottom: '1rem' }}><strong>Order ID:</strong> LAYO-774581632</p>
-            <p style={{ color: 'var(--text-muted)' }}>We have notified our India hub. You will receive a tracking link via WhatsApp shortly.</p>
+          <h1 className="text-2xl font-extrabold text-white">Payment Successful!</h1>
+          <p className="text-on-surface-variant text-sm">Your shipment locker order has been verified and placed successfully.</p>
+          <div className="bg-background border border-white/5 p-4 rounded-xl text-xs space-y-1.5 w-full text-left">
+            <p className="text-white"><strong>Order ID:</strong> {orderId}</p>
+            <p className="text-on-surface-variant leading-relaxed">
+              We have notified our India hubs. Drop-off coordinates and package tagging numbers have been generated.
+            </p>
           </div>
-          <button className={styles.payBtn} onClick={() => router.push('/dashboard')}>
-            Back to My Shipments
+          <button 
+            className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all mt-4" 
+            onClick={() => router.push('/dashboard')}
+          >
+            Go to My Shipments
           </button>
         </div>
-        <style jsx>{`
-          @keyframes scaleUp {
-            from { transform: scale(0); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
-          }
-        `}</style>
       </main>
     );
   }
 
+  const costCAD = parseFloat(orderData?.totalCostCAD || orderData?.cost || '0');
+  const rate = parseFloat(orderData?.exchangeRate || '70.4');
+  const totalCostINR = Math.round(costCAD * rate);
+
   return (
-    <main className={styles.container}>
-      <header className={styles.header}>
+    <div className="bg-background text-on-background min-h-screen flex flex-col font-sans">
+      <header className="bg-surface border-b border-white/10 flex justify-between items-center w-full px-6 py-4 sticky top-0 z-50">
         <Logo showTagline={false} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          <Link href="/" style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textDecoration: 'none' }}>Home</Link>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Secure Checkout System
-          </div>
-        </div>
+        <span className="text-on-surface-variant text-xs uppercase tracking-wider font-bold">Secure Checkout</span>
       </header>
 
-      <div className={styles.content}>
-        <div className={styles.mainArea}>
-          <h1 className="gradient-text">Complete Shipment</h1>
-          <p className={styles.subtitle}>Review your details and choose a payment method.</p>
+      <main className="flex-grow max-w-[1200px] mx-auto px-6 py-8 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          <div className="lg:col-span-8 bg-surface-container rounded-2xl p-6 md:p-8 border border-white/10 space-y-6">
+            <div>
+              <h1 className="text-2xl font-extrabold text-white">Complete Shipment Payment</h1>
+              <p className="text-on-surface-variant text-sm mt-1">Review destination details and select payment option.</p>
+            </div>
 
-          <div className={styles.section}>
-            <h2><span>📍</span> Delivery Details</h2>
-            <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}><strong>{orderData?.destinationAddress || orderData?.address}</strong></p>
-            <p style={{ color: 'var(--text-muted)' }}>Estimated Delivery: 5-7 Business Days</p>
+            {/* Delivery address review */}
+            <div className="bg-background border border-white/5 rounded-xl p-5 space-y-2">
+              <h3 className="text-xs font-bold text-primary uppercase tracking-wider">📍 Locker Destination</h3>
+              <p className="font-bold text-sm text-white">{orderData?.destinationAddress || orderData?.address}</p>
+              <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                Aggregated Express Air Transit: 5-7 Business Days (Insured &amp; Tracked)
+              </p>
+            </div>
+
+            {/* Payment options */}
+            <div className="space-y-4 border-t border-white/5 pt-6">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">💳 Choose Payment Option</h3>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { id: 'card', label: 'Credit/Debit', icon: '💳' },
+                  { id: 'upi', label: 'UPI / QR', icon: '📱' },
+                  { id: 'paypal', label: 'PayPal', icon: '🅿️' }
+                ].map(opt => (
+                  <button 
+                    key={opt.id}
+                    onClick={() => setPaymentMethod(opt.id)}
+                    className={`py-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition-all ${
+                      paymentMethod === opt.id 
+                        ? 'bg-primary/10 border-primary text-primary' 
+                        : 'bg-background border-white/5 text-on-surface-variant hover:border-white/15'
+                    }`}
+                  >
+                    <span className="text-lg">{opt.icon}</span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Card Form */}
+              {paymentMethod === 'card' && (
+                <div className="space-y-4 border border-white/5 rounded-xl p-5 bg-background animate-in mt-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Cardholder Name</label>
+                    <input type="text" placeholder="John Doe" className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Card Number</label>
+                    <input type="text" placeholder="**** **** **** ****" className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-on-surface-variant">Expiry Date</label>
+                      <input type="text" placeholder="MM/YY" className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-on-surface-variant">Security Code (CVV)</label>
+                      <input type="password" placeholder="***" className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* UPI */}
+              {paymentMethod === 'upi' && (
+                <div className="border border-white/5 rounded-xl p-6 bg-background text-center space-y-4 animate-in mt-4">
+                  <div className="w-40 h-40 bg-white mx-auto p-3 rounded-lg flex items-center justify-center font-bold text-xs text-background select-none">
+                    [ UPI QR CODE ]
+                  </div>
+                  <p className="text-xs text-on-surface-variant">Scan the secure QR code using GPay, PhonePe, or BHIM to initiate deposit.</p>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className={styles.section}>
-            <h2><span>💳</span> Payment Method</h2>
-            <div className={styles.paymentGrid}>
-              <div 
-                className={`${styles.paymentMethod} ${paymentMethod === 'card' ? styles.paymentMethodActive : ''}`}
-                onClick={() => setPaymentMethod('card')}
-              >
-                <span className={styles.methodIcon}>💳</span>
-                <span>Credit/Debit</span>
+          {/* Sidebar checkout summary */}
+          <div className="lg:col-span-4 bg-surface-container rounded-2xl p-6 border border-white/10 space-y-6">
+            <h3 className="text-lg font-bold text-white">Order Summary</h3>
+            
+            <div className="space-y-2.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Shipment Mode</span>
+                <span className="text-white font-bold">{orderData?.mode || 'Selection'}</span>
               </div>
-              <div 
-                className={`${styles.paymentMethod} ${paymentMethod === 'upi' ? styles.paymentMethodActive : ''}`}
-                onClick={() => setPaymentMethod('upi')}
-              >
-                <span className={styles.methodIcon}>📱</span>
-                <span>UPI / QR</span>
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Total Weight</span>
+                <span className="text-white font-bold">{orderData?.totalWeight || orderData?.weight || '0.00'} kg</span>
               </div>
-              <div 
-                className={`${styles.paymentMethod} ${paymentMethod === 'paypal' ? styles.paymentMethodActive : ''}`}
-                onClick={() => setPaymentMethod('paypal')}
-              >
-                <span className={styles.methodIcon}>🅿️</span>
-                <span>PayPal</span>
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Live Conversion Rate</span>
+                <span className="text-white font-bold">1 CAD = ₹{rate.toFixed(2)} INR</span>
+              </div>
+              <div className="flex justify-between border-t border-white/5 pt-3">
+                <span className="text-on-surface-variant">Deposit Shipping Fee</span>
+                <span className="text-white font-bold">${costCAD.toFixed(2)} CAD</span>
               </div>
             </div>
 
-            {paymentMethod === 'card' && (
-              <div className={styles.cardForm}>
-                <div className={styles.inputGroup}>
-                  <label>Cardholder Name</label>
-                  <input type="text" placeholder="John Doe" className="glass" />
-                </div>
-                <div className={styles.inputGroup}>
-                  <label>Card Number</label>
-                  <input type="text" placeholder="**** **** **** ****" className="glass" />
-                </div>
-                <div className={styles.inputRow}>
-                  <div className={styles.inputGroup}>
-                    <label>Expiry Date</label>
-                    <input type="text" placeholder="MM/YY" className="glass" />
-                  </div>
-                  <div className={styles.inputGroup}>
-                    <label>CVV</label>
-                    <input type="password" placeholder="***" className="glass" />
-                  </div>
+            <div className="border-t border-white/5 pt-4">
+              <div className="flex justify-between items-baseline mb-6">
+                <span className="text-sm text-white font-bold">Total Charge</span>
+                <div className="text-right">
+                  <p className="text-2xl font-extrabold text-white">${costCAD.toFixed(2)} <span className="text-xs font-normal text-on-surface-variant">CAD</span></p>
+                  <span className="text-[10px] text-primary font-bold uppercase tracking-wider">≈ ₹{totalCostINR.toLocaleString()} INR</span>
                 </div>
               </div>
-            )}
 
-            {paymentMethod === 'upi' && (
-              <div style={{ textAlign: 'center', padding: '2rem' }}>
-                <div style={{ width: '200px', height: '200px', background: '#fff', margin: '0 auto 1rem', padding: '1rem', borderRadius: '12px' }}>
-                  {/* Placeholder for QR Code */}
-                  <div style={{ width: '100%', height: '100%', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000' }}>
-                    QR CODE
-                  </div>
-                </div>
-                <p>Scan the QR code with any UPI app to pay</p>
+              <button 
+                className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                onClick={handlePayment}
+                disabled={isProcessing}
+              >
+                {isProcessing ? 'Initiating Transaction...' : `Secure Pay $${costCAD.toFixed(2)} CAD`}
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center justify-center gap-1.5 text-[10px] text-on-surface-variant opacity-65 pt-2">
+              <span>🔒 256-bit SSL Secure Checkout</span>
+              <div className="flex gap-2 font-bold tracking-wider">
+                <span>VISA</span> • <span>MASTERCARD</span> • <span>STRIPE</span>
               </div>
-            )}
+            </div>
           </div>
+
         </div>
-
-        <aside className={styles.sidebar}>
-          <div className={styles.orderSummary}>
-            <h2>Order Summary</h2>
-            <div className={styles.summaryItem}>
-              <span>Shipment Mode</span>
-              <span>{orderData?.mode || 'Selection'}</span>
-            </div>
-            <div className={styles.summaryItem}>
-              <span>Total Weight</span>
-              <span>{orderData?.totalWeight || orderData?.weight || '0.00'} kg</span>
-            </div>
-            <div className={styles.summaryItem}>
-              <span>Live Rate</span>
-              <span>1 CAD = ₹{(orderData?.exchangeRate || 70.4).toFixed(2)} INR</span>
-            </div>
-            <div className={styles.summaryItem}>
-              <span>Estimated Unified Shipping</span>
-              <span>${parseFloat(orderData?.totalCostCAD || orderData?.cost || '0').toFixed(2)} CAD</span>
-            </div>
-            
-            <div className={styles.divider}></div>
-            
-            <div className={styles.total}>
-              <h3>Total Amount</h3>
-              <div>
-                <h3 style={{ margin: 0 }}>${parseFloat(orderData?.totalCostCAD || orderData?.cost || '0').toFixed(2)} CAD</h3>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  ≈ ₹{Math.round(parseFloat(orderData?.totalCostCAD || orderData?.cost || '0') * parseFloat(orderData?.exchangeRate || '70.4')).toLocaleString()} INR
-                </span>
-              </div>
-            </div>
-
-            <button 
-              className={styles.payBtn} 
-              onClick={handlePayment}
-              disabled={isProcessing}
-            >
-              {isProcessing ? 'Verifying Payment...' : `Pay $${parseFloat(orderData?.totalCostCAD || orderData?.cost || '0').toFixed(2)} CAD`}
-            </button>
-
-            <div className={styles.safetyInfo}>
-              <span>🔒 256-bit SSL Secure Payment</span>
-              <div className={styles.trustBadges}>
-                <span>VISA</span>
-                <span>MC</span>
-                <span>STRIPE</span>
-              </div>
-            </div>
-          </div>
-        </aside>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

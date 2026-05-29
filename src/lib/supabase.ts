@@ -74,12 +74,17 @@ export function parseShipment(raw: any) {
   };
 }
 
-export async function fetchShipments() {
-  const { data, error } = await supabase
+export async function fetchShipments(userId?: string) {
+  let query = supabase
     .from('shipments')
     .select('*')
     .order('created_at', { ascending: false });
 
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query;
   if (error) return { data: null, error };
   const formatted = (data || []).map(parseShipment);
   return { data: formatted, error: null };

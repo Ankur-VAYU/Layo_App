@@ -1,20 +1,20 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import styles from './admin.module.css';
 import Logo from '@/components/Logo';
 import { supabase, fetchShipments } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
+import { loadHaulCards, saveHaulCards, HaulCard, DEFAULT_HAUL_CARDS } from '@/lib/haul-cards';
 
 const STATUS_STEPS = ['draft', 'paid', 'arrived', 'shipped', 'delivered'];
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft Estimate',
   paid: 'Estimate Paid',
   arrived: 'Received in India',
-  shipped: 'Shipped to Canada',
-  delivered: 'Delivered',
+  shipped: 'Weight Verified',
+  delivered: 'Shipped to Canada',
 };
 const STATUS_COLORS: Record<string, string> = {
   draft: '#64748b',
@@ -24,7 +24,9 @@ const STATUS_COLORS: Record<string, string> = {
   delivered: '#10b981',
 };
 
-type AdminTab = 'orders' | 'warehouses' | 'analytics';
+type AdminTab = 'orders' | 'warehouses' | 'analytics' | 'cards';
+
+const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com'];
 
 export default function AdminPortal() {
   const router = useRouter();
@@ -43,8 +45,25 @@ export default function AdminPortal() {
   const [whForm, setWhForm] = useState({ city: '', address: '', pincode: '', contact: '' });
   const [whSaving, setWhSaving] = useState(false);
   const [deletingWH, setDeletingWH] = useState<string | null>(null);
-  
-  const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com'];
+
+  // Card Builder
+  const [haulCards, setHaulCards] = useState<HaulCard[]>([]);
+  const [cardForm, setCardForm] = useState<Omit<HaulCard, 'id'>>({
+    headline: '',
+    ageLabel: '',
+    asset1Icon: 'checkroom',
+    asset1Label: '',
+    asset1Qty: 1,
+    asset2Icon: 'category',
+    asset2Label: '',
+    asset2Qty: 1,
+    canadaPrice: 0,
+    indiaPrice: 0,
+    highlightSubtext: '',
+    status: 'active',
+  });
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -60,6 +79,7 @@ export default function AdminPortal() {
       } else {
         setIsAdmin(true);
         fetchAllData();
+        setHaulCards(loadHaulCards());
       }
     }
   }, [user, loading, router]);
@@ -127,28 +147,28 @@ export default function AdminPortal() {
 
   if (loading || isFetching || (user && isAdmin === null)) {
     return (
-      <div className={styles.loadingScreen}>
-        <div className={styles.spinner}></div>
-        <p>Verifying Credentials…</p>
+      <div className="min-h-screen bg-background text-on-background flex flex-col justify-center items-center gap-4 font-sans">
+        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-on-surface-variant font-bold text-xs uppercase tracking-widest">Verifying Admin Credentials…</p>
       </div>
     );
   }
 
   if (isAdmin === false) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'radial-gradient(circle at top, #0f172a, #020617)', color: '#fff', textAlign: 'center', padding: '2rem' }}>
-        <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '2.5rem', borderRadius: '16px', maxWidth: '480px', backdropFilter: 'blur(10px)' }}>
-          <span style={{ fontSize: '3.5rem', display: 'block', marginBottom: '1rem' }}>🚫</span>
-          <h1 style={{ fontSize: '1.8rem', color: '#ef4444', marginBottom: '0.75rem' }}>Access Denied</h1>
-          <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', fontSize: '0.95rem' }}>
+      <div className="flex flex-col justify-center items-center min-h-screen bg-background text-white text-center p-6 font-sans">
+        <div className="bg-surface-container border border-red-500/15 p-10 rounded-2xl max-w-[480px] shadow-2xl space-y-4">
+          <span className="text-5xl block mb-2">🚫</span>
+          <h1 className="text-2xl font-extrabold text-red-500">Access Denied</h1>
+          <p className="text-on-surface-variant text-sm leading-relaxed">
             Your account (<strong>{user?.email}</strong>) does not have administrator privileges.
           </p>
-          <p style={{ fontSize: '0.85rem', color: '#ef4444', marginTop: '1rem', fontWeight: 'bold' }}>
+          <p className="text-xs text-red-500 font-bold">
             Only designated admin accounts (e.g. admin@layo.com or ankur@layo.com) are permitted.
           </p>
-          <div style={{ marginTop: '2rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}></span>
-            Redirecting to My Shipments...
+          <div className="text-xs text-on-surface-variant/70 pt-4 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+            Redirecting to customer dashboard...
           </div>
         </div>
       </div>
@@ -156,246 +176,253 @@ export default function AdminPortal() {
   }
 
   return (
-    <div className={styles.shell}>
-      {/* ── Sidebar ── */}
-      <nav className={styles.sidebar}>
-        <div className={styles.sidebarLogo}>
-          <Logo showTagline={false} />
-          <span className={styles.adminBadge}>ADMIN</span>
+    <div className="flex min-h-screen bg-background text-on-background font-sans relative">
+      
+      {/* ── Sidebar Navigation ── */}
+      <nav className="w-64 bg-surface border-r border-white/10 flex flex-col justify-between p-6 h-screen sticky top-0">
+        <div className="space-y-8">
+          <div className="space-y-2">
+            <Logo showTagline={false} />
+            <span className="inline-block bg-primary/10 text-primary border border-primary/20 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">ADMIN CONTROL</span>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[9px] uppercase font-bold tracking-widest text-on-surface-variant mb-3">Main Menu</p>
+            {(
+              [
+                { id: 'orders',     icon: 'package_2',    label: 'Orders' },
+                { id: 'warehouses', icon: 'home_storage', label: 'Warehouses' },
+                { id: 'analytics',  icon: 'bar_chart',    label: 'Analytics' },
+                { id: 'cards',      icon: 'style',        label: 'Haul Cards' },
+              ] as { id: AdminTab; icon: string; label: string }[]
+            ).map(item => (
+              <button
+                key={item.id}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all ${
+                  activeTab === item.id 
+                    ? 'bg-primary text-background' 
+                    : 'text-on-surface-variant hover:text-white hover:bg-white/5'
+                }`}
+                onClick={() => setActiveTab(item.id)}
+              >
+                <span className="material-symbols-outlined text-lg">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className={styles.navSection}>
-          <p className={styles.navLabel}>Main Menu</p>
-          {(
-            [
-              { id: 'orders',     icon: '📦', label: 'Orders' },
-              { id: 'warehouses', icon: '🏭', label: 'Warehouses' },
-              { id: 'analytics',  icon: '📊', label: 'Analytics' },
-            ] as { id: AdminTab; icon: string; label: string }[]
-          ).map(item => (
-            <button
-              key={item.id}
-              className={`${styles.navItem} ${activeTab === item.id ? styles.navActive : ''}`}
-              onClick={() => setActiveTab(item.id)}
-            >
-              <span className={styles.navIcon}>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <div className={styles.navSection}>
-          <p className={styles.navLabel}>Quick Links</p>
-          <Link href="/dashboard" className={styles.navItem}>
-            <span className={styles.navIcon}>🏠</span> Customer Dashboard
+        <div className="space-y-1 border-t border-white/5 pt-6">
+          <p className="text-[9px] uppercase font-bold tracking-widest text-on-surface-variant mb-3">Quick Links</p>
+          <Link href="/dashboard" className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-on-surface-variant hover:text-white hover:bg-white/5 transition-all">
+            <span className="material-symbols-outlined text-lg">dashboard</span>
+            Customer Locker
           </Link>
-          <button className={styles.navItem} onClick={() => supabase.auth.signOut()}>
-            <span className={styles.navIcon}>🚪</span> Sign Out
+          <button 
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-error/80 hover:text-error hover:bg-error/5 transition-all"
+            onClick={() => supabase.auth.signOut()}
+          >
+            <span className="material-symbols-outlined text-lg">logout</span>
+            Sign Out
           </button>
         </div>
       </nav>
 
-      {/* ── Main Content ── */}
-      <main className={styles.main}>
-        {/* Stats Row */}
-        <div className={styles.statsRow}>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Total Orders</span>
-            <span className={styles.statValue}>{stats.total}</span>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Total Weight Shipped</span>
-            <span className={styles.statValue}>{stats.totalWeight.toFixed(1)} kg</span>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Revenue (Deposits)</span>
-            <span className={styles.statValue}>₹{stats.totalRevenue.toLocaleString()}</span>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Active Warehouses</span>
-            <span className={styles.statValue}>{warehouses.length}</span>
-          </div>
+      {/* ── Main Content Area ── */}
+      <main className="flex-grow p-8 overflow-y-auto space-y-8">
+        
+        {/* Statistics Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { label: 'Total Orders', value: stats.total, icon: 'analytics' },
+            { label: 'Total Weight', value: `${stats.totalWeight.toFixed(1)} kg`, icon: 'scale' },
+            { label: 'Landed Revenue', value: `₹${stats.totalRevenue.toLocaleString()}`, icon: 'payments' },
+            { label: 'Active Hubs', value: warehouses.length, icon: 'hub' }
+          ].map((card, i) => (
+            <div key={i} className="bg-surface-container border border-white/5 rounded-2xl p-6 flex flex-col gap-1 relative overflow-hidden group">
+              <span className="material-symbols-outlined absolute top-4 right-4 text-4xl text-white/5 group-hover:text-primary/10 transition-colors">{card.icon}</span>
+              <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">{card.label}</span>
+              <span className="text-3xl font-extrabold text-white mt-2">{card.value}</span>
+            </div>
+          ))}
         </div>
 
-        {/* ──────────── ORDERS ──────────── */}
+        {/* ──────────── ORDERS TAB ──────────── */}
         {activeTab === 'orders' && (
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <h2>Orders Management</h2>
-              <button className={styles.refreshBtn} onClick={fetchAllData}>↻ Refresh</button>
+          <section className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-extrabold text-white">Orders Logs</h2>
+                <p className="text-on-surface-variant text-xs mt-1">Manage aggregated cargo items and update locker shipping tracking.</p>
+              </div>
+              <button className="px-4 py-2 bg-background border border-white/10 text-on-surface-variant hover:text-white rounded-xl text-xs font-bold transition-all" onClick={fetchAllData}>
+                ↻ Refresh Logs
+              </button>
             </div>
 
             {/* Filters */}
-            <div className={styles.filters}>
-              <input
-                className={styles.searchInput}
-                placeholder="Search by city, address or order ID…"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-              <select
-                className={styles.filterSelect}
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-              >
-                <option value="all">All Statuses</option>
-                {STATUS_STEPS.map(s => (
-                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                ))}
-              </select>
-              <span className={styles.resultCount}>{filteredShipments.length} orders</span>
+            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <input
+                  placeholder="Search order ID, city, address..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="bg-background border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none w-full sm:w-64"
+                />
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  className="bg-background border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none w-full sm:w-48"
+                >
+                  <option value="all">All Statuses</option>
+                  {STATUS_STEPS.map(s => (
+                    <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                  ))}
+                </select>
+              </div>
+              <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">{filteredShipments.length} matching orders</span>
             </div>
 
             {filteredShipments.length === 0 ? (
-              <div className={styles.emptyState}>
-                <span>📭</span>
-                <p>No orders match your filters.</p>
+              <div className="py-16 text-center border border-dashed border-white/10 rounded-2xl text-on-surface-variant">
+                No orders match filters.
               </div>
             ) : (
-              <div className={styles.tableWrapper}>
-                <table className={styles.table}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr>
-                      <th>Date</th>
-                      <th>Destination</th>
-                      <th>Weight</th>
-                      <th>Cost</th>
-                      <th>Status</th>
-                      <th>Update Status</th>
-                      <th></th>
+                      <th className="py-3 px-4 font-bold text-on-surface-variant border-b border-white/10 uppercase tracking-wider">Date</th>
+                      <th className="py-3 px-4 font-bold text-on-surface-variant border-b border-white/10 uppercase tracking-wider">Locker Destination</th>
+                      <th className="py-3 px-4 font-bold text-on-surface-variant border-b border-white/10 uppercase tracking-wider">Weight</th>
+                      <th className="py-3 px-4 font-bold text-on-surface-variant border-b border-white/10 uppercase tracking-wider">Landed Cost</th>
+                      <th className="py-3 px-4 font-bold text-on-surface-variant border-b border-white/10 uppercase tracking-wider">Status</th>
+                      <th className="py-3 px-4 font-bold text-on-surface-variant border-b border-white/10 uppercase tracking-wider">Set Tracker</th>
+                      <th className="py-3 px-4 border-b border-white/10"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredShipments.map(s => (
-                      <>
-                        <tr
-                          key={s.id}
-                          className={expandedRow === s.id ? styles.rowExpanded : ''}
-                        >
-                          <td>{new Date(s.created_at).toLocaleDateString('en-IN')}</td>
-                          <td>
-                            <strong>{s.destination_city}</strong>
-                            <div className={styles.subtext}>{s.destination_address?.slice(0, 40)}…</div>
+                      <React.Fragment key={s.id}>
+                        <tr className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${expandedRow === s.id ? 'bg-white/[0.01]' : ''}`}>
+                          <td className="py-4 px-4 text-white">{new Date(s.created_at).toLocaleDateString('en-IN')}</td>
+                          <td className="py-4 px-4">
+                            <strong className="text-white text-sm">{s.destination_city}</strong>
+                            <div className="text-[11px] text-on-surface-variant truncate max-w-[240px]">{s.destination_address}</div>
                           </td>
-                          <td>{s.total_weight} kg</td>
-                          <td>₹{parseInt(s.total_cost || 0).toLocaleString()}</td>
-                          <td>
+                          <td className="py-4 px-4 text-white font-medium">{s.total_weight} kg</td>
+                          <td className="py-4 px-4 text-white font-medium">₹{parseInt(s.total_cost || 0).toLocaleString()}</td>
+                          <td className="py-4 px-4">
                             <span
-                              className={styles.statusPill}
-                              style={{ background: `${STATUS_COLORS[s.status]}22`, color: STATUS_COLORS[s.status] }}
+                              className="px-2.5 py-0.5 rounded-full font-bold uppercase text-[9px] tracking-wider"
+                              style={{ backgroundColor: `${STATUS_COLORS[s.status]}20`, color: STATUS_COLORS[s.status] }}
                             >
                               {STATUS_LABELS[s.status] || s.status}
                             </span>
                           </td>
-                          <td>
+                          <td className="py-4 px-4">
                             <select
                               value={s.status}
                               onChange={e => updateStatus(s.id, e.target.value)}
-                              className={styles.statusSelect}
                               disabled={updatingId === s.id}
+                              className="bg-background border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white focus:border-primary focus:ring-0 focus:outline-none"
                             >
                               {STATUS_STEPS.map(st => (
                                 <option key={st} value={st}>{STATUS_LABELS[st]}</option>
                               ))}
                             </select>
                           </td>
-                          <td>
+                          <td className="py-4 px-4">
                             <button
-                              className={styles.expandBtn}
                               onClick={() => setExpandedRow(expandedRow === s.id ? null : s.id)}
+                              className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-white hover:border-primary transition-all"
                             >
-                              {expandedRow === s.id ? '▲' : '▼'}
+                              <span className="material-symbols-outlined text-sm">{expandedRow === s.id ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}</span>
                             </button>
                           </td>
                         </tr>
 
-                        {/* Expanded Detail Row */}
+                        {/* Expanded details row */}
                         {expandedRow === s.id && (
-                          <tr key={`${s.id}-detail`} className={styles.detailRow}>
-                            <td colSpan={7}>
-                              <div className={styles.detailGrid}>
-                                {/* Status Tracker */}
-                                <div className={styles.detailBlock}>
-                                  <h4>5-Step Shipment Tracker</h4>
-                                  <div className={styles.tracker}>
-                                    {STATUS_STEPS.map((st, i) => {
+                          <tr>
+                            <td colSpan={7} className="py-4 px-6 bg-background/50 border-b border-white/5">
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs text-on-surface-variant">
+                                
+                                {/* Shipment 5-step detailed tracker */}
+                                <div className="space-y-4">
+                                  <h4 className="font-bold text-white uppercase tracking-wider text-[10px]">Aggregated Cargo Status Tracker</h4>
+                                  <div className="flex flex-col gap-3">
+                                    {STATUS_STEPS.map((st, idx) => {
                                       const currentIdx = STATUS_STEPS.indexOf(s.status);
-                                      const done = i <= currentIdx;
-                                      const active = i === currentIdx;
+                                      const isDone = idx <= currentIdx;
+                                      const isActive = idx === currentIdx;
                                       return (
-                                        <div key={st} className={styles.trackerStep}>
-                                          <div
-                                            className={styles.trackerDot}
+                                        <div key={st} className="flex items-center gap-3">
+                                          <div 
+                                            className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] text-background border"
                                             style={{
-                                              background: done ? STATUS_COLORS[s.status] : '#1e293b',
-                                              border: `2px solid ${done ? STATUS_COLORS[s.status] : '#334155'}`,
-                                              boxShadow: active ? `0 0 12px ${STATUS_COLORS[s.status]}` : 'none',
+                                              backgroundColor: isDone ? STATUS_COLORS[s.status] : 'transparent',
+                                              borderColor: isDone ? STATUS_COLORS[s.status] : '#334155',
+                                              boxShadow: isActive ? `0 0 10px ${STATUS_COLORS[s.status]}` : 'none'
                                             }}
                                           >
-                                            {done && '✓'}
+                                            {isDone && '✓'}
                                           </div>
-                                          <span style={{ color: done ? '#fff' : '#475569', fontSize: '0.75rem' }}>
+                                          <span className={`font-bold ${isDone ? 'text-white' : 'text-on-surface-variant'}`}>
                                             {STATUS_LABELS[st]}
                                           </span>
-                                          {i < STATUS_STEPS.length - 1 && (
-                                            <div
-                                              className={styles.trackerLine}
-                                              style={{ background: i < currentIdx ? STATUS_COLORS[s.status] : '#1e293b' }}
-                                            />
-                                          )}
                                         </div>
                                       );
                                     })}
                                   </div>
                                 </div>
 
-                                {/* Order Info */}
-                                <div className={styles.detailBlock}>
-                                  <h4>Order Details</h4>
-                                  <table className={styles.infoTable}>
-                                    <tbody>
-                                      <tr><td>Order ID</td><td><code>{s.id.slice(0, 8)}…</code></td></tr>
-                                      <tr><td>Payment Method</td><td>{s.payment_method || '—'}</td></tr>
-                                      <tr><td>Warehouse</td><td>{s.india_warehouse || '—'}</td></tr>
-                                      <tr><td>Origin Order ID</td><td>{s.external_order_id || '—'}</td></tr>
-                                      <tr><td>Tracking No.</td><td>{s.external_tracking || '—'}</td></tr>
-                                    </tbody>
-                                  </table>
+                                {/* Order Meta Info */}
+                                <div className="space-y-3">
+                                  <h4 className="font-bold text-white uppercase tracking-wider text-[10px]">Order Details</h4>
+                                  <div className="border border-white/5 rounded-xl p-4 bg-background/60 space-y-2">
+                                    <div className="flex justify-between"><span>Supabase ID</span><code className="text-white text-[11px]">{s.id.substr(0,8)}...</code></div>
+                                    <div className="flex justify-between"><span>Payment Method</span><span className="text-white uppercase font-bold">{s.payment_method || '—'}</span></div>
+                                    <div className="flex justify-between"><span>Locker Hub</span><span className="text-white font-bold">{s.india_warehouse || '—'}</span></div>
+                                    <div className="flex justify-between"><span>Store Order ID</span><span className="text-white">{s.external_order_id || '—'}</span></div>
+                                    <div className="flex justify-between"><span>Consolidated Tracking</span><span className="text-white font-mono">{s.external_tracking || '—'}</span></div>
+                                  </div>
                                 </div>
 
-                                {/* Items */}
+                                {/* Cargo Item lists */}
                                 {s.items && s.items.length > 0 && (
-                                  <div className={styles.detailBlock} style={{ gridColumn: '1 / -1' }}>
-                                    <h4>Items in Shipment</h4>
-                                    <table className={styles.itemsTable}>
+                                  <div className="lg:col-span-2 space-y-3">
+                                    <h4 className="font-bold text-white uppercase tracking-wider text-[10px]">Locker Contents</h4>
+                                    <table className="w-full text-[11px] border border-white/5 rounded-xl overflow-hidden">
                                       <thead>
-                                        <tr>
-                                          <th>Category</th>
-                                          <th>Item</th>
-                                          <th>Age Group</th>
-                                          <th>Qty</th>
-                                          <th>Weight</th>
+                                        <tr className="bg-background">
+                                          <th className="py-2 px-3 font-bold text-white">Category</th>
+                                          <th className="py-2 px-3 font-bold text-white">Subcategory</th>
+                                          <th className="py-2 px-3 font-bold text-white">Age Group</th>
+                                          <th className="py-2 px-3 font-bold text-white">Qty</th>
+                                          <th className="py-2 px-3 font-bold text-white">Weight</th>
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {s.items.map((item: any, i: number) => (
-                                          <tr key={i}>
-                                            <td>{item.category}</td>
-                                            <td>{item.subcategory}</td>
-                                            <td>{item.ageGroup || '—'}</td>
-                                            <td>{item.quantity}</td>
-                                            <td>{item.weight?.toFixed(2)} kg</td>
+                                        {s.items.map((item: any, idx: number) => (
+                                          <tr key={idx} className="border-t border-white/5">
+                                            <td className="py-2 px-3">{item.category}</td>
+                                            <td className="py-2 px-3 text-white font-medium">{item.subcategory}</td>
+                                            <td className="py-2 px-3">{item.ageGroup || '—'}</td>
+                                            <td className="py-2 px-3 font-bold text-white">{item.quantity}</td>
+                                            <td className="py-2 px-3">{(item.weight || 0.2).toFixed(2)} kg</td>
                                           </tr>
                                         ))}
                                       </tbody>
                                     </table>
                                   </div>
                                 )}
+
                               </div>
                             </td>
                           </tr>
                         )}
-                      </>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -404,110 +431,128 @@ export default function AdminPortal() {
           </section>
         )}
 
-        {/* ──────────── WAREHOUSES ──────────── */}
+        {/* ──────────── WAREHOUSES TAB ──────────── */}
         {activeTab === 'warehouses' && (
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <h2>Warehouse Management</h2>
+          <section className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-6">
+            <div>
+              <h2 className="text-xl font-extrabold text-white">Warehouse Network</h2>
+              <p className="text-on-surface-variant text-xs mt-1">Configure virtual locker address locations and coordinates.</p>
             </div>
 
-            <div className={styles.whLayout}>
-              {/* Add Form */}
-              <div className={styles.whFormCard}>
-                <h3>Add New Warehouse</h3>
-                <form onSubmit={addWarehouse} className={styles.form}>
-                  <label>City / Location Name</label>
-                  <input
-                    placeholder="e.g. Pune (Hinjewadi)"
-                    value={whForm.city}
-                    onChange={e => setWhForm({ ...whForm, city: e.target.value })}
-                    required
-                  />
-                  <label>Full Address</label>
-                  <input
-                    placeholder="Building, Street, Area"
-                    value={whForm.address}
-                    onChange={e => setWhForm({ ...whForm, address: e.target.value })}
-                    required
-                  />
-                  <label>Pincode</label>
-                  <input
-                    placeholder="e.g. 411057"
-                    value={whForm.pincode}
-                    onChange={e => setWhForm({ ...whForm, pincode: e.target.value })}
-                    required
-                  />
-                  <label>Contact Number</label>
-                  <input
-                    placeholder="+91 XXXXX XXXXX"
-                    value={whForm.contact}
-                    onChange={e => setWhForm({ ...whForm, contact: e.target.value })}
-                    required
-                  />
-                  <button type="submit" className={styles.addBtn} disabled={whSaving}>
-                    {whSaving ? 'Saving…' : '+ Add Warehouse'}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              
+              {/* Add warehouse form */}
+              <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4 h-fit">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Add Locker Hub</h3>
+                <form onSubmit={addWarehouse} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">City Location</label>
+                    <input
+                      placeholder="e.g. Pune"
+                      value={whForm.city}
+                      onChange={e => setWhForm({ ...whForm, city: e.target.value })}
+                      required
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Locker Hub Address</label>
+                    <input
+                      placeholder="Building, Area"
+                      value={whForm.address}
+                      onChange={e => setWhForm({ ...whForm, address: e.target.value })}
+                      required
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Pincode</label>
+                    <input
+                      placeholder="e.g. 411057"
+                      value={whForm.pincode}
+                      onChange={e => setWhForm({ ...whForm, pincode: e.target.value })}
+                      required
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Contact Hotline</label>
+                    <input
+                      placeholder="e.g. +91 99887 76655"
+                      value={whForm.contact}
+                      onChange={e => setWhForm({ ...whForm, contact: e.target.value })}
+                      required
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                    />
+                  </div>
+                  <button type="submit" disabled={whSaving} className="w-full py-3 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all mt-2">
+                    {whSaving ? 'Adding...' : '+ Add Hub'}
                   </button>
                 </form>
               </div>
 
-              {/* Existing Warehouses */}
-              <div className={styles.whCards}>
+              {/* Warehouse cards */}
+              <div className="lg:col-span-2 space-y-4">
                 {warehouses.length === 0 ? (
-                  <div className={styles.emptyState}>
-                    <span>🏭</span>
-                    <p>No warehouses yet.</p>
-                  </div>
+                  <div className="py-16 text-center text-on-surface-variant bg-background/30 rounded-2xl border border-dashed border-white/10">No locker hubs defined.</div>
                 ) : (
-                  warehouses.map(wh => (
-                    <div key={wh.id} className={styles.whCard}>
-                      <div className={styles.whCardHeader}>
-                        <h3>{wh.city}</h3>
-                        <button
-                          className={styles.deleteBtn}
-                          onClick={() => deleteWarehouse(wh.id)}
-                          disabled={deletingWH === wh.id}
-                        >
-                          {deletingWH === wh.id ? '…' : '🗑'}
-                        </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {warehouses.map(wh => (
+                      <div key={wh.id} className="bg-background border border-white/5 rounded-2xl p-5 space-y-3 relative hover:border-white/10 transition-all flex flex-col justify-between">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-start">
+                            <h4 className="font-extrabold text-sm text-white">{wh.city} Hub</h4>
+                            <button
+                              onClick={() => deleteWarehouse(wh.id)}
+                              disabled={deletingWH === wh.id}
+                              className="text-error/60 hover:text-error transition-all"
+                            >
+                              <span className="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-on-surface-variant leading-relaxed">{wh.address}</p>
+                        </div>
+                        <div className="border-t border-white/5 pt-3 flex justify-between text-[10px] text-on-surface-variant font-semibold">
+                          <span>📍 {wh.pincode}</span>
+                          <span>📞 {wh.contact}</span>
+                        </div>
                       </div>
-                      <p className={styles.whAddress}>{wh.address}</p>
-                      <div className={styles.whMeta}>
-                        <span>📍 {wh.pincode}</span>
-                        <span>📞 {wh.contact}</span>
-                      </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
+
             </div>
           </section>
         )}
 
-        {/* ──────────── ANALYTICS ──────────── */}
+        {/* ──────────── ANALYTICS TAB ──────────── */}
         {activeTab === 'analytics' && (
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <h2>Analytics Overview</h2>
+          <section className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-6">
+            <div>
+              <h2 className="text-xl font-extrabold text-white">Aggregated Analytics</h2>
+              <p className="text-on-surface-variant text-xs mt-1">Detailed metric visualizations and activity logs.</p>
             </div>
 
-            <div className={styles.analyticsGrid}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              
               {/* Status Breakdown */}
-              <div className={styles.analyticsCard}>
-                <h3>Orders by Status</h3>
-                <div className={styles.statusBreakdown}>
+              <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Orders by Status</h3>
+                <div className="space-y-3.5">
                   {STATUS_STEPS.map(st => {
                     const count = stats.byStatus[st] || 0;
                     const pct = stats.total ? Math.round((count / stats.total) * 100) : 0;
                     return (
-                      <div key={st} className={styles.breakdownItem}>
-                        <div className={styles.breakdownLabel}>
-                          <span>{STATUS_LABELS[st]}</span>
+                      <div key={st} className="space-y-1 text-xs">
+                        <div className="flex justify-between font-bold">
+                          <span className="text-on-surface-variant">{STATUS_LABELS[st]}</span>
                           <span style={{ color: STATUS_COLORS[st] }}>{count}</span>
                         </div>
-                        <div className={styles.breakdownBar}>
+                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
                           <div
-                            className={styles.breakdownFill}
-                            style={{ width: `${pct}%`, background: STATUS_COLORS[st] }}
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%`, backgroundColor: STATUS_COLORS[st] }}
                           />
                         </div>
                       </div>
@@ -517,9 +562,9 @@ export default function AdminPortal() {
               </div>
 
               {/* Top Destinations */}
-              <div className={styles.analyticsCard}>
-                <h3>Top Destinations</h3>
-                <div className={styles.destList}>
+              <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Top Destinations</h3>
+                <div className="space-y-3 text-xs">
                   {(() => {
                     const counts: Record<string, number> = {};
                     shipments.forEach(s => {
@@ -529,44 +574,311 @@ export default function AdminPortal() {
                       .sort((a, b) => b[1] - a[1])
                       .slice(0, 6)
                       .map(([city, count]) => (
-                        <div key={city} className={styles.destItem}>
-                          <span>{city}</span>
-                          <span className={styles.destCount}>{count} orders</span>
+                        <div key={city} className="flex justify-between items-center py-2 border-b border-white/5 last:border-b-0">
+                          <span className="text-white font-bold">{city}</span>
+                          <span className="text-primary font-bold">{count} shipments</span>
                         </div>
                       ));
                   })()}
                 </div>
               </div>
 
-              {/* Recent Activity */}
-              <div className={styles.analyticsCard} style={{ gridColumn: '1 / -1' }}>
-                <h3>Recent Activity (Last 10 Orders)</h3>
-                <div className={styles.activityList}>
+              {/* Recent Activity List */}
+              <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4 md:col-span-2">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Recent Activity Logs</h3>
+                <div className="space-y-3 text-xs">
                   {shipments.slice(0, 10).map(s => (
-                    <div key={s.id} className={styles.activityItem}>
-                      <span
-                        className={styles.activityDot}
-                        style={{ background: STATUS_COLORS[s.status] }}
-                      />
-                      <span className={styles.activityText}>
-                        Order to <strong>{s.destination_city}</strong> — {s.total_weight}kg
-                      </span>
-                      <span
-                        className={styles.activityStatus}
-                        style={{ color: STATUS_COLORS[s.status] }}
-                      >
-                        {STATUS_LABELS[s.status]}
-                      </span>
-                      <span className={styles.activityDate}>
-                        {new Date(s.created_at).toLocaleDateString('en-IN')}
-                      </span>
+                    <div key={s.id} className="flex justify-between items-center border-b border-white/5 pb-2 last:border-b-0 last:pb-0">
+                      <div className="flex items-center gap-2">
+                        <span 
+                          className="w-2.5 h-2.5 rounded-full" 
+                          style={{ backgroundColor: STATUS_COLORS[s.status] || '#64748b' }}
+                        />
+                        <span className="text-white">
+                          Order to <strong className="text-primary">{s.destination_city}</strong> — {s.total_weight}kg
+                        </span>
+                      </div>
+                      <div className="flex gap-4 items-center">
+                        <span 
+                          className="font-bold text-[10px] uppercase tracking-wider"
+                          style={{ color: STATUS_COLORS[s.status] || '#64748b' }}
+                        >
+                          {STATUS_LABELS[s.status]}
+                        </span>
+                        <span className="text-on-surface-variant text-[11px]">{new Date(s.created_at).toLocaleDateString()}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
+
             </div>
           </section>
         )}
+
+        {/* ──────────── HAUL CARDS TAB ──────────── */}
+        {activeTab === 'cards' && (
+          <section className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-6">
+            <div>
+              <h2 className="text-xl font-extrabold text-white">Haul Card Builder</h2>
+              <p className="text-on-surface-variant text-xs mt-1">Create and manage Smart Haul savings cards shown on the landing page.</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+
+              {/* Card form */}
+              <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  {editingCardId ? 'Edit Card' : 'New Card'}
+                </h3>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-on-surface-variant">Card Headline</label>
+                  <input placeholder="e.g. Playground Bundle" value={cardForm.headline}
+                    onChange={e => setCardForm({ ...cardForm, headline: e.target.value })}
+                    className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-on-surface-variant">Age Label</label>
+                  <input placeholder="e.g. Growing Kids (5–12)" value={cardForm.ageLabel}
+                    onChange={e => setCardForm({ ...cardForm, ageLabel: e.target.value })}
+                    className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Asset 1 Icon</label>
+                    <input placeholder="e.g. checkroom" value={cardForm.asset1Icon}
+                      onChange={e => setCardForm({ ...cardForm, asset1Icon: e.target.value })}
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Asset 1 Label</label>
+                    <input placeholder="e.g. Graphic Tees" value={cardForm.asset1Label}
+                      onChange={e => setCardForm({ ...cardForm, asset1Label: e.target.value })}
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-on-surface-variant">Asset 1 Quantity</label>
+                  <input type="number" min={1} value={cardForm.asset1Qty}
+                    onChange={e => setCardForm({ ...cardForm, asset1Qty: parseInt(e.target.value) || 1 })}
+                    className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Asset 2 Icon</label>
+                    <input placeholder="e.g. accessibility" value={cardForm.asset2Icon}
+                      onChange={e => setCardForm({ ...cardForm, asset2Icon: e.target.value })}
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Asset 2 Label</label>
+                    <input placeholder="e.g. Joggers" value={cardForm.asset2Label}
+                      onChange={e => setCardForm({ ...cardForm, asset2Label: e.target.value })}
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-on-surface-variant">Asset 2 Quantity</label>
+                  <input type="number" min={1} value={cardForm.asset2Qty}
+                    onChange={e => setCardForm({ ...cardForm, asset2Qty: parseInt(e.target.value) || 1 })}
+                    className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Canada Price (CAD)</label>
+                    <input type="number" min={0} placeholder="e.g. 136" value={cardForm.canadaPrice || ''}
+                      onChange={e => setCardForm({ ...cardForm, canadaPrice: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">India+Layo Price (CAD)</label>
+                    <input type="number" min={0} placeholder="e.g. 81" value={cardForm.indiaPrice || ''}
+                      onChange={e => setCardForm({ ...cardForm, indiaPrice: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-surface-container border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                  </div>
+                </div>
+
+                {cardForm.canadaPrice > 0 && cardForm.indiaPrice > 0 && (
+                  <p className="text-[10px] text-primary font-bold">
+                    Auto-calculated savings: ${cardForm.canadaPrice - cardForm.indiaPrice} CAD
+                  </p>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-on-surface-variant">Highlight Subtext</label>
+                  <input placeholder="e.g. every time you refresh their play-wear." value={cardForm.highlightSubtext}
+                    onChange={e => setCardForm({ ...cardForm, highlightSubtext: e.target.value })}
+                    className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:outline-none" />
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] uppercase font-bold text-on-surface-variant">Active</span>
+                  <button
+                    onClick={() => setCardForm({ ...cardForm, status: cardForm.status === 'active' ? 'inactive' : 'active' })}
+                    className={`w-12 h-6 rounded-full border transition-all relative ${
+                      cardForm.status === 'active' ? 'bg-primary border-primary' : 'bg-white/10 border-white/10'
+                    }`}
+                  >
+                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-background transition-all ${
+                      cardForm.status === 'active' ? 'left-6' : 'left-0.5'
+                    }`} />
+                  </button>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => {
+                      if (!cardForm.headline || !cardForm.asset1Label || !cardForm.asset2Label) return;
+                      let updated: HaulCard[];
+                      if (editingCardId) {
+                        updated = haulCards.map(c => c.id === editingCardId ? { ...cardForm, id: editingCardId } : c);
+                      } else {
+                        const newCard: HaulCard = { ...cardForm, id: `card-${Date.now()}` };
+                        updated = [...haulCards, newCard];
+                      }
+                      saveHaulCards(updated);
+                      setHaulCards(updated);
+                      setEditingCardId(null);
+                      setCardForm({
+                        headline: '', ageLabel: '',
+                        asset1Icon: 'checkroom', asset1Label: '', asset1Qty: 1,
+                        asset2Icon: 'category', asset2Label: '', asset2Qty: 1,
+                        canadaPrice: 0, indiaPrice: 0, highlightSubtext: '', status: 'active',
+                      });
+                    }}
+                    disabled={!cardForm.headline || !cardForm.asset1Label || !cardForm.asset2Label}
+                    className="flex-1 py-3 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 transition-all disabled:opacity-35 disabled:cursor-not-allowed"
+                  >
+                    {editingCardId ? 'Save Changes' : '+ Add Card'}
+                  </button>
+                  {editingCardId && (
+                    <button
+                      onClick={() => {
+                        setEditingCardId(null);
+                        setCardForm({
+                          headline: '', ageLabel: '',
+                          asset1Icon: 'checkroom', asset1Label: '', asset1Qty: 1,
+                          asset2Icon: 'category', asset2Label: '', asset2Qty: 1,
+                          canadaPrice: 0, indiaPrice: 0, highlightSubtext: '', status: 'active',
+                        });
+                      }}
+                      className="px-4 py-3 border border-white/10 text-on-surface-variant text-xs font-bold rounded-xl hover:bg-white/5 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (!confirm('Reset all cards to defaults? This cannot be undone.')) return;
+                    saveHaulCards(DEFAULT_HAUL_CARDS);
+                    setHaulCards(DEFAULT_HAUL_CARDS);
+                  }}
+                  className="w-full py-2 text-[10px] text-error/60 hover:text-error uppercase font-bold tracking-widest transition-all"
+                >
+                  Reset to Defaults
+                </button>
+              </div>
+
+              {/* Cards list */}
+              <div className="lg:col-span-2 space-y-4">
+                {haulCards.length === 0 ? (
+                  <div className="py-16 text-center text-on-surface-variant bg-background/30 rounded-2xl border border-dashed border-white/10">No haul cards defined.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {haulCards.map(card => {
+                      const savings = card.canadaPrice - card.indiaPrice;
+                      return (
+                        <div key={card.id} className={`bg-background border rounded-2xl p-5 flex items-center gap-4 transition-all ${
+                          card.status === 'active' ? 'border-white/10' : 'border-white/5 opacity-50'
+                        }`}>
+                          <div className="flex-grow space-y-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${card.status === 'active' ? 'bg-primary' : 'bg-white/20'}`} />
+                              <p className="font-bold text-sm text-white truncate">{card.headline}</p>
+                            </div>
+                            <p className="text-[10px] text-on-surface-variant uppercase tracking-wider">{card.ageLabel}</p>
+                            <p className="text-[11px] text-on-surface-variant">
+                              <span className="text-white font-mono">{card.asset1Icon}</span> ×{card.asset1Qty}
+                              {' + '}
+                              <span className="text-white font-mono">{card.asset2Icon}</span> ×{card.asset2Qty}
+                            </p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs text-on-surface-variant line-through font-mono">${card.canadaPrice}</p>
+                            <p className="text-xs text-white font-bold font-mono">${card.indiaPrice}</p>
+                            <p className="text-primary text-xs font-black">Save ${savings}</p>
+                          </div>
+                          <div className="flex flex-col gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => {
+                                const updated = haulCards.map(c =>
+                                  c.id === card.id ? { ...c, status: c.status === 'active' ? 'inactive' as const : 'active' as const } : c
+                                );
+                                saveHaulCards(updated);
+                                setHaulCards(updated);
+                              }}
+                              className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border transition-all ${
+                                card.status === 'active'
+                                  ? 'border-primary/30 text-primary hover:bg-primary/5'
+                                  : 'border-white/10 text-on-surface-variant hover:bg-white/5'
+                              }`}
+                            >
+                              {card.status === 'active' ? 'Active' : 'Inactive'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingCardId(card.id);
+                                setCardForm({
+                                  headline: card.headline,
+                                  ageLabel: card.ageLabel,
+                                  asset1Icon: card.asset1Icon,
+                                  asset1Label: card.asset1Label,
+                                  asset1Qty: card.asset1Qty,
+                                  asset2Icon: card.asset2Icon,
+                                  asset2Label: card.asset2Label,
+                                  asset2Qty: card.asset2Qty,
+                                  canadaPrice: card.canadaPrice,
+                                  indiaPrice: card.indiaPrice,
+                                  highlightSubtext: card.highlightSubtext,
+                                  status: card.status,
+                                });
+                              }}
+                              className="px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border border-white/10 text-on-surface-variant hover:text-white hover:bg-white/5 transition-all"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (!confirm('Delete this card?')) return;
+                                const updated = haulCards.filter(c => c.id !== card.id);
+                                saveHaulCards(updated);
+                                setHaulCards(updated);
+                              }}
+                              className="text-error/60 hover:text-error transition-all"
+                            >
+                              <span className="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </section>
+        )}
+
       </main>
     </div>
   );

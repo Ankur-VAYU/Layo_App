@@ -8,7 +8,7 @@ interface LogoProps {
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }
 
-export default function Logo({ className, showTagline = false, variant = 'header', onClick }: LogoProps) {
+export default function Logo({ className = '', showTagline = false, variant = 'header', onClick }: LogoProps) {
   const primaryColor = '#facc15';
 
   const LogoIcon = ({ size = 48 }: { size?: number }) => (
@@ -45,37 +45,25 @@ export default function Logo({ className, showTagline = false, variant = 'header
   return (
     <Link 
       href="/" 
-      className={className} 
+      className={`flex flex-col items-start no-underline cursor-pointer ${className}`}
       onClick={onClick}
-      style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'flex-start',
-        textDecoration: 'none',
-        cursor: 'pointer'
-      }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="flex items-center gap-2">
         <LogoIcon size={variant === 'footer' ? 40 : 48} />
-        <span style={{ 
-          color: primaryColor, 
-          fontSize: variant === 'footer' ? '42px' : '56px', 
-          fontWeight: '500', 
-          fontFamily: 'serif',
-          fontStyle: 'italic',
-          lineHeight: '1',
-          marginLeft: '4px'
-        }}>Layo</span>
+        <span 
+          className="text-primary font-serif italic leading-none ml-1"
+          style={{ 
+            fontSize: variant === 'footer' ? '42px' : '56px', 
+            fontWeight: '500'
+          }}
+        >
+          Layo
+        </span>
       </div>
       {showTagline && (
-        <span style={{ 
-          color: primaryColor, 
-          fontSize: '18px', 
-          fontWeight: '400',
-          marginTop: '4px',
-          alignSelf: 'flex-end',
-          letterSpacing: '0.01em'
-        }}>Distance, decoded.</span>
+        <span className="text-primary text-[18px] font-normal mt-1 self-end tracking-wide">
+          Distance, decoded.
+        </span>
       )}
     </Link>
   );
