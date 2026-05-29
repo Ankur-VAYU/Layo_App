@@ -419,9 +419,10 @@ export default function Dashboard() {
       totalWeightGrams += item.weightGrams;
     });
 
-    const displayWeightGrams = totalWeightGrams === 0 ? 500 : Math.max(500, totalWeightGrams);
-    const weightCost = totalWeightGrams > 0 ? totalWeightGrams * 0.05 : 0;
-    const totalPriceCAD = totalWeightGrams === 0 ? 25.0 : 25.0 + weightCost;
+    const hasItems = totalWeightGrams > 0;
+    const displayWeightGrams = hasItems ? Math.max(500, totalWeightGrams) : 0;
+    const weightCost = hasItems ? totalWeightGrams * 0.05 : 0;
+    const totalPriceCAD = hasItems ? 25.0 + weightCost : 0;
     const valueReclaimed = 0;
 
     return {
@@ -1335,7 +1336,7 @@ export default function Dashboard() {
                   <div className="flex justify-between">
                     <span className="text-on-surface-variant font-medium">Total Weight</span>
                     <span className="text-white font-bold font-mono">
-                      {totals.totalWeightGrams >= 1000
+                      {activeItems.length === 0 ? '—' : totals.totalWeightGrams >= 1000
                         ? `${totals.totalWeightKg.toFixed(2)} kg`
                         : `${Math.round(totals.totalWeightGrams)} g`}
                     </span>
@@ -1346,7 +1347,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-on-surface-variant font-medium">Base Dispatch Floor</span>
-                    <span className="text-white font-semibold">$25.00 CAD</span>
+                    <span className="text-white font-semibold">{activeItems.length === 0 ? '—' : '$25.00 CAD'}</span>
                   </div>
 
                   <div className="h-px bg-white/5 my-2"></div>
@@ -1354,13 +1355,19 @@ export default function Dashboard() {
                   <div className="flex justify-between items-baseline">
                     <span className="text-sm text-white font-bold">Estimated Unified Fee</span>
                     <div className="text-right">
-                      <p className="text-2xl font-extrabold text-primary font-mono">
-                        ${totals.totalPriceCAD.toFixed(2)}
-                        <span className="text-xs font-normal text-on-surface-variant ml-1 font-sans">CAD</span>
-                      </p>
-                      <span className="text-[10px] text-on-surface-variant opacity-60 font-bold font-mono block">
-                        ≈ ₹{totals.totalPriceINR.toLocaleString()} INR
-                      </span>
+                      {activeItems.length === 0 ? (
+                        <p className="text-on-surface-variant text-sm font-semibold">Add items to see quote</p>
+                      ) : (
+                        <>
+                          <p className="text-2xl font-extrabold text-primary font-mono">
+                            ${totals.totalPriceCAD.toFixed(2)}
+                            <span className="text-xs font-normal text-on-surface-variant ml-1 font-sans">CAD</span>
+                          </p>
+                          <span className="text-[10px] text-on-surface-variant opacity-60 font-bold font-mono block">
+                            ≈ ₹{totals.totalPriceINR.toLocaleString()} INR
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
