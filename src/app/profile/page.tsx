@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase } from '@/lib/supabase';
@@ -139,7 +138,7 @@ export default function ProfilePage() {
         <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-white transition-colors">
           <span className="material-symbols-outlined">arrow_back</span>
         </button>
-        <Link href="/"><Logo showTagline={false} /></Link>
+        <Logo showTagline={false} />
         <div className="flex-1" />
         {saved && <span className="text-[10px] text-primary font-bold uppercase tracking-widest">Saved!</span>}
         {editing ? (

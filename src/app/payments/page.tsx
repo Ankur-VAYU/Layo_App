@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Logo from '@/components/Logo';
 
 const PAYMENT_METHODS = [
@@ -55,7 +54,7 @@ export default function PaymentsPage() {
         <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-white transition-colors">
           <span className="material-symbols-outlined">arrow_back</span>
         </button>
-        <Link href="/"><Logo showTagline={false} /></Link>
+        <Logo showTagline={false} />
         <div className="flex-1" />
         <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Payment Methods</span>
       </header>
