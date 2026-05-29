@@ -139,10 +139,10 @@ export default function Home() {
         <nav className="flex-grow px-3 py-4 space-y-1">
           {[
             { icon: 'inventory_2', label: 'My Shipments', href: '/dashboard' },
-            { icon: 'person', label: 'My Profile & Addresses', href: '/dashboard' },
-            { icon: 'payment', label: 'Payment Methods', href: '/dashboard' },
-            { icon: 'lightbulb', label: 'The Layo Logic', href: '/' },
-            { icon: 'support_agent', label: 'Contact Us', href: '/' },
+            { icon: 'person', label: 'My Profile & Addresses', href: '/profile' },
+            { icon: 'payment', label: 'Payment Methods', href: '/payments' },
+            { icon: 'lightbulb', label: 'The Layo Logic', href: '/layo-logic' },
+            { icon: 'support_agent', label: 'Contact Us', href: '/contact' },
           ].map(item => (
             <Link
               key={item.label}
