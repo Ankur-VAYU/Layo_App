@@ -184,8 +184,8 @@ export default function Home() {
             className="text-[38px] md:text-[54px] font-bold leading-none text-white mb-6"
             style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
           >
-            Buy Indian.<br />
-            <span className="text-primary">Ship Smart.</span>
+            Distance<br />
+            <span className="text-primary">Decoded.</span>
           </h1>
           {/* Quick-stat row */}
           <div className="flex gap-5 flex-wrap">

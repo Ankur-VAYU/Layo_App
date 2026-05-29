@@ -593,7 +593,7 @@ export default function Dashboard() {
         <div className="mb-12 text-center space-y-2">
           <h2 className="text-6xl font-extrabold tracking-tighter text-primary/10 select-none leading-none">LAYO</h2>
           <p className="text-xl md:text-2xl font-bold text-white max-w-xl mx-auto">
-            Precision calculation for your most exquisite assets.
+            Distance Decoded.
           </p>
         </div>
 

@@ -60,8 +60,8 @@ export default function LayoLogicPage() {
         {/* Hero */}
         <section className="px-6 pt-10 pb-8 text-center">
           <h1 className="text-[36px] font-bold leading-none text-white mb-3" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
-            Buy Indian.<br />
-            <span className="text-primary">Ship Smart.</span>
+            Distance<br />
+            <span className="text-primary">Decoded.</span>
           </h1>
           <p className="text-on-surface-variant text-sm leading-relaxed max-w-sm mx-auto">
             Layo is a Canada-focused parcel forwarding service. We bridge the gap between Indian shopping and Canadian living — so you get the quality you know, at the price you deserve.

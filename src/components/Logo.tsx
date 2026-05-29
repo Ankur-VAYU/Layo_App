@@ -62,7 +62,7 @@ export default function Logo({ className = '', showTagline = false, variant = 'h
       </div>
       {showTagline && (
         <span className="text-primary text-[18px] font-normal mt-1 self-end tracking-wide">
-          Distance, decoded.
+          Distance Decoded.
         </span>
       )}
     </Link>
