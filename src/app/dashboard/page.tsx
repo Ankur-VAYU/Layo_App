@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
@@ -158,9 +158,12 @@ const stepPills = [
 export default function Dashboard() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const searchParams = useSearchParams();
 
   // Navigation and view tabs
-  const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'history'>(
+    searchParams.get('tab') === 'history' ? 'history' : 'new'
+  );
   const [currentStep, setCurrentStep] = useState(1);
   const [isFetching, setIsFetching] = useState(true);
 

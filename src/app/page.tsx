@@ -138,7 +138,7 @@ export default function Home() {
         {/* Nav items */}
         <nav className="flex-grow px-3 py-4 space-y-1">
           {[
-            { icon: 'inventory_2', label: 'My Shipments', href: '/dashboard' },
+            { icon: 'inventory_2', label: 'My Shipments', href: '/dashboard?tab=history' },
             { icon: 'person', label: 'My Profile & Addresses', href: '/profile' },
             { icon: 'payment', label: 'Payment Methods', href: '/payments' },
             { icon: 'lightbulb', label: 'The Layo Logic', href: '/layo-logic' },
