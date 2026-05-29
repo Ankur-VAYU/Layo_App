@@ -37,7 +37,7 @@ const WHY_ITEMS = [
   { icon: 'inventory_2', title: '30-Day Free Hold', body: 'Consolidate multiple orders into one parcel. Fewer boxes = much lower shipping cost.' },
   { icon: 'verified_user', title: 'Insured & Verified', body: 'Every item is photographed and weighed at our facility. You see what ships before it ships.' },
   { icon: 'support_agent', title: 'Dedicated Support', body: 'Real humans reachable on WhatsApp. We handle customs queries, returns, and delays.' },
-  { icon: 'payments', title: 'Transparent Pricing', body: 'Flat ₹12/kg shipping, no hidden fees. You approve the quote before we move a single item.' },
+  { icon: 'payments', title: 'Transparent Pricing', body: 'Flat ₹2,500/kg shipping, no hidden fees. You approve the quote before we move a single item.' },
 ];
 
 export default function LayoLogicPage() {
