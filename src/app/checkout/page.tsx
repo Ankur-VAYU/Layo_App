@@ -2,238 +2,353 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { supabase, insertShipment } from '@/lib/supabase';
 
+// ── Razorpay global type ──────────────────────────────────────────
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve(false);
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 export default function Checkout() {
   const router = useRouter();
-  const [paymentMethod, setPaymentMethod] = useState('card');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [orderId] = useState(() => `LAYO-${Math.floor(100000000 + Math.random() * 900000000)}`);
-  const [orderData, setOrderData] = useState<any>(null);
+  const [isProcessing, setIsProcessing]   = useState(false);
+  const [isSuccess, setIsSuccess]         = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [orderData, setOrderData]         = useState<any>(null);
+  const [completedPaymentId, setCompletedPaymentId] = useState<string | null>(null);
+  const [completedOrderRef, setCompletedOrderRef]   = useState<string | null>(null);
+
+  // Exchange rate: 1 CAD ≈ 62 INR (update or fetch live as needed)
+  const EXCHANGE_RATE = parseFloat(orderData?.exchangeRate || '62');
+  const costCAD       = parseFloat(orderData?.totalCostCAD || orderData?.cost || '0');
+  const totalINR      = Math.round(costCAD * EXCHANGE_RATE);
 
   useEffect(() => {
-    const savedData = localStorage.getItem('layo_pending_shipment');
-    if (savedData) {
-      setOrderData(JSON.parse(savedData));
+    const saved = localStorage.getItem('layo_pending_shipment');
+    if (saved) {
+      setOrderData(JSON.parse(saved));
     } else {
-      // Fallback
       setOrderData({
-        weight: "2.75",
-        cost: "8,250",
-        items: [],
-        address: "123 Maple Street, Toronto, ON M5V 2L7",
-        mode: "Selection"
+        totalCostCAD: '25.00',
+        totalWeight: '1.00',
+        mode: 'Selection',
+        destinationAddress: '—',
+        exchangeRate: '62',
       });
     }
+    loadRazorpayScript();
   }, []);
 
+  // ── Core payment flow ────────────────────────────────────────────
   const handlePayment = async () => {
+    setError(null);
     setIsProcessing(true);
-    
-    // Simulate Payment
-    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Save to Supabase
     try {
+      // 1. Get logged-in user
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No authenticated user");
-
-      const costCAD = parseFloat(orderData.totalCostCAD || orderData.cost || '0');
-      const rate = parseFloat(orderData.exchangeRate || '70.4');
-      const totalCostINR = Math.round(costCAD * rate);
-
-      const { error } = await insertShipment({
-        user_id: user.id,
-        mode: orderData.mode || 'Selection',
-        destination_city: orderData.destinationCity || 'Unknown',
-        destination_address: orderData.destinationAddress || orderData.address,
-        india_warehouse: orderData.indiaWarehouse,
-        external_order_id: orderData.orderNumber || orderData.externalOrderId,
-        external_tracking: orderData.externalTracking || null,
-        total_weight: parseFloat(orderData.totalWeight || orderData.weight || '0'),
-        total_cost: totalCostINR,
-        items: orderData.items || [],
-        status: 'paid',
-        payment_method: paymentMethod
-      });
-      
-      if (error) {
-        console.error("DB Insert Error:", error);
-        throw error;
+      if (!user) {
+        setError('You must be signed in to complete checkout.');
+        setIsProcessing(false);
+        return;
       }
-    } catch (err) {
-      console.warn("Supabase insert failed. Error:", err);
-    }
 
-    setIsProcessing(false);
-    setIsSuccess(true);
-    localStorage.removeItem('layo_pending_shipment');
+      // 2. Create Razorpay order on server
+      const createRes = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountINR: totalINR,
+          receipt: `layo_${user.id.slice(0, 8)}_${Date.now()}`,
+          notes: {
+            user_id: user.id,
+            destination: orderData?.destinationAddress || '',
+            weight_kg: orderData?.totalWeight || '',
+          },
+        }),
+      });
+
+      if (!createRes.ok) {
+        const errData = await createRes.json();
+        throw new Error(errData.error || 'Could not create payment order');
+      }
+
+      const { orderId, amount, currency } = await createRes.json();
+
+      // 3. Load Razorpay checkout
+      const loaded = await loadRazorpayScript();
+      if (!loaded) throw new Error('Razorpay failed to load. Check your connection.');
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount,
+        currency,
+        name: 'Layo',
+        description: `Shipment · ${orderData?.totalWeight || '—'} kg to Canada`,
+        order_id: orderId,
+        prefill: {
+          name:  user.user_metadata?.full_name || '',
+          email: user.email || '',
+          contact: user.user_metadata?.phone || '',
+        },
+        theme: { color: '#F2CA50' },
+        modal: {
+          ondismiss: () => {
+            setIsProcessing(false);
+            setError('Payment was cancelled.');
+          },
+        },
+        handler: async (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) => {
+          // 4. Verify signature on server
+          const verifyRes = await fetch('/api/razorpay/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(response),
+          });
+
+          if (!verifyRes.ok) {
+            const errData = await verifyRes.json();
+            setError(errData.error || 'Payment verification failed. Contact support.');
+            setIsProcessing(false);
+            return;
+          }
+
+          // 5. Save shipment to Supabase
+          try {
+            await insertShipment({
+              user_id: user.id,
+              mode: orderData?.mode || 'Selection',
+              destination_city: orderData?.destinationCity || '',
+              destination_address: orderData?.destinationAddress || '',
+              india_warehouse: orderData?.indiaWarehouse || null,
+              external_order_id: orderData?.orderNumber || null,
+              external_tracking: orderData?.externalTracking || null,
+              total_weight: parseFloat(orderData?.totalWeight || '0'),
+              total_cost: totalINR,
+              items: orderData?.items || [],
+              status: 'paid',
+              payment_method: 'razorpay',
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+            } as any);
+          } catch (dbErr) {
+            console.error('Supabase insert failed:', dbErr);
+            // Payment succeeded — still show success; shipment can be reconciled
+          }
+
+          localStorage.removeItem('layo_pending_shipment');
+          setCompletedPaymentId(response.razorpay_payment_id);
+          setCompletedOrderRef(orderId);
+          setIsProcessing(false);
+          setIsSuccess(true);
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', (err: any) => {
+        setError(`Payment failed: ${err.error?.description || 'Unknown error'}. Please try again.`);
+        setIsProcessing(false);
+      });
+      rzp.open();
+
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong. Please try again.');
+      setIsProcessing(false);
+    }
   };
 
+  // ── Success Screen ───────────────────────────────────────────────
   if (isSuccess) {
     return (
-      <main className="min-h-screen bg-background text-on-background flex flex-col items-center justify-center p-6 text-center font-sans">
-        <div className="bg-surface-container border border-white/10 rounded-2xl w-full max-w-md p-8 shadow-2xl space-y-6 flex flex-col items-center justify-center">
-          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white text-3xl font-bold mb-2 animate-bounce">
-            ✓
+      <main className="min-h-screen bg-background text-on-background flex flex-col items-center justify-center p-6 font-sans">
+        <div className="bg-surface-container border border-white/10 rounded-2xl w-full max-w-md p-8 shadow-2xl space-y-6 flex flex-col items-center text-center">
+          <div className="w-20 h-20 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
+            <span className="material-symbols-outlined text-green-400 text-4xl">check_circle</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-white">Payment Successful!</h1>
-          <p className="text-on-surface-variant text-sm">Your shipment locker order has been verified and placed successfully.</p>
-          <div className="bg-background border border-white/5 p-4 rounded-xl text-xs space-y-1.5 w-full text-left">
-            <p className="text-white"><strong>Order ID:</strong> {orderId}</p>
-            <p className="text-on-surface-variant leading-relaxed">
-              We have notified our India hubs. Drop-off coordinates and package tagging numbers have been generated.
+          <div className="space-y-2">
+            <h1 className="text-2xl font-extrabold text-white">Payment Successful!</h1>
+            <p className="text-on-surface-variant text-sm leading-relaxed">
+              Your shipment has been confirmed. We've notified our India warehouse team.
             </p>
           </div>
-          <button 
-            className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all mt-4" 
+          <div className="bg-background border border-white/5 rounded-xl p-4 text-xs w-full text-left space-y-2">
+            {completedOrderRef && (
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Order Ref</span>
+                <span className="text-white font-mono font-bold">{completedOrderRef.slice(-12).toUpperCase()}</span>
+              </div>
+            )}
+            {completedPaymentId && (
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Payment ID</span>
+                <span className="text-white font-mono font-bold">{completedPaymentId}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-on-surface-variant">Amount Paid</span>
+              <span className="text-primary font-bold">₹{totalINR.toLocaleString('en-IN')}</span>
+            </div>
+          </div>
+          <div className="bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 text-xs text-primary font-semibold leading-relaxed w-full">
+            Expected delivery: 5–7 business days after item(s) reach our India hub.
+          </div>
+          <button
+            className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all"
             onClick={() => router.push('/dashboard')}
           >
-            Go to My Shipments
+            View My Shipments
           </button>
         </div>
       </main>
     );
   }
 
-  const costCAD = parseFloat(orderData?.totalCostCAD || orderData?.cost || '0');
-  const rate = parseFloat(orderData?.exchangeRate || '70.4');
-  const totalCostINR = Math.round(costCAD * rate);
-
+  // ── Checkout Form ────────────────────────────────────────────────
   return (
     <div className="bg-background text-on-background min-h-screen flex flex-col font-sans">
-      <header className="bg-surface border-b border-white/10 flex justify-between items-center w-full px-6 py-4 sticky top-0 z-50">
+      {/* Header */}
+      <header className="bg-surface border-b border-white/10 flex items-center gap-3 w-full px-6 py-4 sticky top-0 z-50">
+        <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-white transition-colors">
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
         <Logo showTagline={false} />
-        <span className="text-on-surface-variant text-xs uppercase tracking-wider font-bold">Secure Checkout</span>
+        <div className="flex-1" />
+        <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant">
+          <span className="material-symbols-outlined text-green-400 text-sm">lock</span>
+          Secure Checkout
+        </div>
       </header>
 
-      <main className="flex-grow max-w-[1200px] mx-auto px-6 py-8 w-full">
+      <main className="flex-grow max-w-[1100px] mx-auto px-5 py-8 w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          <div className="lg:col-span-8 bg-surface-container rounded-2xl p-6 md:p-8 border border-white/10 space-y-6">
+
+          {/* ── Left: Details ── */}
+          <div className="lg:col-span-8 space-y-6">
             <div>
-              <h1 className="text-2xl font-extrabold text-white">Complete Shipment Payment</h1>
-              <p className="text-on-surface-variant text-sm mt-1">Review destination details and select payment option.</p>
+              <h1 className="text-2xl font-extrabold text-white">Confirm Your Shipment</h1>
+              <p className="text-on-surface-variant text-sm mt-1">Review the details below before paying.</p>
             </div>
 
-            {/* Delivery address review */}
-            <div className="bg-background border border-white/5 rounded-xl p-5 space-y-2">
-              <h3 className="text-xs font-bold text-primary uppercase tracking-wider">📍 Locker Destination</h3>
-              <p className="font-bold text-sm text-white">{orderData?.destinationAddress || orderData?.address}</p>
-              <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                Aggregated Express Air Transit: 5-7 Business Days (Insured &amp; Tracked)
+            {/* Destination */}
+            <div className="bg-surface-container border border-white/10 rounded-2xl p-5 space-y-3">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary border-l-4 border-primary pl-3">Delivery Destination</h2>
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-primary text-xl mt-0.5">location_on</span>
+                <div>
+                  <p className="text-white font-semibold text-sm">{orderData?.destinationAddress || '—'}</p>
+                  <p className="text-on-surface-variant text-[11px] mt-1">Express Air · Insured & Tracked · 5–7 Business Days</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Shipment breakdown */}
+            <div className="bg-surface-container border border-white/10 rounded-2xl p-5 space-y-3">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary border-l-4 border-primary pl-3">Shipment Summary</h2>
+              <div className="space-y-2.5 text-sm">
+                {[
+                  { label: 'Mode', value: orderData?.mode || '—' },
+                  { label: 'Total Weight', value: `${orderData?.totalWeight || '—'} kg` },
+                  { label: 'India Warehouse', value: orderData?.indiaWarehouse || 'To be assigned' },
+                  { label: 'Items', value: `${(orderData?.items || []).length} item(s)` },
+                ].map(row => (
+                  <div key={row.label} className="flex justify-between text-xs">
+                    <span className="text-on-surface-variant">{row.label}</span>
+                    <span className="text-white font-semibold">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Payment via Razorpay */}
+            <div className="bg-surface-container border border-white/10 rounded-2xl p-5 space-y-4">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary border-l-4 border-primary pl-3">Payment</h2>
+              <div className="bg-background border border-white/5 rounded-xl p-4 flex items-center gap-4">
+                <span className="material-symbols-outlined text-primary text-2xl">payments</span>
+                <div>
+                  <p className="text-white font-bold text-sm">Pay via Razorpay</p>
+                  <p className="text-on-surface-variant text-[11px] mt-0.5">UPI · Credit / Debit Card · Net Banking · Wallets · EMI</p>
+                </div>
+                <div className="ml-auto flex gap-1 text-[9px] font-bold text-on-surface-variant">
+                  <span className="px-1.5 py-0.5 bg-white/5 rounded">VISA</span>
+                  <span className="px-1.5 py-0.5 bg-white/5 rounded">MC</span>
+                  <span className="px-1.5 py-0.5 bg-white/5 rounded">UPI</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                Clicking "Pay Now" opens the Razorpay secure checkout. Your card details are never stored on Layo's servers.
               </p>
             </div>
 
-            {/* Payment options */}
-            <div className="space-y-4 border-t border-white/5 pt-6">
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">💳 Choose Payment Option</h3>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { id: 'card', label: 'Credit/Debit', icon: '💳' },
-                  { id: 'upi', label: 'UPI / QR', icon: '📱' },
-                  { id: 'paypal', label: 'PayPal', icon: '🅿️' }
-                ].map(opt => (
-                  <button 
-                    key={opt.id}
-                    onClick={() => setPaymentMethod(opt.id)}
-                    className={`py-3 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition-all ${
-                      paymentMethod === opt.id 
-                        ? 'bg-primary/10 border-primary text-primary' 
-                        : 'bg-background border-white/5 text-on-surface-variant hover:border-white/15'
-                    }`}
-                  >
-                    <span className="text-lg">{opt.icon}</span>
-                    {opt.label}
-                  </button>
-                ))}
+            {/* Error banner */}
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-2">
+                <span className="material-symbols-outlined text-red-400 text-sm mt-0.5 flex-shrink-0">error</span>
+                <p className="text-red-400 text-xs font-semibold">{error}</p>
               </div>
-
-              {/* Card Form */}
-              {paymentMethod === 'card' && (
-                <div className="space-y-4 border border-white/5 rounded-xl p-5 bg-background animate-in mt-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Cardholder Name</label>
-                    <input type="text" placeholder="John Doe" className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-on-surface-variant">Card Number</label>
-                    <input type="text" placeholder="**** **** **** ****" className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-on-surface-variant">Expiry Date</label>
-                      <input type="text" placeholder="MM/YY" className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-on-surface-variant">Security Code (CVV)</label>
-                      <input type="password" placeholder="***" className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* UPI */}
-              {paymentMethod === 'upi' && (
-                <div className="border border-white/5 rounded-xl p-6 bg-background text-center space-y-4 animate-in mt-4">
-                  <div className="w-40 h-40 bg-white mx-auto p-3 rounded-lg flex items-center justify-center font-bold text-xs text-background select-none">
-                    [ UPI QR CODE ]
-                  </div>
-                  <p className="text-xs text-on-surface-variant">Scan the secure QR code using GPay, PhonePe, or BHIM to initiate deposit.</p>
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
-          {/* Sidebar checkout summary */}
-          <div className="lg:col-span-4 bg-surface-container rounded-2xl p-6 border border-white/10 space-y-6">
-            <h3 className="text-lg font-bold text-white">Order Summary</h3>
-            
-            <div className="space-y-2.5 text-xs">
+          {/* ── Right: Price Summary ── */}
+          <div className="lg:col-span-4 bg-surface-container border border-white/10 rounded-2xl p-6 space-y-5 lg:sticky lg:top-[80px]">
+            <h2 className="text-lg font-extrabold text-white">Order Total</h2>
+
+            <div className="space-y-3 text-xs">
               <div className="flex justify-between">
-                <span className="text-on-surface-variant">Shipment Mode</span>
-                <span className="text-white font-bold">{orderData?.mode || 'Selection'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-on-surface-variant">Total Weight</span>
-                <span className="text-white font-bold">{orderData?.totalWeight || orderData?.weight || '0.00'} kg</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-on-surface-variant">Live Conversion Rate</span>
-                <span className="text-white font-bold">1 CAD = ₹{rate.toFixed(2)} INR</span>
-              </div>
-              <div className="flex justify-between border-t border-white/5 pt-3">
-                <span className="text-on-surface-variant">Deposit Shipping Fee</span>
+                <span className="text-on-surface-variant">Shipping Fee</span>
                 <span className="text-white font-bold">${costCAD.toFixed(2)} CAD</span>
               </div>
-            </div>
-
-            <div className="border-t border-white/5 pt-4">
-              <div className="flex justify-between items-baseline mb-6">
-                <span className="text-sm text-white font-bold">Total Charge</span>
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Rate (1 CAD)</span>
+                <span className="text-white font-bold">≈ ₹{EXCHANGE_RATE.toFixed(0)}</span>
+              </div>
+              <div className="flex justify-between border-t border-white/5 pt-3">
+                <span className="text-on-surface-variant">You Pay (INR)</span>
                 <div className="text-right">
-                  <p className="text-2xl font-extrabold text-white">${costCAD.toFixed(2)} <span className="text-xs font-normal text-on-surface-variant">CAD</span></p>
-                  <span className="text-[10px] text-primary font-bold uppercase tracking-wider">≈ ₹{totalCostINR.toLocaleString()} INR</span>
+                  <p className="text-2xl font-extrabold text-white">₹{totalINR.toLocaleString('en-IN')}</p>
+                  <p className="text-[9px] text-on-surface-variant">${costCAD.toFixed(2)} CAD equivalent</p>
                 </div>
               </div>
-
-              <button 
-                className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
-                onClick={handlePayment}
-                disabled={isProcessing}
-              >
-                {isProcessing ? 'Initiating Transaction...' : `Secure Pay $${costCAD.toFixed(2)} CAD`}
-              </button>
             </div>
 
-            <div className="flex flex-col items-center justify-center gap-1.5 text-[10px] text-on-surface-variant opacity-65 pt-2">
-              <span>🔒 256-bit SSL Secure Checkout</span>
-              <div className="flex gap-2 font-bold tracking-wider">
-                <span>VISA</span> • <span>MASTERCARD</span> • <span>STRIPE</span>
-              </div>
+            <button
+              onClick={handlePayment}
+              disabled={isProcessing || !orderData}
+              className="w-full py-4 bg-primary text-background font-bold text-sm uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isProcessing ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-background/40 border-t-background rounded-full animate-spin" />
+                  Opening Checkout…
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-lg leading-none">lock</span>
+                  Pay ₹{totalINR.toLocaleString('en-IN')}
+                </>
+              )}
+            </button>
+
+            <div className="flex flex-col items-center gap-1 text-[10px] text-on-surface-variant opacity-60">
+              <span>🔒 256-bit SSL · Powered by Razorpay</span>
             </div>
           </div>
 
