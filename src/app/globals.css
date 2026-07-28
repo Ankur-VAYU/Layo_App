@@ -3,8 +3,8 @@
 
 @layer base {
   body {
-    background-color: #131313;
-    color: #e5e2e1;
+    background-color: #f5f2eb;
+    color: #2b2927;
     font-family: var(--font-geist-sans), sans-serif;
     overflow-x: hidden;
   }
@@ -16,24 +16,24 @@
   vertical-align: middle;
 }
 
-/* Luxury card styles from Stitch */
+/* Luxury card styles from Stitch - adapted for light theme */
 .luxury-card {
-  background-color: #1a1a1a;
-  border: 1px solid rgba(242, 202, 80, 0.1);
+  background-color: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .luxury-card.selected {
   border-color: #f2ca50;
-  background-color: #241a00;
-  box-shadow: 0 0 15px rgba(242, 202, 80, 0.2);
+  background-color: #fdfaf2;
+  box-shadow: 0 0 15px rgba(242, 202, 80, 0.15);
 }
 .step-active .step-indicator { 
   background-color: #f2ca50; 
-  box-shadow: 0 0 10px rgba(242, 202, 80, 0.6); 
+  box-shadow: 0 0 10px rgba(242, 202, 80, 0.4); 
   border-color: #f2ca50; 
 }
 .step-active .step-label { 
-  color: #f2ca50; 
+  color: #2b2927; 
   font-weight: 700; 
 }
 
@@ -55,12 +55,12 @@
 }
 
 .glass-card {
-  background: rgba(26, 26, 26, 0.8);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 .gold-glow {
-  box-shadow: 0 0 20px rgba(212, 175, 55, 0.15);
+  box-shadow: 0 10px 30px rgba(92, 87, 82, 0.05), 0 1px 3px rgba(92, 87, 82, 0.02);
 }
 .snap-carousel {
   scroll-snap-type: x mandatory;
@@ -84,7 +84,51 @@
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+  background: linear-gradient(135deg, #2b2927 0%, #66615b 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+@keyframes float-1 {
+  0%, 100% { transform: translateY(0) rotate(15deg); }
+  50% { transform: translateY(-20px) rotate(18deg); }
+}
+
+@keyframes float-2 {
+  0%, 100% { transform: translateY(0) rotate(-10deg); }
+  50% { transform: translateY(25px) rotate(-15deg); }
+}
+
+@keyframes float-3 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(15px, -15px); }
+}
+
+.animate-float-1 {
+  animation: float-1 8s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: float-2 10s ease-in-out infinite;
+}
+
+.animate-float-3 {
+  animation: float-3 12s ease-in-out infinite;
+}
+
+@keyframes scroll-conveyor {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-25%); }
+}
+
+.animate-conveyor {
+  animation: scroll-conveyor 30s linear infinite;
+}
+
+.animate-conveyor:hover {
+  animation-play-state: paused;
+}
+
+.font-serif-luxury {
+  font-family: Georgia, Cambria, "Times New Roman", Times, serif;
 }

@@ -11,19 +11,44 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 0. Handle unhandled fetch rejections from offline Supabase client
+    const handleRejection = (e: PromiseRejectionEvent) => {
+      const msg = e.reason?.message || String(e.reason);
+      if (msg && (msg.includes('fetch') || msg.includes('Fetch') || msg.includes('NetworkError'))) {
+        console.warn("Caught and muted background network/fetch rejection:", e.reason);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('unhandledrejection', handleRejection);
+
     // 1. Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.warn("Supabase connection failed. App is running in offline mode.", err);
+        setUser(null);
+        setLoading(false);
+      });
 
     // 2. Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let subscription: any = null;
+    try {
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      });
+      subscription = data?.subscription;
+    } catch (err) {
+      console.warn("Supabase auth listener registration failed.", err);
+    }
 
-    return () => subscription.unsubscribe();
+    return () => {
+      window.removeEventListener('unhandledrejection', handleRejection);
+      if (subscription) subscription.unsubscribe();
+    };
   }, []);
 
   return (
