@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
+// Instantiated lazily inside POST to prevent Next.js build-time crashes when env vars are missing
+const getRazorpay = () => {
+  return new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID || 'dummy_key_id',
+    key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_key_secret',
+  });
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,6 +20,7 @@ export async function POST(request: NextRequest) {
     // Razorpay expects amount in smallest currency unit (paise for INR)
     const amountPaise = Math.round(amountINR * 100);
 
+    const razorpay = getRazorpay();
     const order = await razorpay.orders.create({
       amount: amountPaise,
       currency,
