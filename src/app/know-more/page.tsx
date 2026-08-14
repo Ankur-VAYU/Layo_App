@@ -228,24 +228,36 @@ export default function KnowMorePage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-white border border-black/5 rounded-3xl p-6 flex flex-col space-y-4 shadow-sm hover:shadow-md transition-shadow">
-              <span className="text-2xl font-black text-[#FF5A65]">01</span>
+              <div className="flex justify-between items-center">
+                <span className="text-2xl font-black text-[#FF5A65]">01</span>
+                <span className="text-2xl">📍</span>
+              </div>
               <h3 className="text-lg font-bold text-[#0E1F38]">Route Your Packages</h3>
-              <p className="text-xs text-[#0E1F38]/75 leading-relaxed">Whether you are shopping online or offline, or receiving a personal package, simply use your provided warehouse address as your delivery destination.</p>
+              <p className="text-xs text-[#0E1F38]/75 leading-relaxed font-light">Whether you are shopping online or offline, or receiving a personal package, simply use your provided warehouse address as your delivery destination.</p>
             </div>
             <div className="bg-white border border-black/5 rounded-3xl p-6 flex flex-col space-y-4 shadow-sm hover:shadow-md transition-shadow">
-              <span className="text-2xl font-black text-[#FF5A65]">02</span>
+              <div className="flex justify-between items-center">
+                <span className="text-2xl font-black text-[#FF5A65]">02</span>
+                <span className="text-2xl">🏷️</span>
+              </div>
               <h3 className="text-lg font-bold text-[#0E1F38]">Categorize & Customize</h3>
-              <p className="text-xs text-[#0E1F38]/75 leading-relaxed">Ditch the guesswork by simply categorizing your items for a smart, data-driven weight estimate. Don&apos;t forget your lightweight &quot;Extras&quot;!</p>
+              <p className="text-xs text-[#0E1F38]/75 leading-relaxed font-light">Ditch the guesswork by simply categorizing your items for a smart, data-driven weight estimate. Don&apos;t forget your lightweight &quot;Extras&quot;!</p>
             </div>
             <div className="bg-white border border-black/5 rounded-3xl p-6 flex flex-col space-y-4 shadow-sm hover:shadow-md transition-shadow">
-              <span className="text-2xl font-black text-[#FF5A65]">03</span>
+              <div className="flex justify-between items-center">
+                <span className="text-2xl font-black text-[#FF5A65]">03</span>
+                <span className="text-2xl">🔄</span>
+              </div>
               <h3 className="text-lg font-bold text-[#0E1F38]">Ship, Hold & Combine</h3>
-              <p className="text-xs text-[#0E1F38]/75 leading-relaxed">Ship immediately, or optionally choose to hold your items to combine them with up to 3 additional incoming packages.</p>
+              <p className="text-xs text-[#0E1F38]/75 leading-relaxed font-light">Ship immediately, or optionally choose to hold your items to combine them with up to 3 additional incoming packages.</p>
             </div>
             <div className="bg-white border border-black/5 rounded-3xl p-6 flex flex-col space-y-4 shadow-sm hover:shadow-md transition-shadow">
-              <span className="text-2xl font-black text-[#FF5A65]">04</span>
+              <div className="flex justify-between items-center">
+                <span className="text-2xl font-black text-[#FF5A65]">04</span>
+                <span className="text-2xl">🚚</span>
+              </div>
               <h3 className="text-lg font-bold text-[#0E1F38]">Ship & Track</h3>
-              <p className="text-xs text-[#0E1F38]/75 leading-relaxed">Review your finalized, cost-effective shipment, complete your payment, and track your smart haul right to your doorstep.</p>
+              <p className="text-xs text-[#0E1F38]/75 leading-relaxed font-light">Review your finalized, cost-effective shipment, complete your payment, and track your smart haul right to your doorstep.</p>
             </div>
           </div>
 
