@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
 import { useAuth } from '@/components/AuthProvider';
@@ -825,13 +826,15 @@ export default function Home() {
               Indian shipping<br />made easy.
             </h3>
             
-            {/* Pink Isometric Cube Vector Logo */}
-            <div className="w-24 h-24 md:w-32 md:w-32 flex items-center justify-center select-none transform rotate-12 drop-shadow-lg flex-shrink-0">
-              <svg viewBox="0 0 100 100" fill="none" className="w-full h-full">
-                <path d="M 50 8 L 84 25 L 50 42 L 16 25 Z" fill="#FFE0E0" opacity="0.95" />
-                <path d="M 16 25 L 50 42 L 50 86 L 16 69 Z" fill="#FFE0E0" opacity="0.85" />
-                <path d="M 50 42 L 84 25 L 84 69 L 50 86 Z" fill="#FFAFAF" opacity="0.75" />
-              </svg>
+            {/* Official Pink/Coral 3D Layo Logo */}
+            <div className="w-24 h-24 md:w-32 md:h-32 flex items-center justify-center bg-white/95 rounded-3xl p-3 shadow-xl flex-shrink-0 transform rotate-6 hover:rotate-0 transition-transform">
+              <Image
+                src="/layo-logo.png"
+                alt="Layo Official Logo"
+                width={120}
+                height={120}
+                className="w-full h-full object-contain drop-shadow-md"
+              />
             </div>
           </div>
 

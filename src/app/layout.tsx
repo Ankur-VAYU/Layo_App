@@ -3,8 +3,16 @@ import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
-  title: "Layo | India-Canada Premium Logistics Aggregator",
-  description: "Bridging borders with simplified logistics. Ship from India to Canada at 50% lower costs with real-time tracking and concierge services.",
+  title: "Layo | Indian Shipping Made Easy",
+  description: "Bridging borders with simplified logistics. Ship from India to Canada with real-time tracking, parcel holding, and smart consolidation.",
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/layo-logo.png", type: "image/png" },
+    ],
+    shortcut: "/icon-192.png",
+    apple: "/icon-192.png",
+  },
 };
 
 export default function RootLayout({
