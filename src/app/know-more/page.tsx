@@ -114,7 +114,7 @@ export default function KnowMorePage() {
           <Logo showTagline={false} darkText={true} />
         </div>
         <nav className="hidden md:flex items-center gap-8 font-semibold text-sm">
-          <Link href="/#how-it-works" className="text-[#0E1F38] hover:text-[#FF5A65] transition-colors">How it Works</Link>
+          <Link href="/know-more" className="text-[#0E1F38] hover:text-[#FF5A65] transition-colors">How it Works</Link>
           <Link href="/shipping-policy" className="text-[#0E1F38] hover:text-[#FF5A65] transition-colors">Shipping Policy</Link>
           <Link href="/login" className="text-[#0E1F38] hover:text-[#FF5A65] transition-colors">Sign Up/Log In</Link>
         </nav>

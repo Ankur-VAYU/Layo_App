@@ -152,12 +152,12 @@ export default function Home() {
 
         {/* Right: Navigation Links */}
         <nav className="hidden md:flex items-center gap-8 font-semibold text-sm">
-          <button
-            onClick={() => scrollToSection(howItWorksRef)}
-            className="text-[#0E1F38] hover:text-[#FF5A65] transition-colors cursor-pointer"
+          <Link
+            href="/know-more"
+            className="text-[#0E1F38] hover:text-[#FF5A65] transition-colors"
           >
             How it Works
-          </button>
+          </Link>
           <Link
             href="/shipping-policy"
             className="text-[#0E1F38] hover:text-[#FF5A65] transition-colors"
@@ -759,7 +759,7 @@ export default function Home() {
               <h3 className="text-lg font-bold text-[#0E1F38]">Quick Links</h3>
               <ul className="space-y-3 font-semibold text-xs md:text-sm text-[#0E1F38]/70">
                 <li><Link href="/about" className="hover:text-[#FF5A65] transition-colors">About Layo</Link></li>
-                <li><button onClick={() => scrollToSection(howItWorksRef)} className="hover:text-[#FF5A65] transition-colors text-left">How It Works</button></li>
+                <li><Link href="/know-more" className="hover:text-[#FF5A65] transition-colors text-left">How It Works</Link></li>
                 <li><button onClick={() => setModalOpen(true)} className="hover:text-[#FF5A65] transition-colors text-left">Shipping Calculator</button></li>
                 <li><Link href="/tracking" className="hover:text-[#FF5A65] transition-colors">Track Shipment</Link></li>
               </ul>
