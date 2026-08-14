@@ -352,13 +352,19 @@ export default function Dashboard() {
   };
 
   // Adjust qty for the currently active demo tab of a category
-  const handleQtyChange = (catKey: string, rowKey: string, delta: number) => {
+  const handleQtyChange = (catKey: string, rowKey: string, delta: number, isPromo?: boolean) => {
     const demo = activeDemoState[catKey] ?? 'Adult';
     const fullKey = `${rowKey}-${demo}`;
-    setQtyState(prev => ({
-      ...prev,
-      [fullKey]: Math.max(0, (prev[fullKey] ?? 0) + delta)
-    }));
+    setQtyState(prev => {
+      const cur = prev[fullKey] ?? 0;
+      let nxt = cur + delta;
+      if (isPromo && nxt > 5) nxt = 5;
+      nxt = Math.max(0, nxt);
+      return {
+        ...prev,
+        [fullKey]: nxt
+      };
+    });
   };
 
   // Switch active demo tab for a category — qty for the new tab is independent
@@ -1143,6 +1149,11 @@ export default function Dashboard() {
                                   <div className="flex-grow pr-4">
                                     <p className="font-bold text-sm text-[#0E1F38] flex items-center gap-1.5">
                                       {sub.name}
+                                      {sub.promo && (
+                                        <span className="text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                          FREE Promo (Max 5)
+                                        </span>
+                                      )}
                                       {(sub.oversized || sub.isRestricted || cat.isFoodGlobal) && (
                                         <span
                                           className="material-symbols-outlined text-xs text-[#FF5A65] leading-none cursor-help"
@@ -1154,24 +1165,45 @@ export default function Dashboard() {
                                     </p>
                                     <p className="text-[10px] text-[#0E1F38]/60 mt-0.5 uppercase tracking-wider font-semibold">
                                       {sub.weight}g
+                                      {sub.promo && currentQty >= 5 && (
+                                        <span className="text-[#FF5A65] normal-case ml-1 font-medium">· Max 5 limit reached</span>
+                                      )}
                                     </p>
                                   </div>
 
                                   <div className="flex items-center gap-3.5 bg-white rounded-full p-1.5 border border-black/10 shadow-sm">
                                     <button
                                       onClick={() => cat.requiresAge
-                                        ? handleQtyChange(catKey, rowKey, -1)
+                                        ? handleQtyChange(catKey, rowKey, -1, sub.promo)
                                         : setQtyState(prev => ({ ...prev, [`${rowKey}-default`]: Math.max(0, (prev[`${rowKey}-default`] ?? 0) - 1) }))}
-                                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 text-[#0E1F38] transition-all active:scale-90 cursor-pointer"
+                                      disabled={currentQty === 0}
+                                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                        currentQty === 0 ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40' : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
+                                      }`}
                                     >
                                       <span className="material-symbols-outlined text-sm leading-none">remove</span>
                                     </button>
                                     <span className="w-5 text-center font-bold text-sm text-[#0E1F38]">{currentQty}</span>
                                     <button
-                                      onClick={() => cat.requiresAge
-                                        ? handleQtyChange(catKey, rowKey, 1)
-                                        : setQtyState(prev => ({ ...prev, [`${rowKey}-default`]: (prev[`${rowKey}-default`] ?? 0) + 1 }))}
-                                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 text-[#0E1F38] transition-all active:scale-90 cursor-pointer"
+                                      onClick={() => {
+                                        if (cat.requiresAge) {
+                                          handleQtyChange(catKey, rowKey, 1, sub.promo);
+                                        } else {
+                                          setQtyState(prev => {
+                                            const cur = prev[`${rowKey}-default`] ?? 0;
+                                            let nxt = cur + 1;
+                                            if (sub.promo && nxt > 5) nxt = 5;
+                                            return { ...prev, [`${rowKey}-default`]: nxt };
+                                          });
+                                        }
+                                      }}
+                                      disabled={sub.promo && currentQty >= 5}
+                                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                        sub.promo && currentQty >= 5
+                                          ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40'
+                                          : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
+                                      }`}
+                                      title={sub.promo && currentQty >= 5 ? 'Maximum limit of 5 free promo items reached' : undefined}
                                     >
                                       <span className="material-symbols-outlined text-sm leading-none">add</span>
                                     </button>

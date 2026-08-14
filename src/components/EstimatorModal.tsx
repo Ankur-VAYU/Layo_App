@@ -160,9 +160,19 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
 
   /* ── Quantity helpers ── */
   const changeQty = (key: string, delta: number) => {
+    const parts = key.split('-');
+    const catId = parts[0];
+    const typeIdx = parseInt(parts[1], 10);
+    const item = ITEM_TYPES[catId]?.[typeIdx];
+    const isPromo = item?.isPromo;
+
     setQtys(prev => {
       const cur = prev[key] ?? 0;
-      const nxt = Math.max(0, cur + delta);
+      let nxt = cur + delta;
+      if (isPromo && nxt > 5) {
+        nxt = 5;
+      }
+      nxt = Math.max(0, nxt);
       if (nxt === 0) {
         const copy = { ...prev };
         delete copy[key];
@@ -468,25 +478,37 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                         <div className="flex-grow min-w-0">
                           <p className="text-xs font-bold text-[#0E1F38] leading-tight">
                             {type.label}
-                            {type.isPromo && <span className="ml-1.5 text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">FREE Promo Extra</span>}
+                            {type.isPromo && <span className="ml-1.5 text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">FREE Promo Extra (Max 5)</span>}
                             {type.isOversized && <span className="ml-1.5 text-[9px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-semibold">⚠ oversized</span>}
                             {type.isFood && <span className="ml-1.5 text-[9px] text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md font-semibold">⚠ customs</span>}
                           </p>
-                          <p className="text-[11px] text-[#0E1F38]/60 mt-0.5 font-light">{type.subtext}</p>
+                          <p className="text-[11px] text-[#0E1F38]/60 mt-0.5 font-light">
+                            {type.subtext}
+                            {type.isPromo && qty >= 5 && <span className="text-[#FF5A65] font-medium ml-1.5">· Max 5 limit reached</span>}
+                          </p>
                         </div>
 
                         {/* Qty stepper — operates on active age tab only */}
                         <div className="flex items-center gap-2 bg-[#FAF8EE] rounded-full px-2 py-1 border border-black/10 flex-shrink-0 shadow-sm">
                           <button
                             onClick={() => changeQty(key, -1)}
-                            className="w-7 h-7 rounded-full flex items-center justify-center bg-white hover:bg-black/5 text-[#0E1F38] active:scale-90 transition-all border border-black/5 cursor-pointer"
+                            disabled={qty === 0}
+                            className={`w-7 h-7 rounded-full flex items-center justify-center bg-white border border-black/5 transition-all ${
+                              qty === 0 ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40' : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
+                            }`}
                           >
                             <span className="material-symbols-outlined text-sm leading-none">remove</span>
                           </button>
                           <span className="w-5 text-center text-xs font-bold text-[#0E1F38]">{qty}</span>
                           <button
                             onClick={() => changeQty(key, 1)}
-                            className="w-7 h-7 rounded-full flex items-center justify-center bg-white hover:bg-black/5 text-[#0E1F38] active:scale-90 transition-all border border-black/5 cursor-pointer"
+                            disabled={type.isPromo && qty >= 5}
+                            className={`w-7 h-7 rounded-full flex items-center justify-center bg-white border border-black/5 transition-all ${
+                              type.isPromo && qty >= 5
+                                ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40'
+                                : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
+                            }`}
+                            title={type.isPromo && qty >= 5 ? 'Maximum limit of 5 free promo items reached' : undefined}
                           >
                             <span className="material-symbols-outlined text-sm leading-none">add</span>
                           </button>
