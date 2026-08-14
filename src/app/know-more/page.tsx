@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
 
@@ -196,27 +197,15 @@ export default function KnowMorePage() {
 
             {/* Box Illustration (5 cols) */}
             <div className="lg:col-span-5 flex flex-col items-center justify-center relative">
-              <div className="w-full max-w-[340px] aspect-square relative text-[#0E1F38]">
-                <svg viewBox="0 0 400 400" className="w-full h-full fill-none stroke-current" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M 100,160 L 200,210 L 300,160 L 200,110 Z" fill="#E6F4D0" opacity="0.4" />
-                  <path d="M 200,80 L 260,110 L 200,140 L 140,110 Z" className="opacity-25" />
-                  <path d="M 80,180 L 200,240 L 320,180 L 200,120 Z" strokeWidth="3.5" fill="#E8F4D0" />
-                  <path d="M 80,180 L 80,300 L 200,360 L 200,240" strokeWidth="3.5" fill="#CADFAD" />
-                  <path d="M 320,180 L 320,300 L 200,360" strokeWidth="3.5" fill="#B4CE93" />
-                  <path d="M 80,180 L 30,130 L 150,70 L 200,120" strokeWidth="2.5" fill="#F1F7EB" />
-                  <path d="M 320,180 L 370,130 L 250,70 L 200,120" strokeWidth="2.5" fill="#E2EDD3" />
-                  <text x="240" y="275" fontSize="28" fontWeight="900" fill="#FF5A65" stroke="none" transform="rotate(-15 240 275)" opacity="0.95">Layo</text>
-                </svg>
-
-                <div className="absolute top-[8%] left-[-15px] bg-[#607D8B] text-white px-4 py-2 rounded-full text-xs font-bold shadow-md">
-                  Combine Orders
-                </div>
-                <div className="absolute bottom-[22%] left-[10px] bg-[#5C6E58] text-white px-4 py-2 rounded-full text-xs font-bold shadow-md">
-                  Safe In Your Locker
-                </div>
-                <div className="absolute top-[38%] right-[-15px] bg-[#5B7584] text-white px-4 py-2 rounded-full text-xs font-bold shadow-md">
-                  Hold orders up to 30days
-                </div>
+              <div className="w-full max-w-[440px] relative">
+                <Image
+                  src="/how-layo-works-box.png"
+                  alt="How Layo Works - Combine Orders, Safe In Your Locker, Hold Orders Up To 30 Days"
+                  width={1024}
+                  height={621}
+                  className="w-full h-auto object-contain drop-shadow-md rounded-3xl transition-transform hover:scale-[1.02] duration-300"
+                  priority
+                />
               </div>
             </div>
           </div>
