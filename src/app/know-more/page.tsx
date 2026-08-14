@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import Logo from '@/components/Logo';
@@ -93,6 +93,17 @@ export default function KnowMorePage() {
     : activeTab === 'existing'
       ? EXISTING_USER_STEPS
       : PERSONAL_USER_STEPS;
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hash = window.location.hash;
+      if (hash === '#contact' || hash === '#contact-section') {
+        setTimeout(() => {
+          contactRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 150);
+      }
+    }
+  }, []);
 
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -350,7 +361,7 @@ export default function KnowMorePage() {
       {/* ───────────────────────────────────────
           SECTION 5: GET IN TOUCH WITH US HERE
       ─────────────────────────────────────── */}
-      <section ref={contactRef} className="py-24 px-6 md:px-16 bg-[#E7F7D3] border-t border-black/5">
+      <section ref={contactRef} id="contact" className="py-24 px-6 md:px-16 bg-[#E7F7D3] border-t border-black/5 scroll-mt-16">
         <div className="max-w-4xl w-full mx-auto space-y-10">
           <div className="text-center space-y-2">
             <h2 className="text-3xl md:text-5xl font-black text-[#0E1F38] tracking-tight">
