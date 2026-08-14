@@ -150,174 +150,233 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
     onClose();
   };
 
-  /* ── Helpers ── */
-  // key already includes age: `${catId}-${typeIdx}-${age}`
-  const changeQty = (key: string, delta: number) =>
-    setQtys(prev => ({ ...prev, [key]: Math.max(0, (prev[key] ?? 0) + delta) }));
+  /* ── Clipboard paste for order number ── */
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) setOrderNumber(text.trim());
+    } catch { /* clipboard not permitted */ }
+  };
 
-  const toggleCat = (catId: string) =>
-    setOpenCats(prev => prev.includes(catId) ? prev.filter(c => c !== catId) : [...prev, catId]);
+  /* ── Quantity helpers ── */
+  const changeQty = (key: string, delta: number) => {
+    setQtys(prev => {
+      const cur = prev[key] ?? 0;
+      const nxt = Math.max(0, cur + delta);
+      if (nxt === 0) {
+        const copy = { ...prev };
+        delete copy[key];
+        return copy;
+      }
+      return { ...prev, [key]: nxt };
+    });
+  };
 
-  // Count all items across all age groups for a category
-  const catItemCount = (catId: string) =>
-    Object.entries(qtys)
-      .filter(([k, v]) => k.startsWith(catId + '-') && v > 0)
-      .reduce((s, [, v]) => s + v, 0);
+  /* ── Category helpers ── */
+  const catItemCount = (catId: string): number => {
+    return Object.entries(qtys).reduce((sum, [key, val]) => {
+      return key.startsWith(catId + '-') ? sum + val : sum;
+    }, 0);
+  };
 
-  const totalItemCount = useMemo(
-    () => Object.values(qtys).reduce((s, n) => s + n, 0),
-    [qtys]
-  );
+  const toggleCat = (catId: string) => {
+    setOpenCats(prev =>
+      prev.includes(catId) ? prev.filter(id => id !== catId) : [...prev, catId]
+    );
+  };
 
-  /* ── Calculation — iterate per age group per category ── */
+  /* ── Calculation engine ── */
   const calc = useMemo(() => {
-    const promoCount: Record<string, number> = {};
-    let totalWeight = 0;
-    let hasNonPromo = false;
+    let grossWeight = 0;
+    let mainItemCount = 0;
+    let promoItemCount = 0;
 
-    // First pass: detect if any non-promo items exist
-    CATEGORIES.forEach(cat => {
-      const suffixes = cat.hasAge ? AGE_OPTIONS : ['default'];
-      ITEM_TYPES[cat.id].forEach((type, idx) => {
-        suffixes.forEach(sfx => {
-          const qty = qtys[`${cat.id}-${idx}-${sfx}`] ?? 0;
-          if (qty > 0 && !type.isPromo) hasNonPromo = true;
-        });
-      });
+    Object.entries(qtys).forEach(([key, count]) => {
+      if (count <= 0) return;
+      const parts = key.split('-');
+      const catId = parts[0];
+      const typeIdx = parseInt(parts[1], 10);
+      const age = parts.slice(2).join('-');
+
+      const item = ITEM_TYPES[catId]?.[typeIdx];
+      if (!item) return;
+
+      if (item.isPromo) {
+        promoItemCount += count;
+      } else {
+        mainItemCount += count;
+        const mult = CATEGORIES.find(c => c.id === catId)?.hasAge
+          ? (AGE_MULTIPLIERS[age] ?? 1.0)
+          : 1.0;
+        grossWeight += item.weight * count * mult;
+      }
     });
 
-    // Second pass: calculate weight per age group
-    CATEGORIES.forEach(cat => {
-      const suffixes = cat.hasAge ? AGE_OPTIONS : ['default'];
-      ITEM_TYPES[cat.id].forEach((type, idx) => {
-        suffixes.forEach(sfx => {
-          const qty = qtys[`${cat.id}-${idx}-${sfx}`] ?? 0;
-          if (qty <= 0) return;
-          const mult = cat.hasAge ? (AGE_MULTIPLIERS[sfx] ?? 1.0) : 1.0;
-          for (let i = 0; i < qty; i++) {
-            if (type.isPromo) {
-              if (hasNonPromo) {
-                promoCount[type.id] = (promoCount[type.id] || 0) + 1;
-                if (promoCount[type.id] > 5) totalWeight += 50;
-              } else {
-                totalWeight += 50;
-              }
-            } else {
-              totalWeight += Math.round(type.weight * mult);
-            }
-          }
-        });
-      });
-    });
+    const isPromoOnly = mainItemCount === 0 && promoItemCount > 0;
+    const effectiveWeight = mainItemCount === 0 ? 0 : Math.max(WEIGHT_FLOOR, grossWeight);
+    const chargeableKg = Math.ceil(effectiveWeight / 1000);
+    const shipping = effectiveWeight === 0
+      ? 0
+      : SHIPPING_BASE + (chargeableKg * SHIPPING_PER_KG);
 
-    const effectiveWeight = Math.max(totalWeight, totalItemCount > 0 ? WEIGHT_FLOOR : 0);
-    const shipping = effectiveWeight > 0 ? SHIPPING_BASE + (effectiveWeight / 1000) * SHIPPING_PER_KG : 0;
+    const indiaRetailCAD = mainItemCount * 30 * INR_TO_CAD * 100;
+    const canadaRetailCAD = indiaRetailCAD * CANADA_MULT;
+    const totalCAD = indiaRetailCAD + shipping;
+    const savingsCAD = Math.max(0, canadaRetailCAD - totalCAD);
 
-    return { totalWeight, effectiveWeight, shipping, netSavings: 0, hasNonPromo };
-  }, [qtys, totalItemCount]);
+    return {
+      grossWeight,
+      effectiveWeight,
+      chargeableKg,
+      shipping,
+      isPromoOnly,
+      mainItemCount,
+      promoItemCount,
+      savingsCAD,
+    };
+  }, [qtys]);
+
+  const totalItemCount = Object.values(qtys).reduce((s, n) => s + n, 0);
 
   /* ── Warnings ── */
   const warnings = useMemo(() => {
     const list: string[] = [];
-    CATEGORIES.forEach(cat => {
-      ITEM_TYPES[cat.id].forEach((type, idx) => {
-        const suffixes = cat.hasAge ? AGE_OPTIONS : ['default'];
-        const totalQty = suffixes.reduce((s, sfx) => s + (qtys[`${cat.id}-${idx}-${sfx}`] ?? 0), 0);
-        if (totalQty <= 0) return;
-        if (type.isOversized) list.push(`Oversized: ${type.label} — volumetric check required.`);
-        if (type.isFood)      list.push(`Food: ${type.label} — ship sealed commercial goods only.`);
-      });
+    Object.entries(qtys).forEach(([key, count]) => {
+      if (count <= 0) return;
+      const [catId, idxStr] = key.split('-');
+      const item = ITEM_TYPES[catId]?.[parseInt(idxStr, 10)];
+      if (item?.isOversized && !list.some(w => w.includes('oversized'))) {
+        list.push('Oversized items (luggage/large toys/furniture) may incur additional volumetric weight charges at warehouse verification.');
+      }
+      if (item?.isFood && !list.some(w => w.includes('Perishable'))) {
+        list.push('Perishable or liquid food items may be subject to Canadian customs import restrictions.');
+      }
     });
     return list;
   }, [qtys]);
 
+  /* ── Proceed action ── */
   const handleProceed = () => {
-    if (totalItemCount > 0 && !calc.hasNonPromo) { setPromoOnlyError(true); return; }
-    if (!user) { setShowLoginPrompt(true); return; }
-    localStorage.setItem('layo_pending_shipment_draft', JSON.stringify({ origin, storeName, orderNumber, senderName, qtys, ageGroups, estimatedWeight: calc.effectiveWeight, estimatedCost: calc.shipping }));
-    onClose();
-    router.push('/dashboard');
-  };
+    if (calc.isPromoOnly) {
+      setPromoOnlyError(true);
+      return;
+    }
+    setPromoOnlyError(false);
 
-  const handlePaste = async () => {
-    try { setOrderNumber(await navigator.clipboard.readText()); } catch { /* ignore */ }
+    if (!user) {
+      setShowLoginPrompt(true);
+      return;
+    }
+
+    const payload = {
+      origin,
+      storeName,
+      orderNumber,
+      senderName,
+      qtys,
+      ageGroups,
+      effectiveWeight: calc.effectiveWeight,
+      shippingEstCAD: calc.shipping,
+    };
+    sessionStorage.setItem('layo_active_booking', JSON.stringify(payload));
+    localStorage.removeItem('layo_anon_draft');
+    onClose();
+    router.push('/checkout');
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex flex-col justify-end">
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center font-sans">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
-      {/* Sheet */}
-      <div className="relative bg-[#131313] rounded-t-2xl border-t border-white/10 w-full max-w-2xl mx-auto flex flex-col" style={{ maxHeight: '92vh' }}>
-        {/* Drag handle */}
-        <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mt-3 mb-1 flex-shrink-0" />
+      {/* Sheet / Modal Container */}
+      <div className="relative bg-[#FAF8EE] text-[#0E1F38] rounded-t-3xl sm:rounded-3xl border border-black/10 w-full max-w-2xl mx-auto flex flex-col shadow-2xl overflow-hidden" style={{ maxHeight: '92vh' }}>
+        
+        {/* Drag handle for mobile */}
+        <div className="w-10 h-1.5 rounded-full bg-black/15 mx-auto mt-3 mb-1 sm:hidden flex-shrink-0" />
 
         {/* Header */}
-        <div className="flex justify-between items-center px-5 py-3 border-b border-white/10 flex-shrink-0">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-black/5 bg-[#FAF8EE] flex-shrink-0">
           <div>
-            <h2 className="font-bold text-base text-white">Build Your Layo Box</h2>
-            <p className="text-[10px] text-on-surface-variant">Get an instant shipping estimate</p>
+            <h2 className="font-black text-lg text-[#0E1F38] tracking-tight">Build Your Layo Box</h2>
+            <p className="text-xs text-[#0E1F38]/60 font-light">Get an instant, data-driven shipping estimate</p>
           </div>
-          <button onClick={handleClose} className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-on-surface-variant hover:text-white transition-all">
-            <span className="material-symbols-outlined text-base">close</span>
+          <button
+            onClick={handleClose}
+            className="w-9 h-9 rounded-full border border-black/10 bg-white flex items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38] hover:bg-black/5 transition-all cursor-pointer shadow-sm"
+          >
+            <span className="material-symbols-outlined text-lg">close</span>
           </button>
         </div>
 
         {/* Scrollable content */}
-        <div ref={contentRef} className="overflow-y-auto flex-grow px-5 py-4 space-y-5">
+        <div ref={contentRef} className="overflow-y-auto flex-grow px-6 py-5 space-y-6">
 
-          {/* ── Origin ── */}
+          {/* ── Origin Selection ── */}
           <div className="space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Where are your items coming from?</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#0E1F38]/60">Where are your items coming from?</p>
             <div className="grid grid-cols-2 gap-3">
               {(['online', 'personal'] as const).map(o => (
                 <button
                   key={o}
                   onClick={() => setOrigin(o)}
-                  className={`p-3 rounded-xl border text-left text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2 ${
-                    origin === o ? 'border-primary bg-primary/5 text-primary' : 'border-white/10 bg-[#1a1a1a] text-on-surface-variant hover:border-white/20'
+                  className={`p-3.5 rounded-2xl border text-left text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2.5 cursor-pointer shadow-sm ${
+                    origin === o
+                      ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
+                      : 'border-black/10 bg-white text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-base leading-none">{o === 'online' ? 'shopping_cart' : 'house'}</span>
+                  <span className="material-symbols-outlined text-lg leading-none">{o === 'online' ? 'shopping_cart' : 'house'}</span>
                   {o === 'online' ? 'Online Store' : 'Personal / Home'}
                 </button>
               ))}
             </div>
 
             {origin === 'online' ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-on-surface-variant block mb-1">Store Name</label>
-                  <input placeholder="Amazon, Myntra…" value={storeName} onChange={e => setStoreName(e.target.value)}
-                    className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:border-primary outline-none" />
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#0E1F38]/60 block mb-1.5">Store Name</label>
+                  <input
+                    placeholder="Amazon, Myntra, Ajio…"
+                    value={storeName}
+                    onChange={e => setStoreName(e.target.value)}
+                    className="w-full bg-white border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] outline-none transition-all shadow-sm"
+                  />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-on-surface-variant block mb-1">Order Number <span className="opacity-50 normal-case">(optional)</span></label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-[#0E1F38]/60 block mb-1.5">Order Number <span className="opacity-50 normal-case font-normal">(optional)</span></label>
                   <div className="relative">
-                    <input placeholder="Paste your Order ID" value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
-                      className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl pl-3 pr-9 py-2.5 text-xs text-white focus:border-primary outline-none" />
-                    <button onClick={handlePaste} title="Paste" className="absolute right-2 top-1/2 -translate-y-1/2 text-primary">
-                      <span className="material-symbols-outlined text-base leading-none">content_paste</span>
+                    <input
+                      placeholder="Paste your Order ID"
+                      value={orderNumber}
+                      onChange={e => setOrderNumber(e.target.value)}
+                      className="w-full bg-white border border-black/10 rounded-xl pl-4 pr-10 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] outline-none transition-all shadow-sm"
+                    />
+                    <button onClick={handlePaste} title="Paste" className="absolute right-3 top-1/2 -translate-y-1/2 text-[#FF5A65] hover:text-[#e24550]">
+                      <span className="material-symbols-outlined text-lg leading-none">content_paste</span>
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
-              <div>
-                <label className="text-[10px] font-bold uppercase text-on-surface-variant block mb-1">Sender Name / Origin City</label>
-                <input placeholder="e.g. Priya Sharma / Delhi" value={senderName} onChange={e => setSenderName(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:border-primary outline-none" />
+              <div className="pt-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[#0E1F38]/60 block mb-1.5">Sender Name / Origin City</label>
+                <input
+                  placeholder="e.g. Priya Sharma / Delhi"
+                  value={senderName}
+                  onChange={e => setSenderName(e.target.value)}
+                  className="w-full bg-white border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] outline-none transition-all shadow-sm"
+                />
               </div>
             )}
           </div>
 
           {/* ── Category Grid ── */}
           <div className="space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Select Item Categories</p>
-            <div className="grid grid-cols-3 gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#0E1F38]/60">Select Item Categories</p>
+            <div className="grid grid-cols-3 gap-3">
               {CATEGORIES.map(cat => {
                 const count   = catItemCount(cat.id);
                 const isOpen  = openCats.includes(cat.id);
@@ -325,16 +384,16 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                   <button
                     key={cat.id}
                     onClick={() => toggleCat(cat.id)}
-                    className={`relative rounded-xl p-3 flex flex-col items-center justify-center gap-1.5 h-[76px] border transition-all duration-200 active:scale-95 ${
+                    className={`relative rounded-2xl p-3 flex flex-col items-center justify-center gap-1.5 h-[84px] border transition-all duration-200 active:scale-95 cursor-pointer shadow-sm ${
                       isOpen || count > 0
-                        ? 'border-primary bg-primary/5 text-primary shadow-[0_0_12px_rgba(242,202,80,0.12)]'
-                        : 'border-white/10 bg-[#1a1a1a] text-on-surface-variant hover:border-white/20 hover:text-white'
+                        ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20 font-bold'
+                        : 'border-black/10 bg-white text-[#0E1F38]/80 hover:border-black/20 hover:text-[#0E1F38]'
                     }`}
                   >
                     <span className="material-symbols-outlined text-2xl leading-none">{cat.icon}</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wide">{cat.label}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider">{cat.label}</span>
                     {count > 0 && (
-                      <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-primary text-background text-[9px] font-black flex items-center justify-center leading-none">
+                      <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[#FF5A65] text-white text-[10px] font-black flex items-center justify-center leading-none shadow-sm">
                         {count}
                       </span>
                     )}
@@ -351,23 +410,23 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
             const age   = ageGroups[catId] || 'Adults (18+)';
 
             return (
-              <div key={catId} className="bg-[#1a1a1a] border border-primary/20 rounded-2xl overflow-hidden animate-fade-in">
+              <div key={catId} className="bg-white border border-black/10 rounded-2xl overflow-hidden shadow-sm animate-fade-in space-y-0">
                 {/* Panel header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-base leading-none">{cat.icon}</span>
-                    <span className="text-xs font-black text-white uppercase tracking-wider">{cat.label}</span>
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-black/5 bg-[#ECEAE0]">
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-[#FF5A65] text-lg leading-none">{cat.icon}</span>
+                    <span className="text-xs font-black text-[#0E1F38] uppercase tracking-wider">{cat.label}</span>
                   </div>
-                  <button onClick={() => toggleCat(catId)} className="text-on-surface-variant hover:text-white transition-colors">
+                  <button onClick={() => toggleCat(catId)} className="text-[#0E1F38]/60 hover:text-[#0E1F38] transition-colors cursor-pointer">
                     <span className="material-symbols-outlined text-base leading-none">expand_less</span>
                   </button>
                 </div>
 
                 {/* Age tab selector — each tab has its own independent qty */}
                 {cat.hasAge && (
-                  <div className="px-4 pt-3 pb-1">
-                    <p className="text-[9px] font-bold uppercase text-on-surface-variant mb-2 tracking-widest">Age Group (affects weight)</p>
-                    <div className="grid grid-cols-4 gap-1.5">
+                  <div className="px-5 pt-3 pb-2 bg-[#FAF8EE] border-b border-black/5">
+                    <p className="text-[10px] font-bold uppercase text-[#0E1F38]/60 mb-2 tracking-widest">Age Group (affects weight)</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {AGE_OPTIONS.map(opt => {
                         const tabTotal = types.reduce((s, _, idx) => s + (qtys[`${catId}-${idx}-${opt}`] ?? 0), 0);
                         const isActive = age === opt;
@@ -375,15 +434,15 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                           <button
                             key={opt}
                             onClick={() => setAgeGroups(prev => ({ ...prev, [catId]: opt }))}
-                            className={`relative py-1.5 text-[9px] font-bold rounded-lg border transition-all ${
+                            className={`relative py-2 px-2 text-[10px] font-bold rounded-xl border transition-all cursor-pointer shadow-sm text-center ${
                               isActive
-                                ? 'bg-primary text-background border-primary'
-                                : 'bg-[#131313] border-white/10 text-on-surface-variant hover:border-white/20'
+                                ? 'bg-[#FF5A65] text-white border-[#FF5A65]'
+                                : 'bg-white border-black/10 text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                             }`}
                           >
                             {opt.split('/')[0].trim()}
                             {tabTotal > 0 && !isActive && (
-                              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-primary/80 text-background text-[8px] font-black flex items-center justify-center">
+                              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-[#FF5A65] text-white text-[8px] font-black flex items-center justify-center shadow-sm">
                                 {tabTotal}
                               </span>
                             )}
@@ -395,39 +454,39 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                 )}
 
                 {/* Item type rows — qty scoped to active age tab */}
-                <div className="px-4 py-3 space-y-2">
+                <div className="px-5 py-3 space-y-2">
                   {types.map((type, idx) => {
                     const key = cat.hasAge ? `${catId}-${idx}-${age}` : `${catId}-${idx}-default`;
                     const qty = qtys[key] ?? 0;
                     return (
                       <div
                         key={type.id}
-                        className={`flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all ${
-                          qty > 0 ? 'bg-primary/5 border border-primary/15' : 'border border-transparent hover:border-white/5'
+                        className={`flex items-center gap-3 py-3 px-3.5 rounded-xl transition-all ${
+                          qty > 0 ? 'bg-[#FF5A65]/5 border border-[#FF5A65]/20' : 'border border-transparent hover:bg-[#FAF8EE]'
                         }`}
                       >
                         <div className="flex-grow min-w-0">
-                          <p className="text-xs font-semibold text-white leading-tight">
+                          <p className="text-xs font-bold text-[#0E1F38] leading-tight">
                             {type.label}
-                            {type.isPromo && <span className="ml-1.5 text-[9px] text-primary/70 font-normal">(0g promo)</span>}
-                            {type.isOversized && <span className="ml-1.5 text-[9px] text-yellow-400 font-normal">⚠ oversized</span>}
-                            {type.isFood && <span className="ml-1.5 text-[9px] text-orange-400 font-normal">⚠ customs</span>}
+                            {type.isPromo && <span className="ml-1.5 text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">FREE Promo Extra</span>}
+                            {type.isOversized && <span className="ml-1.5 text-[9px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-semibold">⚠ oversized</span>}
+                            {type.isFood && <span className="ml-1.5 text-[9px] text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md font-semibold">⚠ customs</span>}
                           </p>
-                          <p className="text-[10px] text-on-surface-variant mt-0.5">{type.subtext}</p>
+                          <p className="text-[11px] text-[#0E1F38]/60 mt-0.5 font-light">{type.subtext}</p>
                         </div>
 
                         {/* Qty stepper — operates on active age tab only */}
-                        <div className="flex items-center gap-2 bg-[#131313] rounded-full px-1.5 py-1 border border-white/10 flex-shrink-0">
+                        <div className="flex items-center gap-2 bg-[#FAF8EE] rounded-full px-2 py-1 border border-black/10 flex-shrink-0 shadow-sm">
                           <button
                             onClick={() => changeQty(key, -1)}
-                            className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/5 text-white active:scale-90 transition-all"
+                            className="w-7 h-7 rounded-full flex items-center justify-center bg-white hover:bg-black/5 text-[#0E1F38] active:scale-90 transition-all border border-black/5 cursor-pointer"
                           >
                             <span className="material-symbols-outlined text-sm leading-none">remove</span>
                           </button>
-                          <span className="w-4 text-center text-sm font-bold text-white">{qty}</span>
+                          <span className="w-5 text-center text-xs font-bold text-[#0E1F38]">{qty}</span>
                           <button
                             onClick={() => changeQty(key, 1)}
-                            className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/5 text-white active:scale-90 transition-all"
+                            className="w-7 h-7 rounded-full flex items-center justify-center bg-white hover:bg-black/5 text-[#0E1F38] active:scale-90 transition-all border border-black/5 cursor-pointer"
                           >
                             <span className="material-symbols-outlined text-sm leading-none">add</span>
                           </button>
@@ -442,29 +501,31 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
 
           {/* ── Warnings ── */}
           {warnings.length > 0 && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {warnings.map((w, i) => (
-                <p key={i} className="text-[10px] text-yellow-400/80 bg-yellow-400/5 border border-yellow-400/15 rounded-lg px-3 py-2">{w}</p>
+                <p key={i} className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 leading-relaxed font-light">{w}</p>
               ))}
             </div>
           )}
 
           {/* ── Promo-only error ── */}
           {promoOnlyError && (
-            <div className="bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3 text-xs text-red-400">
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700 font-medium">
               Add at least one main item (tops, bottoms, shoes…) to activate your zero-weight promo items.
             </div>
           )}
 
           {/* ── Live estimate strip ── */}
           {totalItemCount > 0 && (
-            <div className="bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3 flex justify-between items-center">
+            <div className="bg-[#ECEAE0] border border-black/10 rounded-2xl p-4 flex justify-between items-center shadow-sm">
               <div>
-                <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Estimated Shipping</p>
-                <p className="text-2xl font-black text-primary font-mono">${calc.shipping.toFixed(2)} <span className="text-xs font-bold text-on-surface-variant">CAD</span></p>
-                <p className="text-[10px] text-on-surface-variant/60">{calc.effectiveWeight}g · {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}</p>
+                <p className="text-[10px] text-[#0E1F38]/60 uppercase font-bold tracking-wider">Estimated Shipping</p>
+                <p className="text-2xl font-black text-[#FF5A65] font-mono">${calc.shipping.toFixed(2)} <span className="text-xs font-bold text-[#0E1F38]/70">CAD</span></p>
+                <p className="text-[10px] text-[#0E1F38]/60 font-medium mt-0.5">{calc.effectiveWeight}g · {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}</p>
               </div>
-              <span className="material-symbols-outlined text-5xl text-primary opacity-15">flight</span>
+              <div className="w-12 h-12 rounded-2xl bg-white border border-black/5 flex items-center justify-center shadow-sm">
+                <span className="material-symbols-outlined text-2xl text-[#FF5A65]">local_shipping</span>
+              </div>
             </div>
           )}
 
@@ -472,11 +533,11 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
         </div>
 
         {/* Fixed bottom CTA */}
-        <div className="flex-shrink-0 px-5 py-4 border-t border-white/10 bg-[#131313]">
+        <div className="flex-shrink-0 px-6 py-4 border-t border-black/5 bg-[#FAF8EE]">
           <button
             onClick={handleProceed}
             disabled={totalItemCount === 0}
-            className="w-full py-4 bg-primary text-background font-bold text-sm uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 disabled:opacity-35 disabled:cursor-not-allowed"
+            className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             Proceed to Book Shipment
           </button>
@@ -485,26 +546,30 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
 
       {/* Login intercept */}
       {showLoginPrompt && (
-        <div className="absolute inset-0 flex items-center justify-center p-6 z-10">
-          <div className="bg-[#1a1a1a] border border-white/15 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
-            <div className="text-center space-y-1">
-              <span className="material-symbols-outlined text-4xl text-primary">lock_open</span>
-              <h3 className="text-lg font-bold text-white">Almost there!</h3>
-              <p className="text-xs text-on-surface-variant">Create a quick account to save your Layo box and add your shipping address.</p>
+        <div className="absolute inset-0 flex items-center justify-center p-6 z-10 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white border border-black/10 rounded-3xl p-6 sm:p-8 w-full max-w-sm space-y-5 shadow-2xl">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-full bg-[#FF5A65]/10 text-[#FF5A65] flex items-center justify-center mx-auto">
+                <span className="material-symbols-outlined text-2xl">lock_open</span>
+              </div>
+              <h3 className="text-lg font-black text-[#0E1F38]">Almost there!</h3>
+              <p className="text-xs text-[#0E1F38]/70 font-light leading-relaxed">Create a quick account to save your Layo box and add your shipping address.</p>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2.5">
               <button
                 onClick={() => {
                   localStorage.setItem('layo_anon_draft', JSON.stringify({ origin, storeName, orderNumber, senderName, qtys, ageGroups }));
                   onClose();
                   router.push('/login');
                 }}
-                className="w-full py-3 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 transition-all"
+                className="w-full py-3.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-[#e24550] transition-all shadow-sm cursor-pointer"
               >
                 Sign In / Create Account
               </button>
-              <button onClick={() => setShowLoginPrompt(false)}
-                className="w-full py-3 border border-white/10 text-on-surface-variant text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-white/5 transition-all">
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="w-full py-3.5 border border-black/10 text-[#0E1F38]/70 text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-black/5 transition-all cursor-pointer"
+              >
                 Keep Estimating
               </button>
             </div>
