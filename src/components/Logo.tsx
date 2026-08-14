@@ -19,7 +19,7 @@ export default function Logo({
   showTagline = false,
   variant = 'header',
   darkText,
-  iconOnly = false,
+  iconOnly = true,
   onClick
 }: LogoProps) {
   const size = variant === 'footer' ? 36 : 42;
