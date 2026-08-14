@@ -342,7 +342,7 @@ export default function Checkout() {
               ) : (
                 <>
                   <span className="material-symbols-outlined text-lg leading-none">lock</span>
-                  Pay ₹{totalINR.toLocaleString('en-IN')}
+                  Pay ${costCAD.toFixed(2)} CAD (≈ ₹{totalINR.toLocaleString('en-IN')})
                 </>
               )}
             </button>

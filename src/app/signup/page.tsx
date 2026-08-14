@@ -225,10 +225,16 @@ export default function Signup() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-on-surface-variant">
-          Already have an account?{' '}
-          <Link href="/login" className="text-primary font-bold hover:underline ml-1">Sign In</Link>
-        </p>
+        <div className="text-center space-y-2 text-xs text-on-surface-variant">
+          <p>
+            Already have an account?{' '}
+            <Link href="/login" className="text-primary font-bold hover:underline ml-1">Sign In</Link>
+          </p>
+          <p className="text-[11px]">
+            Forgot your password?{' '}
+            <Link href="/forgot-password" className="text-primary hover:underline font-semibold">Reset here</Link>
+          </p>
+        </div>
       </div>
     </main>
   );

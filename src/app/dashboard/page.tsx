@@ -298,8 +298,8 @@ export default function Dashboard() {
         setWarehouses(whs.data);
       } else {
         setWarehouses([
-          { id: 'wh1', city: 'Delhi', pincode: '110001', address: 'Plot 42, Layo Hub, Okhla Phase 3' },
-          { id: 'wh2', city: 'Mumbai', pincode: '400001', address: 'Gala 5, Hub 2, Andheri East' }
+          { id: 'wh1', city: 'Delhi', pincode: '110001', address: 'Plot 42, Layo Hub, Okhla Phase 3', contact: '+91 98100 12345' },
+          { id: 'wh2', city: 'Mumbai', pincode: '400001', address: 'Gala 5, Hub 2, Andheri East', contact: '+91 98200 54321' }
         ]);
       }
     } catch (err) {
@@ -553,11 +553,46 @@ export default function Dashboard() {
     }
   };
 
-  if (loading || isFetching) {
+  if (loading || (isFetching && user)) {
     return (
       <div className="min-h-screen bg-[#131313] text-on-background flex flex-col justify-center items-center gap-4">
         <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
         <p className="text-on-surface-variant font-bold text-xs uppercase tracking-widest">Loading My Shipments…</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="bg-[#131313] text-on-background min-h-screen flex flex-col items-center justify-center p-6 font-sans">
+        <div className="bg-surface-container border border-white/10 rounded-2xl w-full max-w-md p-8 shadow-2xl space-y-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center mx-auto text-primary">
+            <span className="material-symbols-outlined text-3xl">lock</span>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-extrabold text-white">Locker Access Restricted</h2>
+            <p className="text-on-surface-variant text-sm leading-relaxed">
+              Locker management and Virtual Indian Addresses are available for registered users only. Please sign in or create an account to access your locker.
+            </p>
+          </div>
+          <div className="space-y-3 pt-2">
+            <Link
+              href="/login"
+              className="block w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 transition-all text-center"
+            >
+              Sign In to Access Locker
+            </Link>
+            <Link
+              href="/signup"
+              className="block w-full py-3.5 border border-white/10 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-white/5 transition-all text-center"
+            >
+              Create New Account
+            </Link>
+          </div>
+          <Link href="/" className="block text-xs text-on-surface-variant hover:text-white pt-2">
+            ← Return to Home
+          </Link>
+        </div>
       </div>
     );
   }
@@ -897,10 +932,11 @@ export default function Dashboard() {
                         <div className="inline-block text-[9px] uppercase tracking-wider font-bold bg-primary/20 text-primary px-2.5 py-1 rounded">
                           Preview of your Virtual Address
                         </div>
-                        <div className="text-xs space-y-1 text-white leading-relaxed pt-1.5">
+                        <div className="text-xs space-y-1.5 text-white leading-relaxed pt-1.5 font-mono">
                           <p><strong>Name:</strong> {user?.user_metadata?.full_name || 'Customer'} / LAYO-{user?.id?.substring(0, 5).toUpperCase() || 'LOCK'}</p>
                           <p><strong>Address:</strong> {selectedWarehouseObject.address}</p>
                           <p><strong>City/Pincode:</strong> {selectedWarehouseObject.city} - {selectedWarehouseObject.pincode || ''}</p>
+                          <p><strong>Phone Number:</strong> {selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'} <span className="text-[10px] text-primary font-sans font-semibold">(for courier & order updates)</span></p>
                         </div>
                         <p className="text-[10px] text-on-surface-variant opacity-60 italic pt-1">
                           Copy coordinates and tags. Full instructions will be shared on successful payment.
@@ -1301,7 +1337,7 @@ export default function Dashboard() {
                       disabled={activeItems.length === 0 || !selectedWarehouse || !destinationAddress}
                       className="flex-1 py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 disabled:opacity-35 disabled:cursor-not-allowed"
                     >
-                      Pay Deposit & Book
+                      Pay ${totals.totalPriceCAD > 0 ? totals.totalPriceCAD.toFixed(2) : '25.00'} CAD & Book
                     </button>
                   </div>
                 </section>

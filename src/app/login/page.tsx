@@ -63,7 +63,12 @@ export default function Login() {
           </div>
           
           <div className="space-y-1">
-            <label className="text-[10px] uppercase font-bold tracking-wider text-on-surface-variant block">Password</label>
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] uppercase font-bold tracking-wider text-on-surface-variant block">Password</label>
+              <Link href="/forgot-password" className="text-[11px] text-primary hover:underline font-semibold">
+                Forgot password?
+              </Link>
+            </div>
             <input 
               type="password" 
               placeholder="••••••••" 

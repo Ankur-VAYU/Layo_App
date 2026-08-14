@@ -11,29 +11,47 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 0. Handle unhandled fetch rejections from offline Supabase client
+    // 0. Handle unhandled rejections (e.g. invalid refresh token or network issues)
     const handleRejection = (e: PromiseRejectionEvent) => {
-      const msg = e.reason?.message || String(e.reason);
-      if (msg && (msg.includes('fetch') || msg.includes('Fetch') || msg.includes('NetworkError'))) {
-        console.warn("Caught and muted background network/fetch rejection:", e.reason);
+      const msg = e.reason?.message || String(e.reason) || '';
+      if (
+        msg.includes('Refresh Token') ||
+        msg.includes('refresh_token') ||
+        msg.includes('Invalid Refresh Token') ||
+        msg.includes('fetch') ||
+        msg.includes('NetworkError')
+      ) {
+        console.warn("Muted background auth/network rejection:", e.reason);
+        if (msg.includes('Refresh Token') || msg.includes('refresh_token') || msg.includes('Invalid')) {
+          supabase.auth.signOut().catch(() => {});
+          setUser(null);
+        }
         e.preventDefault();
       }
     };
     window.addEventListener('unhandledrejection', handleRejection);
 
-    // 1. Get initial session
+    // 1. Get initial session safely
     supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
+      .then(({ data, error }) => {
+        if (error) {
+          if (error.message?.includes('Refresh Token') || error.message?.includes('refresh_token')) {
+            supabase.auth.signOut().catch(() => {});
+          }
+          setUser(null);
+        } else {
+          setUser(data.session?.user ?? null);
+        }
         setLoading(false);
       })
       .catch(err => {
-        console.warn("Supabase connection failed. App is running in offline mode.", err);
+        console.warn("Supabase session check failed, falling back to guest mode:", err);
+        supabase.auth.signOut().catch(() => {});
         setUser(null);
         setLoading(false);
       });
 
-    // 2. Listen for changes
+    // 2. Listen for auth changes
     let subscription: any = null;
     try {
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -42,7 +60,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       });
       subscription = data?.subscription;
     } catch (err) {
-      console.warn("Supabase auth listener registration failed.", err);
+      console.warn("Supabase auth listener error:", err);
     }
 
     return () => {
