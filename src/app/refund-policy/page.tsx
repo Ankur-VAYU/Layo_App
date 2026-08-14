@@ -8,13 +8,13 @@ export default function RefundPolicyPage() {
   const router = useRouter();
 
   return (
-    <div className="bg-[#f5f2eb] text-[#2b2927] min-h-screen flex flex-col">
+    <div className="bg-[#FAF8EE] text-[#0E1F38] min-h-screen flex flex-col font-sans">
       {/* Navigation Header */}
-      <header className="sticky top-0 z-50 bg-[#f5f2eb]/90 backdrop-blur-md border-b border-black/5 px-6 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-50 bg-[#FAF8EE]/90 backdrop-blur-md border-b border-black/5 px-6 md:px-16 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
-            className="w-9 h-9 rounded-full border border-black/10 flex items-center justify-center text-[#5c5752] hover:text-[#2b2927] hover:border-black/30 transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-full border border-black/10 flex items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38] hover:border-black/30 transition-colors cursor-pointer"
           >
             <span className="material-symbols-outlined text-lg">arrow_back</span>
           </button>
@@ -25,7 +25,7 @@ export default function RefundPolicyPage() {
         <div className="flex items-center gap-4">
           <Link
             href="/login"
-            className="px-4 py-2 bg-primary text-[#241a00] font-bold text-xs uppercase tracking-wider rounded-full hover:brightness-105 transition-all shadow-sm"
+            className="px-5 py-2.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-full hover:bg-[#e24550] transition-all shadow-sm"
           >
             Sign Up / Log In
           </Link>
@@ -34,22 +34,22 @@ export default function RefundPolicyPage() {
 
       {/* Main Content */}
       <main className="flex-grow max-w-4xl mx-auto w-full px-6 py-12">
-        <div className="bg-white border border-[#e5e0d8] rounded-3xl p-8 md:p-12 shadow-sm space-y-10">
+        <div className="bg-white border border-black/5 rounded-3xl p-8 md:p-14 shadow-sm space-y-10">
           <div>
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#5c5752]">Official Policy</span>
-            <h1 className="text-3xl md:text-5xl font-bold text-[#1c1917] mt-2 font-serif-luxury">
-              Returns & Refund Policy
+            <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#FF5A65]">Official Policy</span>
+            <h1 className="text-3xl md:text-5xl font-black text-[#0E1F38] mt-2">
+              Returns &amp; Refund Policy
             </h1>
-            <p className="text-sm text-[#5c5752] mt-3 leading-relaxed">
+            <p className="text-sm text-[#0E1F38]/70 mt-3 leading-relaxed font-light">
               Rules and conditions governing product returns, cancellations, and logistics fee refunds.
             </p>
           </div>
 
-          <div className="border-t border-[#e5e0d8] pt-8 space-y-8 text-sm text-[#3a3734] leading-relaxed">
+          <div className="border-t border-black/5 pt-8 space-y-8 text-sm text-[#0E1F38]/80 leading-relaxed font-light">
             {/* Section 1 */}
             <section className="space-y-3">
-              <h2 className="text-xl font-bold text-[#1c1917] flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-[#f0e9df] text-[#2b2927] text-xs font-black flex items-center justify-center">1</span>
+              <h2 className="text-lg font-bold text-[#0E1F38] flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-[#FAF8EE] text-[#FF5A65] text-xs font-black flex items-center justify-center border border-black/5">1</span>
                 Retail Product Refunds
               </h2>
               <p>
@@ -59,58 +59,58 @@ export default function RefundPolicyPage() {
 
             {/* Section 2 */}
             <section className="space-y-3">
-              <h2 className="text-xl font-bold text-[#1c1917] flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-[#f0e9df] text-[#2b2927] text-xs font-black flex items-center justify-center">2</span>
+              <h2 className="text-lg font-bold text-[#0E1F38] flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-[#FAF8EE] text-[#FF5A65] text-xs font-black flex items-center justify-center border border-black/5">2</span>
                 Returning Items to the Original Retailer (Pre-Shipment)
               </h2>
               <p>
                 If an item arrives at our warehouse and you decide you no longer want it, you can request a return to the original retailer <em>before</em> we consolidate and ship your final parcel.
               </p>
-              <ul className="list-disc pl-6 space-y-2 text-[#5c5752]">
+              <ul className="list-disc pl-6 space-y-2 text-[#0E1F38]/70">
                 <li>
-                  <strong className="text-[#2b2927]">How it Works:</strong> You will need to provide the digital return label generated by the original online store. A small processing fee may apply for our team to print the label, attach it to your package, and hand it over to the local courier.
+                  <strong className="text-[#0E1F38]">How it Works:</strong> You will need to provide the digital return label generated by the original online store. A small processing fee may apply for our team to print the label, attach it to your package, and hand it over to the local courier.
                 </li>
                 <li>
-                  <strong className="text-[#2b2927]">Courier Pickups:</strong> If the retailer or a courier is coming directly to our facility to pick up your return, we require a minimum of <strong>24 hours&apos; advance notice</strong>. This ensures our team has the time to locate your parcel and set it aside for a smooth handoff.
+                  <strong className="text-[#0E1F38]">Courier Pickups:</strong> If the retailer or a courier is coming directly to our facility to pick up your return, we require a minimum of <strong>24 hours&apos; advance notice</strong>. This ensures our team has the time to locate your parcel and set it aside for a smooth handoff.
                 </li>
                 <li>
-                  <strong className="text-[#2b2927]">Liability:</strong> Layo is not responsible for physically delivering your returns back to retail stores or drop-off points, nor are we liable for any return authorization mismatches between you and the retailer.
+                  <strong className="text-[#0E1F38]">Liability:</strong> Layo is not responsible for physically delivering your returns back to retail stores or drop-off points, nor are we liable for any return authorization mismatches between you and the retailer.
                 </li>
               </ul>
             </section>
 
             {/* Section 3 */}
             <section className="space-y-3">
-              <h2 className="text-xl font-bold text-[#1c1917] flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-[#f0e9df] text-[#2b2927] text-xs font-black flex items-center justify-center">3</span>
-                Cancellations & Shipping Fee Refunds
+              <h2 className="text-lg font-bold text-[#0E1F38] flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-[#FAF8EE] text-[#FF5A65] text-xs font-black flex items-center justify-center border border-black/5">3</span>
+                Cancellations &amp; Shipping Fee Refunds
               </h2>
               <p>
                 Your ability to cancel a Layo shipment and receive a refund on your shipping fees depends on the current status of your packages at our warehouse:
               </p>
-              <ul className="list-disc pl-6 space-y-2 text-[#5c5752]">
+              <ul className="list-disc pl-6 space-y-2 text-[#0E1F38]/70">
                 <li>
-                  <strong className="text-[#2b2927]">Cancellation Before Items Arrive (Full Refund):</strong> If you book and pay for a shipment, but decide to cancel before any of your packages actually arrive at our warehouse, you will receive a full refund of your Layo shipping fees.
+                  <strong className="text-[#0E1F38]">Cancellation Before Items Arrive (Full Refund):</strong> If you book and pay for a shipment, but decide to cancel before any of your packages actually arrive at our warehouse, you will receive a full refund of your Layo shipping fees.
                 </li>
                 <li>
-                  <strong className="text-[#2b2927]">Cancellation After Items Arrive (Partial Refund):</strong> If we have already received and processed your items at our warehouse, but you decide to cancel your shipment before the final box is packed, we will refund your shipping amount minus a minimal handling fee. This fee covers the processing and labor our team has already performed. <em>(Note: You are still responsible for arranging the return of your items to the original retailer)</em>.
+                  <strong className="text-[#0E1F38]">Cancellation After Items Arrive (Partial Refund):</strong> If we have already received and processed your items at our warehouse, but you decide to cancel your shipment before the final box is packed, we will refund your shipping amount minus a minimal handling fee. This fee covers the processing and labor our team has already performed. <em>(Note: You are still responsible for arranging the return of your items to the original retailer)</em>.
                 </li>
                 <li>
-                  <strong className="text-[#2b2927]">Finalized Shipments (No Cancellations or Refunds):</strong> Once all your booked items are received, our team automatically proceeds with consolidating and packing your final parcel for transit. Once your parcel is packed and set for its final destination, the shipment <strong>cannot be canceled, modified, or halted</strong>. Because the logistics process has already been fully executed, we will not issue any refunds for the shipping amount at this stage, and the delivery will proceed as scheduled.
+                  <strong className="text-[#0E1F38]">Finalized Shipments (No Cancellations or Refunds):</strong> Once all your booked items are received, our team automatically proceeds with consolidating and packing your final parcel for transit. Once your parcel is packed and set for its final destination, the shipment <strong>cannot be canceled, modified, or halted</strong>. Because the logistics process has already been fully executed, we will not issue any refunds for the shipping amount at this stage, and the delivery will proceed as scheduled.
                 </li>
               </ul>
             </section>
 
             {/* Section 4 */}
             <section className="space-y-3">
-              <h2 className="text-xl font-bold text-[#1c1917] flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-[#f0e9df] text-[#2b2927] text-xs font-black flex items-center justify-center">4</span>
-                Unbooked Items & Weight Discrepancies
+              <h2 className="text-lg font-bold text-[#0E1F38] flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-[#FAF8EE] text-[#FF5A65] text-xs font-black flex items-center justify-center border border-black/5">4</span>
+                Unbooked Items &amp; Weight Discrepancies
               </h2>
               <p>
                 Your initial shipping invoice is generated based on the items you declare during booking. If we receive your parcel and discover unbooked items, or if the actual verified weight exceeds the estimate, your account will be updated to reflect the physical reality of the package.
               </p>
-              <ul className="list-disc pl-6 space-y-2 text-[#5c5752]">
+              <ul className="list-disc pl-6 space-y-2 text-[#0E1F38]/70">
                 <li>You will receive an immediate notification regarding the discrepancy.</li>
                 <li>The difference must be paid in full before the parcel is shipped out to your final destination. We will hold the shipment at our facility until the outstanding balance is cleared.</li>
               </ul>
@@ -118,22 +118,22 @@ export default function RefundPolicyPage() {
 
             {/* Section 5 */}
             <section className="space-y-3">
-              <h2 className="text-xl font-bold text-[#1c1917] flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-[#f0e9df] text-[#2b2927] text-xs font-black flex items-center justify-center">5</span>
-                Damages, Liability & Non-Refundable Scenarios
+              <h2 className="text-lg font-bold text-[#0E1F38] flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-[#FAF8EE] text-[#FF5A65] text-xs font-black flex items-center justify-center border border-black/5">5</span>
+                Damages, Liability &amp; Non-Refundable Scenarios
               </h2>
-              <ul className="list-disc pl-6 space-y-3 text-[#5c5752]">
+              <ul className="list-disc pl-6 space-y-3 text-[#0E1F38]/70">
                 <li>
-                  <strong className="text-[#2b2927]">Fragile Items & Liquids:</strong> While our team takes great care to securely tape and pack your items for international transit, we are not liable for damages that occur to inherently fragile items. Furthermore, Layo does not accept liability for items that are prone to leaking (such as liquids, oils, or perishables). Customers are strongly advised against routing these types of goods through our service. If a package is received and subsequently leaks or causes damage to your overall shipment, Layo will not be held responsible.
+                  <strong className="text-[#0E1F38]">Fragile Items &amp; Liquids:</strong> While our team takes great care to securely tape and pack your items for international transit, we are not liable for damages that occur to inherently fragile items. Furthermore, Layo does not accept liability for items that are prone to leaking (such as liquids, oils, or perishables). Customers are strongly advised against routing these types of goods through our service. If a package is received and subsequently leaks or causes damage to your overall shipment, Layo will not be held responsible.
                 </li>
                 <li>
-                  <strong className="text-[#2b2927]">Non-Refundable Shipping for Damaged Goods:</strong> We do not assume liability for the integrity of the individual retail products inside your consolidated box. In the event that a retail item is damaged during transit, Layo will not refund the shipping fees associated with that delivery.
+                  <strong className="text-[#0E1F38]">Non-Refundable Shipping for Damaged Goods:</strong> We do not assume liability for the integrity of the individual retail products inside your consolidated box. In the event that a retail item is damaged during transit, Layo will not refund the shipping fees associated with that delivery.
                 </li>
                 <li>
-                  <strong className="text-[#2b2927]">Prohibited & Restricted Goods:</strong> All shipments must comply with standard legal and carrier shipping policies. Layo reserves the right to refuse the processing or forwarding of any package that contains illegal, hazardous, or prohibited goods. If we receive an item at our warehouse that cannot be legally shipped to your final destination, we will not dispatch it. You will be notified immediately and are solely responsible for arranging an alternative pickup from our warehouse. Layo will not facilitate the delivery or return of prohibited items, nor provide shipping refunds for these specific items.
+                  <strong className="text-[#0E1F38]">Prohibited &amp; Restricted Goods:</strong> All shipments must comply with standard legal and carrier shipping policies. Layo reserves the right to refuse the processing or forwarding of any package that contains illegal, hazardous, or prohibited goods. If we receive an item at our warehouse that cannot be legally shipped to your final destination, we will not dispatch it. You will be notified immediately and are solely responsible for arranging an alternative pickup from our warehouse. Layo will not facilitate the delivery or return of prohibited items, nor provide shipping refunds for these specific items.
                 </li>
                 <li>
-                  <strong className="text-[#2b2927]">Delivery Address Accuracy:</strong> You are strictly responsible for providing a correct and complete final delivery address. If you realize you have provided an incorrect address, you must update it in your account before your items arrive at our warehouse. If a parcel is dispatched to an incorrect address originally provided by you, Layo will not be held liable. We will not issue refunds for the shipping fees or the lost products, nor are we responsible for retrieving or rerouting the package once it has left our facility.
+                  <strong className="text-[#0E1F38]">Delivery Address Accuracy:</strong> You are strictly responsible for providing a correct and complete final delivery address. If you realize you have provided an incorrect address, you must update it in your account before your items arrive at our warehouse. If a parcel is dispatched to an incorrect address originally provided by you, Layo will not be held liable. We will not issue refunds for the shipping fees or the lost products, nor are we responsible for retrieving or rerouting the package once it has left our facility.
                 </li>
               </ul>
             </section>
@@ -142,7 +142,7 @@ export default function RefundPolicyPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-black/5 bg-[#eae7de] py-6 px-6 text-center text-xs text-[#5c5752]">
+      <footer className="border-t border-black/5 bg-[#ECEAE0] py-6 px-6 text-center text-xs text-[#0E1F38]/60">
         <p>© 2026 Layo Technologies Inc. All rights reserved.</p>
       </footer>
     </div>

@@ -218,29 +218,31 @@ export default function Home() {
         <nav className="flex-grow px-3 py-4 space-y-1 overflow-y-auto">
           <button
             onClick={() => { scrollToSection(heroRef); }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left cursor-pointer"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/80 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left cursor-pointer"
           >
             <span className="material-symbols-outlined text-lg leading-none">home</span>
             Home
           </button>
-          <button
-            onClick={() => { scrollToSection(howItWorksRef); }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left cursor-pointer"
+          <Link
+            href="/about"
+            onClick={() => setSidebarOpen(false)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/80 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left"
+          >
+            <span className="material-symbols-outlined text-lg leading-none">corporate_fare</span>
+            About Layo
+          </Link>
+          <Link
+            href="/how-it-works"
+            onClick={() => setSidebarOpen(false)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/80 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left"
           >
             <span className="material-symbols-outlined text-lg leading-none">info</span>
-            How Layo Works
-          </button>
-          <button
-            onClick={() => { scrollToSection(essentialsRef); }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-lg leading-none">calculate</span>
-            Essentials Estimate
-          </button>
+            How It Works
+          </Link>
           <Link
             href="/calculator"
             onClick={() => setSidebarOpen(false)}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/80 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left"
           >
             <span className="material-symbols-outlined text-lg leading-none">calculate</span>
             Shipping Calculator
@@ -248,14 +250,22 @@ export default function Home() {
           <Link
             href="/tracking"
             onClick={() => setSidebarOpen(false)}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/80 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left"
           >
             <span className="material-symbols-outlined text-lg leading-none">local_shipping</span>
             Track Shipment
           </Link>
+          <Link
+            href="/know-more"
+            onClick={() => setSidebarOpen(false)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/80 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left"
+          >
+            <span className="material-symbols-outlined text-lg leading-none">menu_book</span>
+            Know More Guide
+          </Link>
           <button
             onClick={() => { scrollToSection(contactRef); }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left cursor-pointer"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#0E1F38]/80 hover:bg-black/5 hover:text-black transition-all text-sm font-semibold text-left cursor-pointer"
           >
             <span className="material-symbols-outlined text-lg leading-none">support_agent</span>
             Contact Us
@@ -263,13 +273,14 @@ export default function Home() {
           
           <div className="h-px bg-black/5 my-4" />
 
-          <span className="px-4 text-[10px] font-bold uppercase tracking-wider text-black/40">Legal & Policies</span>
+          <span className="px-4 text-[10px] font-bold uppercase tracking-wider text-black/40">Legal &amp; Policies</span>
           
           <Link
             href="/shipping-policy"
             onClick={() => setSidebarOpen(false)}
             className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-xs font-semibold"
           >
+            <span className="material-symbols-outlined text-base">local_shipping</span>
             Shipping Policy
           </Link>
           <Link
@@ -277,6 +288,7 @@ export default function Home() {
             onClick={() => setSidebarOpen(false)}
             className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-xs font-semibold"
           >
+            <span className="material-symbols-outlined text-base">privacy_tip</span>
             Privacy Policy
           </Link>
           <Link
@@ -284,13 +296,15 @@ export default function Home() {
             onClick={() => setSidebarOpen(false)}
             className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-xs font-semibold"
           >
-            Returns & Refund Policy
+            <span className="material-symbols-outlined text-base">replay</span>
+            Returns &amp; Refund Policy
           </Link>
           <Link
             href="/terms"
             onClick={() => setSidebarOpen(false)}
             className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-xs font-semibold"
           >
+            <span className="material-symbols-outlined text-base">gavel</span>
             Terms and Conditions
           </Link>
           <Link
@@ -298,7 +312,8 @@ export default function Home() {
             onClick={() => setSidebarOpen(false)}
             className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-[#0E1F38]/70 hover:bg-black/5 hover:text-black transition-all text-xs font-semibold"
           >
-            FAQ Page
+            <span className="material-symbols-outlined text-base">help_outline</span>
+            Frequently Asked Questions
           </Link>
         </nav>
 
