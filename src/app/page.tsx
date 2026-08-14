@@ -8,14 +8,16 @@ import EstimatorModal from '@/components/EstimatorModal';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase } from '@/lib/supabase';
 
-// Define category data for the Essentials stacked card (PDF Page 3)
+// Define category data for the Essentials stacked card (Category Cards.pdf)
 interface CategoryData {
   id: string;
   tabLabel: string;
   cardTitle: string;
   description: string;
   topsQty: number;
+  topsUnitRate: number;
   bottomsQty: number;
+  bottomsUnitRate: number;
   canadianPrice: number;
   indianPrice: number;
   shippingPrice: number;
@@ -28,27 +30,31 @@ const CATEGORIES_DATA: CategoryData[] = [
     id: 'baby',
     tabLabel: 'Baby & Toddler (0-4 years)',
     cardTitle: 'Baby & Toddler (0-4 years)',
-    description: 'Babies grow out of clothes every 2-3 months. Buying brand name baby essentials in Canada is expensive. Save on baby clothes, blankets, and toys by shopping from India. High-quality materials for your little one, shipped straight to your locker.',
-    topsQty: 15,
-    bottomsQty: 8,
-    canadianPrice: 350,
-    indianPrice: 120,
-    shippingPrice: 80,
-    totalPrice: 200,
-    savings: 150,
+    description: 'Between rapid growth and daily messes, babies need about 14 tops and 10 bottoms every 3-6 months. Parenting is exhausting enough without dragging little ones to the store! Buying their whole wardrobe at once online from India protects both your sanity and your budget. Here’s how to easily save $116 per cycle.',
+    topsQty: 14,
+    topsUnitRate: 8,
+    bottomsQty: 10,
+    bottomsUnitRate: 12,
+    canadianPrice: 346,
+    indianPrice: 136,
+    shippingPrice: 94,
+    totalPrice: 230,
+    savings: 116,
   },
   {
     id: 'kids',
     tabLabel: 'Kids (5-12 years)',
     cardTitle: 'Kids (5-10 years)',
-    description: 'Active kids wear out outfits quickly through play and constant growth. Buying daily wear, uniforms, and shoes abroad adds up fast. Shipping premium cotton outfits and playwear from India keeps them comfortable while keeping costs low.',
+    description: 'Kids between 5-10 grow more predictably, letting you trade constant shopping for one big annual wardrobe refresh. Stocking up for the school year typically requires about 12 tops and 8 bottoms. Buying this yearly haul from India lets you check everything off your list at once without overspending. Here’s how you can save $110 every single year, per child.',
     topsQty: 12,
-    bottomsQty: 6,
-    canadianPrice: 480,
-    indianPrice: 180,
-    shippingPrice: 100,
-    totalPrice: 280,
-    savings: 200,
+    topsUnitRate: 10,
+    bottomsQty: 8,
+    bottomsUnitRate: 18,
+    canadianPrice: 386,
+    indianPrice: 166,
+    shippingPrice: 110,
+    totalPrice: 276,
+    savings: 110,
   },
   {
     id: 'teens',
@@ -56,7 +62,9 @@ const CATEGORIES_DATA: CategoryData[] = [
     cardTitle: 'Teens (11-18 years)',
     description: 'Teens hit unpredictable growth spurts every 6-12 months, and their style quickly shifts from basics to pricey popular brands. Keeping up with their yearly need of at least 10 tops and 7 bottoms can get expensive! Shopping from India lets you match their trendy tastes while protecting your budget. Here’s how to easily save $229 per cycle.',
     topsQty: 10,
+    topsUnitRate: 15,
     bottomsQty: 7,
+    bottomsUnitRate: 22,
     canadianPrice: 585,
     indianPrice: 230,
     shippingPrice: 126,
@@ -67,14 +75,16 @@ const CATEGORIES_DATA: CategoryData[] = [
     id: 'adults',
     tabLabel: 'Adults (18 & above)',
     cardTitle: 'Adults (18 & above)',
-    description: 'Upgrade your wardrobe with premium ethnic wear, designer wedding outfits, formal wear, and heavy accessories from India. Buying ethnic wear in Western retail stores comes with a heavy markup. Shipping directly with Layo guarantees local Indian prices and premium fabrics.',
-    topsQty: 8,
-    bottomsQty: 5,
-    canadianPrice: 850,
-    indianPrice: 330,
-    shippingPrice: 150,
-    totalPrice: 480,
-    savings: 370,
+    description: 'Building your wardrobe is now about upgrading your style, whether refreshing basics or adding premium extras. A typical year requires just 6 tops and 4 bottoms, but quality workwear and social outfits get pricey. Buying these elevated pieces from India lets you upgrade your look for a fraction of the cost. Here’s how to easily save $254 on your annual refresh.',
+    topsQty: 6,
+    topsUnitRate: 20,
+    bottomsQty: 4,
+    bottomsUnitRate: 30,
+    canadianPrice: 580,
+    indianPrice: 216,
+    shippingPrice: 110,
+    totalPrice: 326,
+    savings: 254,
   }
 ];
 
@@ -556,14 +566,20 @@ export default function Home() {
                 </div>
 
                 {/* Clothing Quantities Grid */}
-                <div className="flex items-center gap-6 py-2 border-b border-black/5">
+                <div className="flex flex-wrap items-center gap-6 py-2 border-b border-black/5">
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">👕</span>
-                    <span className="text-sm font-black text-[#0E1F38]">x{activeCategory.topsQty}</span>
+                    <span className="text-sm font-black text-[#0E1F38]">
+                      x{activeCategory.topsQty}{' '}
+                      <span className="text-xs font-normal text-[#0E1F38]/60">(from ${activeCategory.topsUnitRate}/pc)</span>
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">👖</span>
-                    <span className="text-sm font-black text-[#0E1F38]">x{activeCategory.bottomsQty}</span>
+                    <span className="text-sm font-black text-[#0E1F38]">
+                      x{activeCategory.bottomsQty}{' '}
+                      <span className="text-xs font-normal text-[#0E1F38]/60">(from ${activeCategory.bottomsUnitRate}/pc)</span>
+                    </span>
                   </div>
                 </div>
 
@@ -590,12 +606,7 @@ export default function Home() {
 
                   {/* + Ship With Layo price */}
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-[#0E1F38]/60">Indian bought products</span>
-                      <span className="px-3 py-1.5 bg-[#E8F5E9] text-[#2E7D32] border border-[#C8E6C9] rounded-xl font-bold text-[10px] uppercase tracking-wider">
-                        + Ship With Layo
-                      </span>
-                    </div>
+                    <span className="text-[#0E1F38]/60">+ Ship With Layo</span>
                     <span className="text-[#0E1F38] font-black text-sm">
                       ${activeCategory.shippingPrice}
                     </span>
