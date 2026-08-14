@@ -365,12 +365,12 @@ export default function Home() {
 
           {/* Start Button */}
           <div className="pt-4">
-            <button
-              onClick={() => setModalOpen(true)}
-              className="px-10 py-5 bg-[#FF5A65] text-white font-bold text-base md:text-lg rounded-full hover:bg-[#E24550] transition-colors shadow-lg shadow-[#FF5A65]/15 cursor-pointer"
+            <Link
+              href="/dashboard"
+              className="inline-block px-10 py-5 bg-[#FF5A65] text-white font-bold text-base md:text-lg rounded-full hover:bg-[#E24550] transition-colors shadow-lg shadow-[#FF5A65]/15 cursor-pointer text-center"
             >
               Start Shipping with Layo
-            </button>
+            </Link>
           </div>
         </div>
 
