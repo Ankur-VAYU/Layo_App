@@ -555,41 +555,41 @@ export default function Dashboard() {
 
   if (loading || (isFetching && user)) {
     return (
-      <div className="min-h-screen bg-[#131313] text-on-background flex flex-col justify-center items-center gap-4">
-        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-on-surface-variant font-bold text-xs uppercase tracking-widest">Loading My Shipments…</p>
+      <div className="min-h-screen bg-[#FAF8EE] text-[#0E1F38] flex flex-col justify-center items-center gap-4">
+        <div className="w-10 h-10 border-4 border-[#FF5A65] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-[#0E1F38]/70 font-bold text-xs uppercase tracking-widest">Loading My Shipments…</p>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="bg-[#131313] text-on-background min-h-screen flex flex-col items-center justify-center p-6 font-sans">
-        <div className="bg-surface-container border border-white/10 rounded-2xl w-full max-w-md p-8 shadow-2xl space-y-6 text-center">
-          <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center mx-auto text-primary">
+      <div className="bg-[#FAF8EE] text-[#0E1F38] min-h-screen flex flex-col items-center justify-center p-6 font-sans">
+        <div className="bg-white border border-black/10 rounded-3xl w-full max-w-md p-8 shadow-xl space-y-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-[#FF5A65]/10 border border-[#FF5A65]/30 flex items-center justify-center mx-auto text-[#FF5A65]">
             <span className="material-symbols-outlined text-3xl">lock</span>
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-extrabold text-white">Locker Access Restricted</h2>
-            <p className="text-on-surface-variant text-sm leading-relaxed">
+            <h2 className="text-2xl font-black text-[#0E1F38]">Locker Access Restricted</h2>
+            <p className="text-[#0E1F38]/70 text-sm leading-relaxed font-light">
               Locker management and Virtual Indian Addresses are available for registered users only. Please sign in or create an account to access your locker.
             </p>
           </div>
           <div className="space-y-3 pt-2">
             <Link
               href="/login"
-              className="block w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 transition-all text-center"
+              className="block w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] transition-all text-center shadow-md shadow-[#FF5A65]/20"
             >
               Sign In to Access Locker
             </Link>
             <Link
               href="/signup"
-              className="block w-full py-3.5 border border-white/10 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-white/5 transition-all text-center"
+              className="block w-full py-3.5 border border-black/10 text-[#0E1F38] font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-black/5 transition-all text-center"
             >
               Create New Account
             </Link>
           </div>
-          <Link href="/" className="block text-xs text-on-surface-variant hover:text-white pt-2">
+          <Link href="/" className="block text-xs text-[#0E1F38]/60 hover:text-[#0E1F38] pt-2">
             ← Return to Home
           </Link>
         </div>
@@ -600,21 +600,21 @@ export default function Dashboard() {
   const selectedWarehouseObject = warehouses.find(w => w.id === selectedWarehouse);
 
   return (
-    <div className="bg-[#131313] text-on-background min-h-screen flex flex-col font-sans selection:bg-primary selection:text-on-primary">
+    <div className="bg-[#FAF8EE] text-[#0E1F38] min-h-screen flex flex-col font-sans selection:bg-[#FF5A65] selection:text-white">
       
       {/* ── Top App Bar ── */}
-      <header className="bg-surface/85 backdrop-blur border-b border-white/10 flex justify-between items-center w-full px-6 py-4 sticky top-0 z-50">
+      <header className="bg-[#FAF8EE]/90 backdrop-blur-md border-b border-black/5 flex justify-between items-center w-full px-6 md:px-16 py-4 sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-4">
-          <Logo showTagline={false} onClick={handleLogoClick} />
+          <Logo showTagline={false} darkText={true} onClick={handleLogoClick} />
         </div>
         <div className="flex items-center gap-6">
-          <Link href="/" className="text-on-surface-variant hover:text-primary transition-colors text-sm font-semibold">Home</Link>
+          <Link href="/" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-sm font-semibold">Home</Link>
           {['admin@layo.com', 'ankur@layo.com'].includes(user?.email || '') && (
-            <Link href="/admin" className="text-on-surface-variant hover:text-primary transition-colors text-sm font-semibold">Admin Portal</Link>
+            <Link href="/admin" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-sm font-semibold">Admin Portal</Link>
           )}
           <button 
             onClick={() => supabase.auth.signOut()} 
-            className="text-error/80 hover:text-error text-xs font-bold uppercase tracking-wider border border-error/20 px-4 py-2 rounded-xl transition-all"
+            className="text-[#FF5A65] hover:bg-[#FF5A65] hover:text-white text-xs font-bold uppercase tracking-wider border border-[#FF5A65]/30 bg-white px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
           >
             Sign Out
           </button>
@@ -625,27 +625,30 @@ export default function Dashboard() {
       <main className="flex-grow w-full max-w-[1200px] mx-auto px-6 py-12">
         
         {/* Brand identity / Hero */}
-        <div className="mb-12 text-center space-y-2">
-          <h2 className="text-6xl font-extrabold tracking-tighter text-primary/10 select-none leading-none">LAYO</h2>
-          <p className="text-xl md:text-2xl font-bold text-white max-w-xl mx-auto">
-            Distance Decoded.
+        <div className="mb-10 text-center space-y-2">
+          <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#FF5A65]">Member Locker</span>
+          <h1 className="text-3xl md:text-5xl font-black text-[#0E1F38] tracking-tight">
+            Virtual Indian Locker
+          </h1>
+          <p className="text-sm md:text-base text-[#0E1F38]/70 max-w-xl mx-auto font-light leading-relaxed">
+            Consolidate parcels at our Indian hub and dispatch securely to Canada.
           </p>
         </div>
 
         {/* Tab switcher */}
-        <div className="flex justify-center border-b border-white/10 mb-8 max-w-md mx-auto">
+        <div className="flex justify-center border-b border-black/10 mb-8 max-w-md mx-auto">
           <button
             onClick={() => setActiveTab('new')}
-            className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${
-              activeTab === 'new' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-white'
+            className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+              activeTab === 'new' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
           >
             New Locker Order
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${
-              activeTab === 'history' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-white'
+            className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+              activeTab === 'history' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
           >
             My Shipments ({shipments.length})
@@ -655,17 +658,17 @@ export default function Dashboard() {
         {activeTab === 'history' ? (
           /* ── MY SHIPMENTS / TRACKER TAB ── */
           <div className="space-y-6">
-            <h2 className="text-2xl font-extrabold text-white text-center md:text-left">Track Your Shipments</h2>
+            <h2 className="text-2xl font-black text-[#0E1F38] text-center md:text-left">Track Your Shipments</h2>
             {shipments.length === 0 ? (
-              <div className="glass-card border border-white/10 rounded-2xl p-12 text-center space-y-4">
-                <span className="material-symbols-outlined text-6xl text-on-surface-variant opacity-30">inventory_2</span>
-                <h3 className="text-lg font-bold text-white">No shipments yet</h3>
-                <p className="text-on-surface-variant text-sm max-w-sm mx-auto">
+              <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
+                <span className="material-symbols-outlined text-6xl text-[#0E1F38]/30">inventory_2</span>
+                <h3 className="text-lg font-bold text-[#0E1F38]">No shipments yet</h3>
+                <p className="text-[#0E1F38]/60 text-sm max-w-sm mx-auto font-light">
                   Start generating quotes and book your first virtual locker address to begin international tracking.
                 </p>
                 <button
                   onClick={() => setActiveTab('new')}
-                  className="bg-primary text-background font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-xl hover:brightness-110 active:scale-95 transition-all mt-2"
+                  className="bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#e24550] active:scale-95 transition-all shadow-md shadow-[#FF5A65]/20 mt-2 cursor-pointer"
                 >
                   Book New Shipment
                 </button>
@@ -686,25 +689,25 @@ export default function Dashboard() {
                   const currentIdx = STEPS.indexOf(statusNormalized);
 
                   return (
-                    <div key={s.id} className="glass-card p-6 rounded-2xl border border-white/10 space-y-4 shadow-xl">
+                    <div key={s.id} className="bg-white p-6 rounded-3xl border border-black/5 space-y-4 shadow-sm text-[#0E1F38]">
                       <div className="flex justify-between items-center">
                         <span
                           className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
                           style={{
-                            backgroundColor: `${STATUS_COLORS[statusNormalized] ?? '#64748b'}20`,
+                            backgroundColor: `${STATUS_COLORS[statusNormalized] ?? '#64748b'}15`,
                             color: STATUS_COLORS[statusNormalized] ?? '#64748b'
                           }}
                         >
                           {s.status || 'Paid'}
                         </span>
-                        <span className="text-[11px] text-on-surface-variant opacity-60">
+                        <span className="text-[11px] text-[#0E1F38]/50">
                           {new Date(s.created_at).toLocaleDateString()}
                         </span>
                       </div>
 
                       {/* Stepper tracker */}
                       <div className="relative pt-2">
-                        <div className="absolute top-[13px] left-0 right-0 h-[2px] bg-white/5 -z-10"></div>
+                        <div className="absolute top-[13px] left-0 right-0 h-[2px] bg-black/5 -z-10"></div>
                         <div className="flex justify-between">
                           {STEPS.map((step, idx) => {
                             const isPassed = idx <= currentIdx;
@@ -714,13 +717,13 @@ export default function Dashboard() {
                                 <div
                                   className="w-3.5 h-3.5 rounded-full transition-all border-2 border-transparent"
                                   style={{
-                                    backgroundColor: isPassed ? STATUS_COLORS[statusNormalized] ?? '#64748b' : '#222',
+                                    backgroundColor: isPassed ? STATUS_COLORS[statusNormalized] ?? '#64748b' : '#e2e8f0',
                                     boxShadow: isCurrent ? `0 0 10px ${STATUS_COLORS[statusNormalized] ?? '#64748b'}` : 'none'
                                   }}
                                 />
                                 <span 
                                   className={`text-[8px] uppercase tracking-widest font-bold ${
-                                    isPassed ? 'text-white' : 'text-on-surface-variant opacity-40'
+                                    isPassed ? 'text-[#0E1F38]' : 'text-[#0E1F38]/40'
                                   }`}
                                 >
                                   {STEP_LABELS[idx]}
@@ -731,19 +734,19 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <div className="border-t border-white/5 pt-4 space-y-2">
+                      <div className="border-t border-black/5 pt-4 space-y-2">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h3 className="font-bold text-sm text-white">✈ {s.destination_city || 'Canada'}</h3>
-                            <p className="text-xs text-on-surface-variant leading-tight opacity-75">{s.destination_address}</p>
+                            <h3 className="font-bold text-sm text-[#0E1F38]">✈ {s.destination_city || 'Canada'}</h3>
+                            <p className="text-xs text-[#0E1F38]/70 leading-tight font-light">{s.destination_address}</p>
                           </div>
                           <div className="text-right text-xs">
-                            <p className="font-mono text-white font-bold">{s.total_weight} kg</p>
-                            <p className="text-primary font-bold">₹{(s.total_cost || 0).toLocaleString()}</p>
+                            <p className="font-mono text-[#0E1F38] font-bold">{s.total_weight} kg</p>
+                            <p className="text-[#FF5A65] font-bold">₹{(s.total_cost || 0).toLocaleString()}</p>
                           </div>
                         </div>
                         {s.external_order_id && (
-                          <p className="text-[10px] text-on-surface-variant bg-[#1A1A1A] p-2 rounded border border-white/5 font-mono">
+                          <p className="text-[10px] text-[#0E1F38]/80 bg-[#FAF8EE] p-2.5 rounded-xl border border-black/5 font-mono">
                             <strong>Reference Order:</strong> {s.external_order_id}
                           </p>
                         )}
@@ -759,10 +762,10 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             
             {/* Step Content Card */}
-            <div className="lg:col-span-8 bg-surface-container rounded-2xl border border-white/10 p-6 md:p-8 space-y-8 shadow-2xl relative">
+            <div className="lg:col-span-8 bg-white rounded-3xl border border-black/5 p-6 md:p-8 space-y-8 shadow-sm relative text-[#0E1F38]">
               
               {/* Process Bar Header */}
-              <nav className="border-b border-white/5 pb-6">
+              <nav className="border-b border-black/5 pb-6">
                 <div className="flex justify-between items-center gap-1.5 max-w-md mx-auto">
                   {stepPills.map(step => {
                     const isPassed = step.id <= currentStep;
@@ -772,22 +775,22 @@ export default function Dashboard() {
                         key={step.id}
                         disabled={step.id > currentStep && activeItems.length === 0}
                         onClick={() => setCurrentStep(step.id)}
-                        className={`flex flex-col items-center gap-2 flex-1 outline-none focus:outline-none transition-all ${
+                        className={`flex flex-col items-center gap-2 flex-1 outline-none focus:outline-none transition-all cursor-pointer ${
                           isCurrent ? 'step-active' : ''
                         }`}
                       >
                         <div 
                           className={`w-3.5 h-3.5 rounded-full border-2 transition-all ${
                             isCurrent
-                              ? 'bg-primary border-primary shadow-[0_0_10px_rgba(242,202,80,0.6)]'
+                              ? 'bg-[#FF5A65] border-[#FF5A65] shadow-[0_0_10px_rgba(255,90,101,0.4)]'
                               : isPassed
-                              ? 'bg-primary/60 border-primary/60'
-                              : 'bg-white/20 border-transparent'
+                              ? 'bg-[#FF5A65]/60 border-[#FF5A65]/60'
+                              : 'bg-black/15 border-transparent'
                           }`}
                         />
                         <span 
                           className={`text-[8px] uppercase tracking-widest font-bold text-center block ${
-                            isCurrent ? 'text-primary' : isPassed ? 'text-white' : 'text-on-surface-variant opacity-40'
+                            isCurrent ? 'text-[#FF5A65]' : isPassed ? 'text-[#0E1F38]' : 'text-[#0E1F38]/40'
                           }`}
                         >
                           {step.id}
@@ -802,20 +805,20 @@ export default function Dashboard() {
               {currentStep === 1 && (
                 <section className="space-y-6 animate-fade-in">
                   <div>
-                    <h3 className="text-lg font-bold text-white uppercase tracking-wider border-l-4 border-primary pl-3">
-                      1. Setup Virtual Address & Origin
+                    <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
+                      1. Setup Virtual Address &amp; Origin
                     </h3>
-                    <p className="text-on-surface-variant text-xs mt-1">Specify drop-off point and details of incoming items.</p>
+                    <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Specify drop-off point and details of incoming items.</p>
                   </div>
 
                   {/* Radios */}
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       onClick={() => setOriginType('online')}
-                      className={`p-4 rounded-xl border text-left font-bold text-xs uppercase tracking-wider transition-all flex flex-col gap-1 ${
+                      className={`p-4 rounded-2xl border text-left font-bold text-xs uppercase tracking-wider transition-all flex flex-col gap-1 cursor-pointer shadow-sm ${
                         originType === 'online'
-                          ? 'border-primary bg-primary/5 text-primary shadow-[0_0_10px_rgba(242,202,80,0.1)]'
-                          : 'border-white/10 bg-[#1A1A1A] text-on-surface-variant hover:border-white/20'
+                          ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
+                          : 'border-black/10 bg-[#FAF8EE] text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                       }`}
                     >
                       <span className="material-symbols-outlined text-lg">shopping_cart</span>
@@ -823,10 +826,10 @@ export default function Dashboard() {
                     </button>
                     <button
                       onClick={() => setOriginType('personal')}
-                      className={`p-4 rounded-xl border text-left font-bold text-xs uppercase tracking-wider transition-all flex flex-col gap-1 ${
+                      className={`p-4 rounded-2xl border text-left font-bold text-xs uppercase tracking-wider transition-all flex flex-col gap-1 cursor-pointer shadow-sm ${
                         originType === 'personal'
-                          ? 'border-primary bg-primary/5 text-primary shadow-[0_0_10px_rgba(242,202,80,0.1)]'
-                          : 'border-white/10 bg-[#1A1A1A] text-on-surface-variant hover:border-white/20'
+                          ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
+                          : 'border-black/10 bg-[#FAF8EE] text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                       }`}
                     >
                       <span className="material-symbols-outlined text-lg">house</span>
@@ -839,17 +842,17 @@ export default function Dashboard() {
                     {originType === 'online' ? (
                       <>
                         <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-on-surface-variant">Store Name</label>
+                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Store Name</label>
                           <input
                             type="text"
                             placeholder="Amazon, Myntra, Ajio, etc."
                             value={storeName}
                             onChange={e => setStoreName(e.target.value)}
-                            className="w-full bg-[#131313] border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
                           />
                         </div>
                         <div className="space-y-1 relative" id="orderNumberField">
-                          <label className="text-[10px] uppercase font-bold text-on-surface-variant">Order Number</label>
+                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Order Number</label>
                           <div className="relative">
                             <input
                               type="text"
@@ -859,21 +862,21 @@ export default function Dashboard() {
                                 setOrderNumber(e.target.value);
                                 setShowOrderNumberError(false);
                               }}
-                              className={`w-full bg-[#131313] border rounded-xl pl-4 pr-12 py-3 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none ${
-                                showOrderNumberError ? 'border-error' : 'border-white/10'
+                              className={`w-full bg-[#FAF8EE] border rounded-xl pl-4 pr-12 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm ${
+                                showOrderNumberError ? 'border-red-500' : 'border-black/10'
                               }`}
                             />
                             <button
                               type="button"
                               onClick={handlePaste}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:opacity-85 text-sm p-1"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#FF5A65] hover:text-[#e24550] text-sm p-1 cursor-pointer"
                               title="Paste from clipboard"
                             >
                               📋
                             </button>
                           </div>
                           {showOrderNumberError && (
-                            <p className="text-[10px] text-error font-semibold mt-1">
+                            <p className="text-[10px] text-red-500 font-semibold mt-1">
                               Please supply your Retailer Order Number so the hub can verify receipt.
                             </p>
                           )}
@@ -882,23 +885,23 @@ export default function Dashboard() {
                     ) : (
                       <>
                         <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-on-surface-variant">Sender's Full Name</label>
+                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Sender's Full Name</label>
                           <input
                             type="text"
                             placeholder="John Doe"
                             value={senderName}
                             onChange={e => setSenderName(e.target.value)}
-                            className="w-full bg-[#131313] border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-on-surface-variant">Origin City</label>
+                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Origin City</label>
                           <input
                             type="text"
                             placeholder="Delhi, Mumbai, Jaipur, etc."
                             value={originCity}
                             onChange={e => setOriginCity(e.target.value)}
-                            className="w-full bg-[#131313] border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
                           />
                         </div>
                       </>
@@ -906,13 +909,13 @@ export default function Dashboard() {
                   </div>
 
                   {/* India Warehouse Select */}
-                  <div className="space-y-4 pt-4 border-t border-white/5">
+                  <div className="space-y-4 pt-4 border-t border-black/5">
                     <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-on-surface-variant">Select India Warehouse Hub</label>
+                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Select India Warehouse Hub</label>
                       <select
                         value={selectedWarehouse}
                         onChange={e => setSelectedWarehouse(e.target.value)}
-                        className="w-full bg-[#131313] border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
                       >
                         <option value="" disabled>Select nearest warehouse</option>
                         {warehouses.map(wh => (
@@ -925,20 +928,20 @@ export default function Dashboard() {
 
                     {/* Virtual address preview */}
                     {selectedWarehouseObject && (
-                      <div className="p-5 rounded-xl border border-primary/20 bg-primary/5 space-y-2 animate-fade-in relative overflow-hidden">
-                        <span className="material-symbols-outlined absolute top-4 right-4 text-7xl text-primary opacity-5 pointer-events-none">
+                      <div className="p-5 rounded-2xl border border-[#FF5A65]/30 bg-[#FAF8EE] space-y-2 animate-fade-in relative overflow-hidden text-[#0E1F38]">
+                        <span className="material-symbols-outlined absolute top-4 right-4 text-7xl text-[#FF5A65] opacity-5 pointer-events-none">
                           location_on
                         </span>
-                        <div className="inline-block text-[9px] uppercase tracking-wider font-bold bg-primary/20 text-primary px-2.5 py-1 rounded">
+                        <div className="inline-block text-[9px] uppercase tracking-wider font-bold bg-[#FF5A65]/15 text-[#FF5A65] px-2.5 py-1 rounded">
                           Preview of your Virtual Address
                         </div>
-                        <div className="text-xs space-y-1.5 text-white leading-relaxed pt-1.5 font-mono">
+                        <div className="text-xs space-y-1.5 text-[#0E1F38] leading-relaxed pt-1.5 font-mono">
                           <p><strong>Name:</strong> {user?.user_metadata?.full_name || 'Customer'} / LAYO-{user?.id?.substring(0, 5).toUpperCase() || 'LOCK'}</p>
                           <p><strong>Address:</strong> {selectedWarehouseObject.address}</p>
                           <p><strong>City/Pincode:</strong> {selectedWarehouseObject.city} - {selectedWarehouseObject.pincode || ''}</p>
-                          <p><strong>Phone Number:</strong> {selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'} <span className="text-[10px] text-primary font-sans font-semibold">(for courier & order updates)</span></p>
+                          <p><strong>Phone Number:</strong> {selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'} <span className="text-[10px] text-[#FF5A65] font-sans font-semibold">(for courier &amp; order updates)</span></p>
                         </div>
-                        <p className="text-[10px] text-on-surface-variant opacity-60 italic pt-1">
+                        <p className="text-[10px] text-[#0E1F38]/60 italic pt-1">
                           Copy coordinates and tags. Full instructions will be shared on successful payment.
                         </p>
                       </div>
@@ -948,7 +951,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setCurrentStep(2)}
                     disabled={!selectedWarehouse}
-                    className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/10 disabled:opacity-35 disabled:cursor-not-allowed"
+                    className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                   >
                     Continue to Canada Destination
                   </button>
@@ -960,23 +963,23 @@ export default function Dashboard() {
                 <section className="space-y-6 animate-fade-in">
                   <div className="flex justify-between items-end">
                     <div>
-                      <h3 className="text-lg font-bold text-white uppercase tracking-wider border-l-4 border-primary pl-3">
+                      <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
                         2. Delivery Address in Canada
                       </h3>
-                      <p className="text-on-surface-variant text-xs mt-1">Provide drop-off address coordinates inside Canada.</p>
+                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Provide drop-off address coordinates inside Canada.</p>
                     </div>
-                    <button onClick={() => setCurrentStep(1)} className="text-xs text-primary font-bold hover:underline">
+                    <button onClick={() => setCurrentStep(1)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
                       Back
                     </button>
                   </div>
 
                   <div className="space-y-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-on-surface-variant">Destination City</label>
+                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Destination City</label>
                       <select
                         value={destinationCity}
                         onChange={e => setDestinationCity(e.target.value)}
-                        className="w-full bg-[#131313] border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
                       >
                         <option value="" disabled>Select Canada region</option>
                         {canadaCities.map(city => (
@@ -986,13 +989,13 @@ export default function Dashboard() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-on-surface-variant">Full Delivery Street Address</label>
+                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Full Delivery Street Address</label>
                       <input
                         type="text"
                         placeholder="Suite #, Street name, City, Postal Code"
                         value={destinationAddress}
                         onChange={e => setDestinationAddress(e.target.value)}
-                        className="w-full bg-[#131313] border border-white/10 rounded-xl px-4 py-3.5 text-xs text-white focus:border-primary focus:ring-0 focus:outline-none"
+                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3.5 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
                       />
                     </div>
                   </div>
@@ -1000,7 +1003,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setCurrentStep(3)}
                     disabled={!destinationCity || !destinationAddress}
-                    className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/10 disabled:opacity-35 disabled:cursor-not-allowed"
+                    className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                   >
                     Continue to Category Selection
                   </button>
@@ -1012,17 +1015,17 @@ export default function Dashboard() {
                 <section className="space-y-6 animate-fade-in">
                   <div className="flex justify-between items-end">
                     <div>
-                      <h3 className="text-lg font-bold text-white uppercase tracking-wider border-l-4 border-primary pl-3">
+                      <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
                         3. Item Categories
                       </h3>
-                      <p className="text-on-surface-variant text-xs mt-1">Select all categories containing items you wish to calculate.</p>
+                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Select all categories containing items you wish to calculate.</p>
                     </div>
-                    <button onClick={() => setCurrentStep(2)} className="text-xs text-primary font-bold hover:underline">
+                    <button onClick={() => setCurrentStep(2)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
                       Back
                     </button>
                   </div>
 
-                  {/* 3x3 Luxury Grid */}
+                  {/* 3x3 Grid */}
                   <div className="grid grid-cols-3 gap-3">
                     {Object.entries(categoryData).map(([key, val]) => {
                       const isSelected = selectedCategories.includes(key);
@@ -1030,19 +1033,19 @@ export default function Dashboard() {
                         <button
                           key={key}
                           onClick={() => handleToggleCategory(key)}
-                          className={`rounded-xl p-4 flex flex-col items-center justify-center gap-2 relative overflow-hidden h-32 border transition-all duration-300 active:scale-95 ${
+                          className={`rounded-2xl p-4 flex flex-col items-center justify-center gap-2 relative overflow-hidden h-32 border transition-all duration-300 active:scale-95 cursor-pointer shadow-sm ${
                             isSelected
-                              ? 'border-primary bg-primary/5 text-primary shadow-[0_0_15px_rgba(242,202,80,0.15)]'
-                              : 'border-white/10 bg-[#1A1A1A]/70 text-on-surface-variant hover:border-white/20 hover:text-white'
+                              ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
+                              : 'border-black/10 bg-[#FAF8EE] text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                           }`}
                         >
-                          <span className="material-symbols-outlined text-primary text-4xl leading-none">
+                          <span className="material-symbols-outlined text-[#FF5A65] text-4xl leading-none">
                             {val.icon}
                           </span>
                           <span className="text-[10px] font-bold uppercase tracking-wider text-center leading-tight">
                             {val.name}
                           </span>
-                          <span className="material-symbols-outlined absolute -bottom-1 -right-1 text-5xl opacity-5 pointer-events-none text-primary">
+                          <span className="material-symbols-outlined absolute -bottom-1 -right-1 text-5xl opacity-5 pointer-events-none text-[#FF5A65]">
                             {val.icon}
                           </span>
                         </button>
@@ -1053,7 +1056,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setCurrentStep(4)}
                     disabled={selectedCategories.length === 0}
-                    className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/10 disabled:opacity-35 disabled:cursor-not-allowed"
+                    className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                   >
                     Continue to Configuration
                   </button>
@@ -1065,17 +1068,17 @@ export default function Dashboard() {
                 <section className="space-y-6 animate-fade-in">
                   <div className="flex justify-between items-end">
                     <div>
-                      <h3 className="text-lg font-bold text-white uppercase tracking-wider border-l-4 border-primary pl-3">
-                        4. Item Details & Variables
+                      <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
+                        4. Item Details &amp; Variables
                       </h3>
-                      <p className="text-on-surface-variant text-xs mt-1">Configure subcategory quantity and optional details.</p>
+                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Configure subcategory quantity and optional details.</p>
                     </div>
-                    <button onClick={() => setCurrentStep(3)} className="text-xs text-primary font-bold hover:underline">
+                    <button onClick={() => setCurrentStep(3)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
                       Back
                     </button>
                   </div>
 
-                  <div className="space-y-6 divide-y divide-white/5">
+                  <div className="space-y-6 divide-y divide-black/5">
                     {selectedCategories.map(catKey => {
                       const cat = categoryData[catKey];
                       const activeDemo = activeDemoState[catKey] ?? 'Adult';
@@ -1083,14 +1086,14 @@ export default function Dashboard() {
                         <div key={catKey} className="pt-6 first:pt-0">
                           {/* Category header */}
                           <div className="flex items-start justify-between mb-4 gap-3">
-                            <h4 className="text-xs font-black text-primary uppercase tracking-[0.2em] flex items-center gap-2 pt-0.5">
+                            <h4 className="text-xs font-black text-[#FF5A65] uppercase tracking-[0.2em] flex items-center gap-2 pt-0.5">
                               <span className="material-symbols-outlined text-base leading-none">{cat.icon}</span>
                               {cat.name}
                             </h4>
 
                             {/* Age tabs — one per category, same as estimator */}
                             {cat.requiresAge && (
-                              <div className="flex items-center gap-1.5 bg-[#131313] rounded-full p-1 border border-white/10 flex-shrink-0">
+                              <div className="flex items-center gap-1.5 bg-[#FAF8EE] rounded-full p-1 border border-black/10 flex-shrink-0">
                                 {demographicOptions.map(opt => {
                                   const tabTotal = cat.subs.reduce((s, _, idx) =>
                                     s + (qtyState[`${catKey}-${idx}-${opt.label}`] ?? 0), 0);
@@ -1099,15 +1102,15 @@ export default function Dashboard() {
                                     <button
                                       key={opt.label}
                                       onClick={() => handleDemoChange(catKey, opt.label)}
-                                      className={`relative px-3 py-1.5 text-[9px] font-bold rounded-full transition-all ${
+                                      className={`relative px-3 py-1.5 text-[9px] font-bold rounded-full transition-all cursor-pointer ${
                                         isActive
-                                          ? 'bg-primary text-background shadow-sm'
-                                          : 'text-on-surface-variant hover:text-white'
+                                          ? 'bg-[#FF5A65] text-white shadow-sm'
+                                          : 'text-[#0E1F38]/60 hover:text-[#0E1F38]'
                                       }`}
                                     >
                                       {opt.label}
                                       {tabTotal > 0 && !isActive && (
-                                        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary/80 text-background text-[7px] font-black flex items-center justify-center">
+                                        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-[#FF5A65] text-white text-[7px] font-black flex items-center justify-center">
                                           {tabTotal}
                                         </span>
                                       )}
@@ -1131,44 +1134,44 @@ export default function Dashboard() {
                               return (
                                 <div
                                   key={sub.name}
-                                  className={`px-4 py-3.5 rounded-xl border transition-all flex justify-between items-center ${
+                                  className={`px-4 py-3.5 rounded-2xl border transition-all flex justify-between items-center ${
                                     totalQty > 0
-                                      ? 'border-primary/20 bg-surface-container-high border-l-4 border-l-primary'
-                                      : 'border-white/10 bg-[#1A1A1A]/70'
+                                      ? 'border-[#FF5A65]/30 bg-[#FF5A65]/5 border-l-4 border-l-[#FF5A65] text-[#0E1F38]'
+                                      : 'border-black/10 bg-[#FAF8EE] text-[#0E1F38]'
                                   }`}
                                 >
                                   <div className="flex-grow pr-4">
-                                    <p className="font-bold text-sm text-white flex items-center gap-1.5">
+                                    <p className="font-bold text-sm text-[#0E1F38] flex items-center gap-1.5">
                                       {sub.name}
                                       {(sub.oversized || sub.isRestricted || cat.isFoodGlobal) && (
                                         <span
-                                          className="material-symbols-outlined text-xs text-primary leading-none cursor-help"
+                                          className="material-symbols-outlined text-xs text-[#FF5A65] leading-none cursor-help"
                                           title="Special shipping check required"
                                         >
                                           info
                                         </span>
                                       )}
                                     </p>
-                                    <p className="text-[10px] text-on-surface-variant opacity-70 mt-0.5 uppercase tracking-wider font-semibold">
+                                    <p className="text-[10px] text-[#0E1F38]/60 mt-0.5 uppercase tracking-wider font-semibold">
                                       {sub.weight}g
                                     </p>
                                   </div>
 
-                                  <div className="flex items-center gap-3.5 bg-[#131313] rounded-full p-1.5 border border-white/10">
+                                  <div className="flex items-center gap-3.5 bg-white rounded-full p-1.5 border border-black/10 shadow-sm">
                                     <button
                                       onClick={() => cat.requiresAge
                                         ? handleQtyChange(catKey, rowKey, -1)
                                         : setQtyState(prev => ({ ...prev, [`${rowKey}-default`]: Math.max(0, (prev[`${rowKey}-default`] ?? 0) - 1) }))}
-                                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/5 text-white transition-all active:scale-90"
+                                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 text-[#0E1F38] transition-all active:scale-90 cursor-pointer"
                                     >
                                       <span className="material-symbols-outlined text-sm leading-none">remove</span>
                                     </button>
-                                    <span className="w-5 text-center font-bold text-sm text-white">{currentQty}</span>
+                                    <span className="w-5 text-center font-bold text-sm text-[#0E1F38]">{currentQty}</span>
                                     <button
                                       onClick={() => cat.requiresAge
                                         ? handleQtyChange(catKey, rowKey, 1)
                                         : setQtyState(prev => ({ ...prev, [`${rowKey}-default`]: (prev[`${rowKey}-default`] ?? 0) + 1 }))}
-                                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/5 text-white transition-all active:scale-90"
+                                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 text-[#0E1F38] transition-all active:scale-90 cursor-pointer"
                                     >
                                       <span className="material-symbols-outlined text-sm leading-none">add</span>
                                     </button>
@@ -1184,9 +1187,9 @@ export default function Dashboard() {
 
                   {/* Warnings alert panel */}
                   {warnings.length > 0 && (
-                    <div className="space-y-2.5 p-4 rounded-xl bg-primary/10 border border-primary/20">
+                    <div className="space-y-2.5 p-4 rounded-2xl bg-[#FF5A65]/10 border border-[#FF5A65]/20">
                       {warnings.map((warn, index) => (
-                        <p key={index} className="text-[10px] text-primary uppercase font-bold leading-tight tracking-wide">
+                        <p key={index} className="text-[10px] text-[#FF5A65] uppercase font-bold leading-tight tracking-wide">
                           {warn}
                         </p>
                       ))}
@@ -1196,7 +1199,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setCurrentStep(5)}
                     disabled={activeItems.length === 0}
-                    className="w-full py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/10 disabled:opacity-35 disabled:cursor-not-allowed"
+                    className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                   >
                     Continue to Summary
                   </button>
@@ -1208,35 +1211,35 @@ export default function Dashboard() {
                 <section className="space-y-6 animate-fade-in">
                   <div className="flex justify-between items-end">
                     <div>
-                      <h3 className="text-lg font-bold text-white uppercase tracking-wider border-l-4 border-primary pl-3">
-                        5. Final Review & Warehouse Actions
+                      <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
+                        5. Final Review &amp; Warehouse Actions
                       </h3>
-                      <p className="text-on-surface-variant text-xs mt-1">Choose locker dispatch action before booking checkout.</p>
+                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Choose locker dispatch action before booking checkout.</p>
                     </div>
-                    <button onClick={() => setCurrentStep(4)} className="text-xs text-primary font-bold hover:underline">
+                    <button onClick={() => setCurrentStep(4)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
                       Back
                     </button>
                   </div>
 
                   {/* Shipment Item Breakdown */}
                   <div className="space-y-3">
-                    <label className="text-[10px] uppercase font-bold tracking-wider text-on-surface-variant block">
+                    <label className="text-[10px] uppercase font-bold tracking-wider text-[#0E1F38]/60 block">
                       Configured Packages list
                     </label>
                     <div className="space-y-2">
                       {activeItems.map(item => (
-                        <div key={item.configKey} className="p-4 rounded-xl border border-white/5 bg-[#1A1A1A] flex justify-between items-center shadow-inner">
+                        <div key={item.configKey} className="p-4 rounded-2xl border border-black/5 bg-[#FAF8EE] flex justify-between items-center shadow-sm">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-[#131313] border border-white/10 flex items-center justify-center text-primary">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-black/10 flex items-center justify-center text-[#FF5A65] shadow-sm">
                               <span className="material-symbols-outlined text-xl leading-none">
                                 {categoryData[item.category].icon}
                               </span>
                             </div>
                             <div>
-                              <p className="font-bold text-xs text-white">
-                                {item.subcategory} <span className="text-primary ml-1 font-mono">x{item.qty}</span>
+                              <p className="font-bold text-xs text-[#0E1F38]">
+                                {item.subcategory} <span className="text-[#FF5A65] ml-1 font-mono">x{item.qty}</span>
                               </p>
-                              <p className="text-[9px] text-on-surface-variant uppercase tracking-wider font-bold mt-0.5">
+                              <p className="text-[9px] text-[#0E1F38]/60 uppercase tracking-wider font-bold mt-0.5">
                                 {item.requiresAge ? `${item.demo} • ` : ''}{(item.weightGrams / 1000).toFixed(2)} kg
                               </p>
                             </div>
@@ -1244,7 +1247,7 @@ export default function Dashboard() {
                           
                           <button
                             onClick={() => setQtyState(prev => ({ ...prev, [item.demoKey]: 0 }))}
-                            className="text-error/60 hover:text-error transition-all p-1"
+                            className="text-red-400 hover:text-red-600 transition-all p-1 cursor-pointer"
                             title="Remove subcategory"
                           >
                             <span className="material-symbols-outlined text-lg leading-none">delete</span>
@@ -1255,10 +1258,10 @@ export default function Dashboard() {
                   </div>
 
                   {/* Warehouse dispatch selector (Free hold and combine) */}
-                  <div className="p-5 rounded-xl border border-white/10 bg-[#1A1A1A] space-y-4">
+                  <div className="p-5 rounded-2xl border border-black/5 bg-[#FAF8EE] space-y-4 shadow-sm">
                     <div className="space-y-1">
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">Free 30-Day Hold & Combine</h4>
-                      <p className="text-on-surface-variant text-[11px] leading-relaxed">
+                      <h4 className="text-xs font-bold text-[#0E1F38] uppercase tracking-wider">Free 30-Day Hold &amp; Combine</h4>
+                      <p className="text-[#0E1F38]/70 text-[11px] leading-relaxed font-light">
                         Shop at multiple stores! We can hold packages in India for up to 30 days and consolidate them to maximize transit savings.
                       </p>
                     </div>
@@ -1269,14 +1272,14 @@ export default function Dashboard() {
                           setWarehouseAction('ship');
                           setMorePackages(null);
                         }}
-                        className={`p-3.5 rounded-lg border text-left font-bold text-xs transition-all ${
+                        className={`p-3.5 rounded-xl border text-left font-bold text-xs transition-all cursor-pointer shadow-sm ${
                           warehouseAction === 'ship'
-                            ? 'border-primary bg-primary/5 text-primary'
-                            : 'border-white/5 bg-[#131313] text-on-surface-variant hover:border-white/10'
+                            ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
+                            : 'border-black/10 bg-white text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                         }`}
                       >
                         🚀 Ship immediately
-                        <span className="text-[9px] text-on-surface-variant/75 font-normal block pt-1 lowercase leading-tight">
+                        <span className="text-[9px] text-[#0E1F38]/60 font-normal block pt-1 lowercase leading-tight">
                           forward package as soon as weights are verified at the hub.
                         </span>
                       </button>
@@ -1286,14 +1289,14 @@ export default function Dashboard() {
                           setWarehouseAction('hold');
                           setMorePackages(1);
                         }}
-                        className={`p-3.5 rounded-lg border text-left font-bold text-xs transition-all ${
+                        className={`p-3.5 rounded-xl border text-left font-bold text-xs transition-all cursor-pointer shadow-sm ${
                           warehouseAction === 'hold'
-                            ? 'border-primary bg-primary/5 text-primary'
-                            : 'border-white/5 bg-[#131313] text-on-surface-variant hover:border-white/10'
+                            ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
+                            : 'border-black/10 bg-white text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                         }`}
                       >
-                        📦 Hold & Combine
-                        <span className="text-[9px] text-on-surface-variant/75 font-normal block pt-1 lowercase leading-tight">
+                        📦 Hold &amp; Combine
+                        <span className="text-[9px] text-[#0E1F38]/60 font-normal block pt-1 lowercase leading-tight">
                           wait for incoming packages from other orders before exporting.
                         </span>
                       </button>
@@ -1301,8 +1304,8 @@ export default function Dashboard() {
 
                     {/* How many packages expected input */}
                     {warehouseAction === 'hold' && (
-                      <div className="pt-3 border-t border-white/5 space-y-2 animate-fade-in">
-                        <label className="text-[10px] text-white font-bold uppercase tracking-wider block">
+                      <div className="pt-3 border-t border-black/5 space-y-2 animate-fade-in">
+                        <label className="text-[10px] text-[#0E1F38] font-bold uppercase tracking-wider block">
                           How many more packages are you expecting?
                         </label>
                         <div className="flex gap-2">
@@ -1310,10 +1313,10 @@ export default function Dashboard() {
                             <button
                               key={num}
                               onClick={() => setMorePackages(num)}
-                              className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${
+                              className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                                 morePackages === num
-                                  ? 'bg-primary text-background border-primary'
-                                  : 'bg-[#131313] border-white/5 text-secondary hover:border-white/10'
+                                  ? 'bg-[#FF5A65] text-white border-[#FF5A65] shadow-sm'
+                                  : 'bg-white border-black/10 text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                               }`}
                             >
                               {num} package(s)
@@ -1325,19 +1328,19 @@ export default function Dashboard() {
                   </div>
 
                   {/* Submission and drafts */}
-                  <div className="flex gap-4 pt-4 border-t border-white/5">
+                  <div className="flex gap-4 pt-4 border-t border-black/5">
                     <button
                       onClick={() => setShowDraftModal(true)}
-                      className="flex-1 py-4 border border-white/20 text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-white/5 active:scale-95 transition-all"
+                      className="flex-1 py-4 border border-black/20 text-[#0E1F38] font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-black/5 active:scale-95 transition-all cursor-pointer"
                     >
                       Save to Drafts
                     </button>
                     <button
                       onClick={handleProceedToCheckout}
                       disabled={activeItems.length === 0 || !selectedWarehouse || !destinationAddress}
-                      className="flex-1 py-4 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 disabled:opacity-35 disabled:cursor-not-allowed"
+                      className="flex-1 py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      Pay ${totals.totalPriceCAD > 0 ? totals.totalPriceCAD.toFixed(2) : '25.00'} CAD & Book
+                      Pay ${totals.totalPriceCAD > 0 ? totals.totalPriceCAD.toFixed(2) : '25.00'} CAD &amp; Book
                     </button>
                   </div>
                 </section>
@@ -1350,63 +1353,63 @@ export default function Dashboard() {
               
               {/* Value Reclaimed savings banner */}
               {totals.valueReclaimed > 0 && (
-                <div className="p-5 rounded-2xl bg-primary/10 border border-primary/20 text-center space-y-2.5 shadow-xl animate-fade-in relative overflow-hidden">
-                  <div className="inline-block text-[9px] uppercase tracking-widest font-black bg-primary text-background px-2.5 py-1 rounded">
+                <div className="p-5 rounded-3xl bg-[#FF5A65]/10 border border-[#FF5A65]/25 text-center space-y-2.5 shadow-sm animate-fade-in relative overflow-hidden text-[#0E1F38]">
+                  <div className="inline-block text-[9px] uppercase tracking-widest font-black bg-[#FF5A65] text-white px-2.5 py-1 rounded">
                     Arbitrage Advantage
                   </div>
-                  <p className="text-sm text-white">
-                    Estimated Savings Reclaimed: <strong className="text-primary text-lg">~${totals.valueReclaimed} CAD</strong>!
+                  <p className="text-sm text-[#0E1F38]">
+                    Estimated Savings Reclaimed: <strong className="text-[#FF5A65] text-lg">~${totals.valueReclaimed} CAD</strong>!
                   </p>
-                  <p className="text-[10px] text-on-surface-variant leading-tight opacity-75">
+                  <p className="text-[10px] text-[#0E1F38]/60 leading-tight font-light">
                     Leveraging localized Indian retail rates against standard Canadian markups.
                   </p>
                 </div>
               )}
 
               {/* Quote card */}
-              <div className="glass-card rounded-2xl border border-white/10 p-6 space-y-6 shadow-2xl relative">
-                <h3 className="text-base font-bold text-white uppercase tracking-wider border-b border-white/5 pb-3">
+              <div className="bg-white rounded-3xl border border-black/5 p-6 space-y-6 shadow-sm relative text-[#0E1F38]">
+                <h3 className="text-base font-black text-[#0E1F38] uppercase tracking-wider border-b border-black/5 pb-3">
                   Shipment Quote Summary
                 </h3>
 
                 <div className="space-y-4 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-on-surface-variant font-medium">Total Configured Items</span>
-                    <span className="text-white font-bold font-mono">
+                    <span className="text-[#0E1F38]/60 font-medium">Total Configured Items</span>
+                    <span className="text-[#0E1F38] font-bold font-mono">
                       {activeItems.reduce((sum, item) => sum + item.qty, 0)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-on-surface-variant font-medium">Total Weight</span>
-                    <span className="text-white font-bold font-mono">
+                    <span className="text-[#0E1F38]/60 font-medium">Total Weight</span>
+                    <span className="text-[#0E1F38] font-bold font-mono">
                       {activeItems.length === 0 ? '—' : totals.totalWeightGrams >= 1000
                         ? `${totals.totalWeightKg.toFixed(2)} kg`
                         : `${Math.round(totals.totalWeightGrams)} g`}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-on-surface-variant font-medium">Conversion Index</span>
-                    <span className="text-white font-bold font-mono">1 CAD = ₹{cadToInrRate.toFixed(2)} INR</span>
+                    <span className="text-[#0E1F38]/60 font-medium">Conversion Index</span>
+                    <span className="text-[#0E1F38] font-bold font-mono">1 CAD = ₹{cadToInrRate.toFixed(2)} INR</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-on-surface-variant font-medium">Base Dispatch Floor</span>
-                    <span className="text-white font-semibold">{activeItems.length === 0 ? '—' : '$25.00 CAD'}</span>
+                    <span className="text-[#0E1F38]/60 font-medium">Base Dispatch Floor</span>
+                    <span className="text-[#0E1F38] font-semibold">{activeItems.length === 0 ? '—' : '$25.00 CAD'}</span>
                   </div>
 
-                  <div className="h-px bg-white/5 my-2"></div>
+                  <div className="h-px bg-black/5 my-2"></div>
 
                   <div className="flex justify-between items-baseline">
-                    <span className="text-sm text-white font-bold">Estimated Unified Fee</span>
+                    <span className="text-sm text-[#0E1F38] font-bold">Estimated Unified Fee</span>
                     <div className="text-right">
                       {activeItems.length === 0 ? (
-                        <p className="text-on-surface-variant text-sm font-semibold">Add items to see quote</p>
+                        <p className="text-[#0E1F38]/60 text-sm font-semibold">Add items to see quote</p>
                       ) : (
                         <>
-                          <p className="text-2xl font-extrabold text-primary font-mono">
+                          <p className="text-2xl font-black text-[#FF5A65] font-mono">
                             ${totals.totalPriceCAD.toFixed(2)}
-                            <span className="text-xs font-normal text-on-surface-variant ml-1 font-sans">CAD</span>
+                            <span className="text-xs font-normal text-[#0E1F38]/60 ml-1 font-sans">CAD</span>
                           </p>
-                          <span className="text-[10px] text-on-surface-variant opacity-60 font-bold font-mono block">
+                          <span className="text-[10px] text-[#0E1F38]/60 font-bold font-mono block">
                             ≈ ₹{totals.totalPriceINR.toLocaleString()} INR
                           </span>
                         </>
@@ -1415,8 +1418,8 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 justify-center text-[10px] text-on-surface-variant bg-[#1A1A1A] p-3 rounded-xl border border-white/5 leading-tight">
-                  <span className="material-symbols-outlined text-sm leading-none text-primary">security</span>
+                <div className="flex items-center gap-2 justify-center text-[10px] text-[#0E1F38]/70 bg-[#FAF8EE] p-3 rounded-2xl border border-black/5 leading-tight">
+                  <span className="material-symbols-outlined text-sm leading-none text-[#FF5A65]">security</span>
                   End-to-End Insured &amp; Encrypted Dispatch
                 </div>
               </div>
@@ -1429,25 +1432,25 @@ export default function Dashboard() {
 
       {/* ── Save Draft intercept Dialog Modal ── */}
       {showDraftModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
-          <div className="bg-[#1A1A1A] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-fade-in relative">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white border border-black/10 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-fade-in relative text-[#0E1F38]">
             <button 
               onClick={() => setShowDraftModal(false)}
-              className="absolute right-4 top-4 text-on-surface-variant hover:text-white transition-all text-xl"
+              className="absolute right-4 top-4 text-[#0E1F38]/60 hover:text-[#0E1F38] transition-all text-xl cursor-pointer"
             >
               ×
             </button>
             <div className="space-y-1">
-              <span className="text-[10px] text-primary uppercase font-bold tracking-widest block">Save Progress?</span>
-              <h3 className="text-lg font-bold text-white">Save Shipment as Draft</h3>
+              <span className="text-[10px] text-[#FF5A65] uppercase font-bold tracking-widest block">Save Progress?</span>
+              <h3 className="text-lg font-black text-[#0E1F38]">Save Shipment as Draft</h3>
             </div>
-            <p className="text-on-surface-variant text-xs leading-relaxed">
+            <p className="text-[#0E1F38]/70 text-xs leading-relaxed font-light">
               We detected unsaved locker coordinates and item variables. Would you like to log these details as a draft shipment in your profile for later check?
             </p>
             <div className="flex gap-3 pt-2">
               <button
                 onClick={saveDraft}
-                className="flex-1 py-3 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-95 transition-all shadow shadow-primary/10"
+                className="flex-1 py-3.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-95 transition-all shadow-md shadow-[#FF5A65]/20 cursor-pointer"
               >
                 Save as Draft
               </button>
@@ -1457,7 +1460,7 @@ export default function Dashboard() {
                   setShowDraftModal(false);
                   router.push('/');
                 }}
-                className="flex-1 py-3 border border-white/20 text-error hover:bg-error/10 font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
+                className="flex-1 py-3.5 border border-red-200 text-red-600 hover:bg-red-50 font-bold text-xs uppercase tracking-widest rounded-2xl transition-all cursor-pointer"
               >
                 No, Discard
               </button>
@@ -1467,21 +1470,22 @@ export default function Dashboard() {
       )}
 
       {/* ── Mobile representation Bottom Nav Bar ── */}
-      <footer className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 bg-surface-container-low border-t border-white/10 rounded-t-xl shadow-[0_-20px_40px_rgba(0,0,0,0.4)]">
-        <button onClick={() => router.push('/')} className="flex flex-col items-center justify-center text-on-surface-variant">
+      <footer className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 bg-[#FAF8EE]/95 backdrop-blur border-t border-black/10 rounded-t-2xl shadow-lg">
+        <button onClick={() => router.push('/')} className="flex flex-col items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38]">
           <span className="material-symbols-outlined">home</span>
-          <span className="text-[9px] mt-0.5">Home</span>
+          <span className="text-[9px] mt-0.5 font-medium">Home</span>
         </button>
-        <button onClick={() => { setActiveTab('new'); setCurrentStep(1); }} className="flex flex-col items-center justify-center text-primary">
+        <button onClick={() => { setActiveTab('new'); setCurrentStep(1); }} className="flex flex-col items-center justify-center text-[#FF5A65]">
           <span className="material-symbols-outlined">calculate</span>
-          <span className="text-[9px] mt-0.5">Calculate</span>
+          <span className="text-[9px] mt-0.5 font-bold">Calculate</span>
         </button>
-        <button onClick={() => router.push('/')} className="flex flex-col items-center justify-center text-on-surface-variant">
+        <button onClick={() => router.push('/')} className="flex flex-col items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38]">
           <span className="material-symbols-outlined">person</span>
-          <span className="text-[9px] mt-0.5">Profile</span>
+          <span className="text-[9px] mt-0.5 font-medium">Profile</span>
         </button>
       </footer>
 
     </div>
   );
 }
+
