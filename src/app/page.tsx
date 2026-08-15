@@ -12,8 +12,10 @@ import { supabase } from '@/lib/supabase';
 // Define category configuration for the dynamic Essentials stacked card
 interface CategoryConfig {
   id: string;
+  ageLabel: string;
   tabLabel: string;
   cardTitle: string;
+  icons: string[];
   description: string;
   topsUnitRate: number;
   bottomsUnitRate: number;
@@ -31,8 +33,10 @@ interface CategoryConfig {
 const CATEGORIES_CONFIG: CategoryConfig[] = [
   {
     id: 'baby',
-    tabLabel: 'Baby & Toddler (0-4 years)',
+    ageLabel: '0-4 YEARS',
+    tabLabel: 'Baby & Toddler',
     cardTitle: 'Baby & Toddler (0-4 years)',
+    icons: ['🍼', '🧸'],
     description: 'Between rapid growth and daily messes, babies need about 14 tops and 10 bottoms every 3-6 months. Parenting is exhausting enough without dragging little ones to the store! Buying their whole wardrobe at once online from India protects both your sanity and your budget.',
     topsUnitRate: 8,
     bottomsUnitRate: 12,
@@ -48,9 +52,11 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
   },
   {
     id: 'kids',
-    tabLabel: 'Kids (5-12 years)',
-    cardTitle: 'Kids (5-10 years)',
-    description: 'Kids between 5-10 grow more predictably, letting you trade constant shopping for one big annual wardrobe refresh. Stocking up for the school year typically requires about 12 tops and 8 bottoms. Buying this yearly haul from India lets you check everything off your list at once without overspending.',
+    ageLabel: '5-8 YEARS',
+    tabLabel: 'Kids',
+    cardTitle: 'Kids (5-8 years)',
+    icons: ['🧴', '👟'],
+    description: 'Kids grow fast, letting you trade constant shopping for one big seasonal wardrobe refresh. Stocking up for the school year typically requires about 12 tops and 8 bottoms. Buying this yearly haul from India lets you check everything off your list without overspending.',
     topsUnitRate: 10,
     bottomsUnitRate: 18,
     defaultTops: 12,
@@ -65,9 +71,11 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
   },
   {
     id: 'teens',
-    tabLabel: 'Teens (13-18 years)',
-    cardTitle: 'Teens (11-18 years)',
-    description: 'Teens hit unpredictable growth spurts every 6-12 months, and their style quickly shifts from basics to pricey popular brands. Keeping up with their yearly need of at least 10 tops and 7 bottoms can get expensive! Shopping from India lets you match their trendy tastes while protecting your budget.',
+    ageLabel: '9-13 YEARS',
+    tabLabel: 'Teens',
+    cardTitle: 'Teens (9-13 years)',
+    icons: ['🧢', '👕'],
+    description: 'Teens hit unpredictable growth spurts every 6-12 months, and their style quickly shifts to trendy brands. Keeping up with their yearly need of at least 10 tops and 7 bottoms from India lets you match their tastes while protecting your budget.',
     topsUnitRate: 15,
     bottomsUnitRate: 22,
     defaultTops: 10,
@@ -82,9 +90,11 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
   },
   {
     id: 'adults',
-    tabLabel: 'Adults (18 & above)',
-    cardTitle: 'Adults (18 & above)',
-    description: 'Building your wardrobe is now about upgrading your style, whether refreshing basics or adding premium extras. A typical year requires just 6 tops and 4 bottoms, but quality workwear and social outfits get pricey. Buying these elevated pieces from India lets you upgrade your look for a fraction of the cost.',
+    ageLabel: '14-18+ YEARS',
+    tabLabel: 'Adults',
+    cardTitle: 'Adults (14-18+ years)',
+    icons: ['👔', '⌚'],
+    description: 'Building your wardrobe is now about upgrading your style, whether refreshing basics or adding premium outfits. Buying elevated pieces from India lets you upgrade your look for a fraction of Canadian retail costs.',
     topsUnitRate: 20,
     bottomsUnitRate: 30,
     defaultTops: 6,
@@ -96,6 +106,25 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
     topWeightKg: 0.35,
     bottomWeightKg: 0.70,
     shippingPerKgRate: 17,
+  },
+  {
+    id: 'seniors',
+    ageLabel: '60+ YEARS',
+    tabLabel: 'Seniors',
+    cardTitle: 'Seniors (60+ years)',
+    icons: ['💊', '👓'],
+    description: 'Comfortable pure cotton kurtas, ayurvedic wellness essentials, and tailored ethnic apparel for seniors are often 4x more expensive or unavailable in Canada. Stocking up directly from trusted Indian stores brings authentic comfort and massive savings.',
+    topsUnitRate: 18,
+    bottomsUnitRate: 25,
+    defaultTops: 8,
+    defaultBottoms: 6,
+    inTopsCost: 12,
+    inBottomsCost: 20,
+    caTopsPrice: 40,
+    caBottomsPrice: 65,
+    topWeightKg: 0.30,
+    bottomWeightKg: 0.45,
+    shippingPerKgRate: 15,
   }
 ];
 
@@ -110,14 +139,15 @@ export default function Home() {
 
   // Active Category state for stacked sheets card
   const [activeCatIndex, setActiveCatIndex] = useState(2); // Default to Teens (index 2)
-  const activeCategory = CATEGORIES_CONFIG[activeCatIndex];
+  const activeCategory = CATEGORIES_CONFIG[activeCatIndex] || CATEGORIES_CONFIG[0];
 
   // Dynamic Quantities state per category
   const [categoryQtys, setCategoryQtys] = useState<Record<string, { tops: number; bottoms: number; extras: number }>>({
-    baby:   { tops: 14, bottoms: 10, extras: 5 },
-    kids:   { tops: 12, bottoms: 8,  extras: 5 },
-    teens:  { tops: 10, bottoms: 7,  extras: 5 },
-    adults: { tops: 6,  bottoms: 4,  extras: 5 },
+    baby:    { tops: 14, bottoms: 10, extras: 5 },
+    kids:    { tops: 12, bottoms: 8,  extras: 5 },
+    teens:   { tops: 10, bottoms: 7,  extras: 5 },
+    adults:  { tops: 6,  bottoms: 4,  extras: 5 },
+    seniors: { tops: 8,  bottoms: 6,  extras: 5 },
   });
 
   const currentQtys = categoryQtys[activeCategory.id] || {
@@ -578,24 +608,92 @@ export default function Home() {
             </h2>
           </div>
 
-          {/* Horizontal Category Tab Bar */}
-          <div className="bg-[#ECEAE0] p-1.5 rounded-2xl flex flex-wrap md:flex-nowrap gap-1 w-full justify-between font-bold text-xs md:text-sm">
-            {CATEGORIES_CONFIG.map((cat, idx) => {
-              const isSelected = activeCatIndex === idx;
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCatIndex(idx)}
-                  className={`w-full py-3.5 px-4 rounded-xl transition-all cursor-pointer text-center whitespace-nowrap ${
-                    isSelected
-                      ? 'bg-white text-[#0E1F38] shadow-sm'
-                      : 'text-[#0E1F38]/60 hover:text-[#0E1F38] hover:bg-white/30'
-                  }`}
-                >
-                  {cat.tabLabel}
-                </button>
-              );
-            })}
+          {/* Conveyor Belt Category Selector (as per Image 1) */}
+          <div className="relative w-full bg-[#243015] border-2 border-[#1B250F] rounded-[28px] md:rounded-[36px] py-4 px-3 sm:px-6 shadow-2xl overflow-hidden">
+            {/* IN (India) Left Badge */}
+            <div className="absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center pointer-events-none">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#D25842] text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-lg border-2 border-[#FAF8EE]">
+                IN
+              </div>
+            </div>
+
+            {/* CA (Canada) Right Badge */}
+            <div className="absolute right-2.5 sm:right-4 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center pointer-events-none">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#1B381B] text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-lg border-2 border-[#FAF8EE]">
+                CA
+              </div>
+            </div>
+
+            {/* Conveyor Packages Track */}
+            <div className="flex items-center justify-start md:justify-center gap-3 sm:gap-4 overflow-x-auto scrollbar-none px-12 sm:px-14 py-2">
+              {CATEGORIES_CONFIG.map((cat, idx) => {
+                const isSelected = activeCatIndex === idx;
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => setActiveCatIndex(idx)}
+                    className={`group relative flex-shrink-0 w-32 sm:w-40 flex flex-col items-center cursor-pointer transition-all duration-300 ${
+                      isSelected
+                        ? 'scale-105 z-20'
+                        : 'opacity-85 hover:opacity-100 hover:scale-[1.02]'
+                    }`}
+                  >
+                    {/* Parcel Box */}
+                    <div
+                      className={`relative w-full rounded-2xl overflow-hidden transition-all duration-300 shadow-md ${
+                        isSelected
+                          ? 'ring-3 ring-[#8BC34A] shadow-[#8BC34A]/20 shadow-xl'
+                          : 'border border-black/20'
+                      }`}
+                      style={{ backgroundColor: '#D25842' }}
+                    >
+                      {/* Vertical Green Tape down center */}
+                      <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-3.5 sm:w-4 bg-[#8BC34A] z-0 opacity-90 shadow-xs" />
+
+                      {/* Top Icons Area */}
+                      <div className="pt-3.5 pb-2.5 flex items-center justify-center gap-3 relative z-10 text-lg sm:text-xl text-white/95 drop-shadow-xs">
+                        {cat.icons.map((ic, i) => (
+                          <span key={i} className="transform transition-transform group-hover:scale-110">
+                            {ic}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Bottom White Label Card */}
+                      <div className="bg-[#FFFDF7] rounded-xl mx-2 mb-2 p-2 sm:p-2.5 text-center relative z-10 shadow-sm border border-black/5">
+                        <p className="text-[9px] sm:text-[10px] font-black text-[#D25842] uppercase tracking-wider leading-none">
+                          {cat.ageLabel}
+                        </p>
+                        <h4 className="text-xs sm:text-sm font-black text-[#0E1F38] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                          {cat.tabLabel}
+                        </h4>
+                      </div>
+                    </div>
+
+                    {/* tap to compare subtitle */}
+                    <span
+                      className={`text-[9px] sm:text-[10px] mt-1.5 transition-colors font-medium tracking-tight ${
+                        isSelected
+                          ? 'text-[#8BC34A] font-bold'
+                          : 'text-[#8BC34A]/60 group-hover:text-[#8BC34A]'
+                      }`}
+                    >
+                      {isSelected ? '● selected' : 'tap to compare'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Conveyor Track Treads / Perforations */}
+            <div className="flex justify-between items-center px-12 sm:px-14 pt-2 border-t border-[#34461F]/60 gap-1.5 opacity-60">
+              {Array.from({ length: 32 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-1.5 w-1.5 sm:w-2 bg-[#8BC34A]/40 rounded-xs"
+                />
+              ))}
+            </div>
           </div>
 
           {/* Physical stacked cards container layout */}
