@@ -26,7 +26,7 @@ const ITEM_TYPES: Record<string, { id: string; label: string; subtext: string; w
     { id: 'light_dress',  label: 'Light Dresses & Sets',  subtext: 'Casual Dresses, Rompers, Co-ords',      weight: 400  },
     { id: 'heavy_eth',    label: 'Heavy Ethnic & Party',  subtext: 'Lehengas, Bridal Sarees, Gowns',        weight: 1000 },
     { id: 'heavy_win',    label: 'Heavy Winter Sets',     subtext: 'Tracksuits, Snowsuits',                 weight: 1300 },
-    { id: 'accessories',  label: 'Small Cloth Acc.',      subtext: 'Socks, Innerwear, Ties',                weight: 0,   isPromo: true  },
+    { id: 'accessories',  label: 'Small Cloth Accessories', subtext: 'Socks, Innerwear, Ties (max 50 gm each)', weight: 0, isPromo: true },
   ],
   footwear: [
     { id: 'light_shoe',   label: 'Light Footwear',        subtext: 'Flip-Flops, Flats, Sandals',           weight: 400  },
@@ -38,7 +38,7 @@ const ITEM_TYPES: Record<string, { id: string; label: string; subtext: string; w
     { id: 'luggage',      label: 'Luggage / Trolleys',    subtext: 'Suitcases, Cabin Bags',                 weight: 3000, isOversized: true },
   ],
   jewelry: [
-    { id: 'light_jwl',   label: 'Light Jewelry',          subtext: 'Earrings, Rings, Chains',              weight: 0,   isPromo: true  },
+    { id: 'light_jwl',   label: 'Light Jewelry',          subtext: 'Earrings, Rings, Chains (max 50 gm each)', weight: 0, isPromo: true },
     { id: 'struct_acc',  label: 'Structured Accessories', subtext: 'Watches, Sunglasses, Belts',            weight: 200  },
   ],
   beauty: [
@@ -413,6 +413,30 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
             </div>
           </div>
 
+          {/* ── Unlocked Free Small Weight Items Announcement Banner ── */}
+          {calc.mainItemCount > 0 && (
+            <div className="bg-[#E8F5E9] border border-[#C8E6C9] rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm animate-fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-[#2E7D32] text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                  <span className="material-symbols-outlined text-lg leading-none">workspace_premium</span>
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
+                    Free small weight items( max 50 gm)- Maximum 5 ietms can be added.
+                  </h4>
+                  <p className="text-[11px] text-[#2E7D32] font-medium mt-0.5">
+                    Add small cloth accessories or light jewelry at 0kg extra shipping cost!
+                  </p>
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <span className="text-xs font-black text-[#1B5E20] bg-white px-3 py-1.5 rounded-full border border-[#C8E6C9] shadow-xs">
+                  {calc.promoItemCount}/5 Free Added
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* ── Expanded category panels ── */}
           {openCats.map(catId => {
             const cat   = CATEGORIES.find(c => c.id === catId)!;
@@ -478,7 +502,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                         <div className="flex-grow min-w-0">
                           <p className="text-xs font-bold text-[#0E1F38] leading-tight">
                             {type.label}
-                            {type.isPromo && <span className="ml-1.5 text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">FREE Promo Extra (Max 5)</span>}
+                            {type.isPromo && <span className="ml-1.5 text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">FREE (Max 50g · Max 5)</span>}
                             {type.isOversized && <span className="ml-1.5 text-[9px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-semibold">⚠ oversized</span>}
                             {type.isFood && <span className="ml-1.5 text-[9px] text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md font-semibold">⚠ customs</span>}
                           </p>

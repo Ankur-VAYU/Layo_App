@@ -1085,6 +1085,25 @@ export default function Dashboard() {
                   </div>
 
                   <div className="space-y-6 divide-y divide-black/5">
+                    {/* Unlocked Free Small Weight Items Announcement Banner */}
+                    {activeItems.length > 0 && (
+                      <div className="bg-[#E8F5E9] border border-[#C8E6C9] rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm animate-fade-in">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-[#2E7D32] text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                            <span className="material-symbols-outlined text-lg leading-none">workspace_premium</span>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
+                              Free small weight items( max 50 gm)- Maximum 5 ietms can be added.
+                            </h4>
+                            <p className="text-[11px] text-[#2E7D32] font-medium mt-0.5">
+                              Add up to 5 small cloths or light jewelry with 0kg extra shipping cost!
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {selectedCategories.map(catKey => {
                       const cat = categoryData[catKey];
                       const activeDemo = activeDemoState[catKey] ?? 'Adult';
@@ -1151,7 +1170,7 @@ export default function Dashboard() {
                                       {sub.name}
                                       {sub.promo && (
                                         <span className="text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
-                                          FREE Promo (Max 5)
+                                          FREE (Max 50g · Max 5)
                                         </span>
                                       )}
                                       {(sub.oversized || sub.isRestricted || cat.isFoodGlobal) && (
