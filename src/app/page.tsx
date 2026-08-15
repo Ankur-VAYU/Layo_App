@@ -608,9 +608,9 @@ export default function Home() {
             </h2>
           </div>
 
-          {/* Conveyor Belt Category Selector (as per Image 1) */}
+          {/* Conveyor Belt Category Selector (Rolling Animation matching Image 1) */}
           <div className="relative w-full bg-[#243015] border-2 border-[#1B250F] rounded-[28px] md:rounded-[36px] py-4 px-3 sm:px-6 shadow-2xl overflow-hidden">
-            {/* IN (India) Left Badge */}
+            {/* IN (India) Left Badge with subtle pulsing ring */}
             <div className="absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center pointer-events-none">
               <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#D25842] text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-lg border-2 border-[#FAF8EE]">
                 IN
@@ -624,76 +624,77 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Conveyor Packages Track */}
-            <div className="flex items-center justify-start md:justify-center gap-3 sm:gap-4 overflow-x-auto scrollbar-none px-12 sm:px-14 py-2">
-              {CATEGORIES_CONFIG.map((cat, idx) => {
-                const isSelected = activeCatIndex === idx;
-                return (
-                  <div
-                    key={cat.id}
-                    onClick={() => setActiveCatIndex(idx)}
-                    className={`group relative flex-shrink-0 w-32 sm:w-40 flex flex-col items-center cursor-pointer transition-all duration-300 ${
-                      isSelected
-                        ? 'scale-105 z-20'
-                        : 'opacity-85 hover:opacity-100 hover:scale-[1.02]'
-                    }`}
-                  >
-                    {/* Parcel Box */}
+            {/* Left & Right gradient masks for smooth entry/exit */}
+            <div className="absolute left-0 top-0 bottom-0 w-12 sm:w-16 bg-gradient-to-r from-[#243015] to-transparent z-20 pointer-events-none" />
+            <div className="absolute right-0 top-0 bottom-0 w-12 sm:w-16 bg-gradient-to-l from-[#243015] to-transparent z-20 pointer-events-none" />
+
+            {/* Continuous Rolling Conveyor Packages Track */}
+            <div className="overflow-hidden w-full py-2">
+              <div className="animate-conveyor-roll flex items-center gap-3 sm:gap-4 pl-4 cursor-pointer">
+                {/* 2 Sets of items for infinite seamless rolling loop */}
+                {[...CATEGORIES_CONFIG, ...CATEGORIES_CONFIG].map((cat, loopIdx) => {
+                  const actualIdx = loopIdx % CATEGORIES_CONFIG.length;
+                  const isSelected = activeCatIndex === actualIdx;
+                  return (
                     <div
-                      className={`relative w-full rounded-2xl overflow-hidden transition-all duration-300 shadow-md ${
+                      key={`${cat.id}-${loopIdx}`}
+                      onClick={() => setActiveCatIndex(actualIdx)}
+                      className={`group relative flex-shrink-0 w-32 sm:w-40 flex flex-col items-center cursor-pointer transition-all duration-300 ${
                         isSelected
-                          ? 'ring-3 ring-[#8BC34A] shadow-[#8BC34A]/20 shadow-xl'
-                          : 'border border-black/20'
+                          ? 'scale-105 z-10'
+                          : 'opacity-85 hover:opacity-100 hover:scale-[1.02]'
                       }`}
-                      style={{ backgroundColor: '#D25842' }}
                     >
-                      {/* Vertical Green Tape down center */}
-                      <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-3.5 sm:w-4 bg-[#8BC34A] z-0 opacity-90 shadow-xs" />
+                      {/* Parcel Box */}
+                      <div
+                        className={`relative w-full rounded-2xl overflow-hidden transition-all duration-300 shadow-md ${
+                          isSelected
+                            ? 'ring-3 ring-[#8BC34A] shadow-[#8BC34A]/25 shadow-xl'
+                            : 'border border-black/20'
+                        }`}
+                        style={{ backgroundColor: '#D25842' }}
+                      >
+                        {/* Vertical Green Tape down center */}
+                        <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-3.5 sm:w-4 bg-[#8BC34A] z-0 opacity-90 shadow-xs" />
 
-                      {/* Top Icons Area */}
-                      <div className="pt-3.5 pb-2.5 flex items-center justify-center gap-3 relative z-10 text-lg sm:text-xl text-white/95 drop-shadow-xs">
-                        {cat.icons.map((ic, i) => (
-                          <span key={i} className="transform transition-transform group-hover:scale-110">
-                            {ic}
-                          </span>
-                        ))}
+                        {/* Top Icons Area */}
+                        <div className="pt-3.5 pb-2.5 flex items-center justify-center gap-3 relative z-10 text-lg sm:text-xl text-white/95 drop-shadow-xs">
+                          {cat.icons.map((ic, i) => (
+                            <span key={i} className="transform transition-transform group-hover:scale-110">
+                              {ic}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Bottom White Label Card */}
+                        <div className="bg-[#FFFDF7] rounded-xl mx-2 mb-2 p-2 sm:p-2.5 text-center relative z-10 shadow-sm border border-black/5">
+                          <p className="text-[9px] sm:text-[10px] font-black text-[#D25842] uppercase tracking-wider leading-none">
+                            {cat.ageLabel}
+                          </p>
+                          <h4 className="text-xs sm:text-sm font-black text-[#0E1F38] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                            {cat.tabLabel}
+                          </h4>
+                        </div>
                       </div>
 
-                      {/* Bottom White Label Card */}
-                      <div className="bg-[#FFFDF7] rounded-xl mx-2 mb-2 p-2 sm:p-2.5 text-center relative z-10 shadow-sm border border-black/5">
-                        <p className="text-[9px] sm:text-[10px] font-black text-[#D25842] uppercase tracking-wider leading-none">
-                          {cat.ageLabel}
-                        </p>
-                        <h4 className="text-xs sm:text-sm font-black text-[#0E1F38] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
-                          {cat.tabLabel}
-                        </h4>
-                      </div>
+                      {/* tap to compare subtitle */}
+                      <span
+                        className={`text-[9px] sm:text-[10px] mt-1.5 transition-colors font-medium tracking-tight ${
+                          isSelected
+                            ? 'text-[#8BC34A] font-bold'
+                            : 'text-[#8BC34A]/60 group-hover:text-[#8BC34A]'
+                        }`}
+                      >
+                        {isSelected ? '● selected' : 'tap to compare'}
+                      </span>
                     </div>
-
-                    {/* tap to compare subtitle */}
-                    <span
-                      className={`text-[9px] sm:text-[10px] mt-1.5 transition-colors font-medium tracking-tight ${
-                        isSelected
-                          ? 'text-[#8BC34A] font-bold'
-                          : 'text-[#8BC34A]/60 group-hover:text-[#8BC34A]'
-                      }`}
-                    >
-                      {isSelected ? '● selected' : 'tap to compare'}
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Bottom Conveyor Track Treads / Perforations */}
-            <div className="flex justify-between items-center px-12 sm:px-14 pt-2 border-t border-[#34461F]/60 gap-1.5 opacity-60">
-              {Array.from({ length: 32 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-1.5 w-1.5 sm:w-2 bg-[#8BC34A]/40 rounded-xs"
-                />
-              ))}
-            </div>
+            {/* Bottom Animated Conveyor Track Treads */}
+            <div className="w-full h-2.5 mt-2 border-t border-[#34461F]/60 animate-conveyor-treads opacity-70" />
           </div>
 
           {/* Physical stacked cards container layout */}

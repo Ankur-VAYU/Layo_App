@@ -116,17 +116,29 @@
   animation: float-3 12s ease-in-out infinite;
 }
 
-@keyframes scroll-conveyor {
+@keyframes conveyor-roll {
   0% { transform: translateX(0); }
-  100% { transform: translateX(-25%); }
+  100% { transform: translateX(-50%); }
 }
 
-.animate-conveyor {
-  animation: scroll-conveyor 30s linear infinite;
+@keyframes conveyor-treads-roll {
+  0% { background-position: 0 0; }
+  100% { background-position: -32px 0; }
 }
 
-.animate-conveyor:hover {
+.animate-conveyor-roll {
+  display: flex;
+  width: max-content;
+  animation: conveyor-roll 22s linear infinite;
+}
+
+.animate-conveyor-roll:hover {
   animation-play-state: paused;
+}
+
+.animate-conveyor-treads {
+  background: repeating-linear-gradient(90deg, rgba(139, 195, 74, 0.4) 0, rgba(139, 195, 74, 0.4) 6px, transparent 6px, transparent 14px);
+  animation: conveyor-treads-roll 1.5s linear infinite;
 }
 
 .font-serif-luxury {
