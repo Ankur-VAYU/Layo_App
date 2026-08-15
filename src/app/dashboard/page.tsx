@@ -33,7 +33,6 @@ const categoryData: Record<string, CategoryDetail> = {
       { name: 'Bottoms', weight: 375 },
       { name: 'Dresses', weight: 700 },
       { name: 'Winter Wear', weight: 1300 },
-      { name: 'Promo Acc', weight: 25, promo: true }
     ]
   },
   footwear: {
@@ -58,7 +57,6 @@ const categoryData: Record<string, CategoryDetail> = {
     name: 'Jewelry',
     icon: 'diamond',
     subs: [
-      { name: 'Promo Jewelry', weight: 25, promo: true },
       { name: 'Structured Jewelry', weight: 200 }
     ]
   },
@@ -202,6 +200,7 @@ export default function Dashboard() {
   // Modals & Errors
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [showOrderNumberError, setShowOrderNumberError] = useState(false);
+  const [promoQty, setPromoQty] = useState(0);
 
   // Financial and math helpers
   const [cadToInrRate, setCadToInrRate] = useState(70.4);
@@ -242,6 +241,11 @@ export default function Dashboard() {
 
           Object.entries(modalQtys).forEach(([key, qty]) => {
             if (!qty || qty <= 0) return;
+
+            if (key.startsWith('promo-')) {
+              setPromoQty(Math.min(5, qty as number));
+              return;
+            }
 
             // key format: "catId-typeIdx-ageSuffix"
             const firstDash  = key.indexOf('-');
@@ -480,14 +484,26 @@ export default function Dashboard() {
       return;
     }
 
+    const itemsPayload = activeItems.map(i => ({
+      category: i.category,
+      subcategory: i.subcategory,
+      quantity: i.qty,
+      demographic: i.demo,
+      weight: i.weightGrams / 1000,
+    }));
+
+    if (promoQty > 0) {
+      itemsPayload.push({
+        category: 'promo',
+        subcategory: 'Free small weight items (max 50 gm)',
+        quantity: promoQty,
+        demographic: null,
+        weight: 0,
+      });
+    }
+
     const payload = {
-      items: activeItems.map(i => ({
-        category: i.category,
-        subcategory: i.subcategory,
-        quantity: i.qty,
-        demographic: i.demo,
-        weight: i.weightGrams / 1000,
-      })),
+      items: itemsPayload,
       mode: 'Selection',
       originType,
       storeName,
@@ -536,6 +552,16 @@ export default function Dashboard() {
         demographic: i.demo,
         weight: i.weightGrams / 1000,
       }));
+
+      if (promoQty > 0) {
+        itemsPayload.push({
+          category: 'promo',
+          subcategory: 'Free small weight items (max 50 gm)',
+          quantity: promoQty,
+          demographic: null,
+          weight: 0,
+        });
+      }
 
       await insertShipment({
         user_id: user?.id || '00000000-0000-0000-0000-000000000000',
@@ -1085,20 +1111,57 @@ export default function Dashboard() {
                   </div>
 
                   <div className="space-y-6 divide-y divide-black/5">
-                    {/* Unlocked Free Small Weight Items Announcement Banner */}
+                    {/* ── Auto-added Promo Category when items are added in any category ── */}
                     {activeItems.length > 0 && (
-                      <div className="bg-[#E8F5E9] border border-[#C8E6C9] rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm animate-fade-in">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-[#2E7D32] text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                            <span className="material-symbols-outlined text-lg leading-none">workspace_premium</span>
+                      <div className="bg-[#E8F5E9] border-2 border-[#A5D6A7] rounded-2xl overflow-hidden shadow-sm animate-fade-in space-y-0">
+                        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#C8E6C9] bg-[#DCEDC8]">
+                          <div className="flex items-center gap-2.5">
+                            <span className="material-symbols-outlined text-[#2E7D32] text-xl leading-none">workspace_premium</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
+                                Free small weight items( max 50 gm)-
+                              </span>
+                              <span className="text-[9px] text-[#2E7D32] bg-white px-2 py-0.5 rounded-md font-black uppercase tracking-wider border border-[#C8E6C9]">
+                                Limit: Max 5 Items
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
-                              Free small weight items( max 50 gm)- Maximum 5 ietms can be added.
-                            </h4>
-                            <p className="text-[11px] text-[#2E7D32] font-medium mt-0.5">
-                              Add up to 5 small cloths or light jewelry with 0kg extra shipping cost!
+                        </div>
+
+                        <div className="px-5 py-3.5 flex items-center justify-between gap-3 bg-white">
+                          <div className="flex-grow min-w-0">
+                            <p className="font-bold text-sm text-[#0E1F38]">
+                              5 Small Cloths or Jewelry (Free)
                             </p>
+                            <p className="text-[11px] text-[#0E1F38]/70 mt-0.5 font-light">
+                              Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!
+                              {promoQty >= 5 && (
+                                <span className="text-[#FF5A65] font-bold ml-1.5">· Limit of 5 reached</span>
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-3.5 bg-[#FAF8EE] rounded-full p-1.5 border border-black/10 shadow-sm">
+                            <button
+                              onClick={() => setPromoQty(prev => Math.max(0, prev - 1))}
+                              disabled={promoQty === 0}
+                              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                promoQty === 0 ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40' : 'bg-white hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer shadow-xs'
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-sm">remove</span>
+                            </button>
+                            <span className="w-5 text-center font-bold text-sm text-[#0E1F38]">{promoQty}</span>
+                            <button
+                              onClick={() => setPromoQty(prev => Math.min(5, prev + 1))}
+                              disabled={promoQty >= 5}
+                              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                promoQty >= 5 ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40' : 'bg-white hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer shadow-xs'
+                              }`}
+                              title={promoQty >= 5 ? 'Maximum limit of 5 free items reached' : undefined}
+                            >
+                              <span className="material-symbols-outlined text-sm">add</span>
+                            </button>
                           </div>
                         </div>
                       </div>

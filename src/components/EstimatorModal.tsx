@@ -26,7 +26,6 @@ const ITEM_TYPES: Record<string, { id: string; label: string; subtext: string; w
     { id: 'light_dress',  label: 'Light Dresses & Sets',  subtext: 'Casual Dresses, Rompers, Co-ords',      weight: 400  },
     { id: 'heavy_eth',    label: 'Heavy Ethnic & Party',  subtext: 'Lehengas, Bridal Sarees, Gowns',        weight: 1000 },
     { id: 'heavy_win',    label: 'Heavy Winter Sets',     subtext: 'Tracksuits, Snowsuits',                 weight: 1300 },
-    { id: 'accessories',  label: 'Small Cloth Accessories', subtext: 'Socks, Innerwear, Ties (max 50 gm each)', weight: 0, isPromo: true },
   ],
   footwear: [
     { id: 'light_shoe',   label: 'Light Footwear',        subtext: 'Flip-Flops, Flats, Sandals',           weight: 400  },
@@ -38,7 +37,6 @@ const ITEM_TYPES: Record<string, { id: string; label: string; subtext: string; w
     { id: 'luggage',      label: 'Luggage / Trolleys',    subtext: 'Suitcases, Cabin Bags',                 weight: 3000, isOversized: true },
   ],
   jewelry: [
-    { id: 'light_jwl',   label: 'Light Jewelry',          subtext: 'Earrings, Rings, Chains (max 50 gm each)', weight: 0, isPromo: true },
     { id: 'struct_acc',  label: 'Structured Accessories', subtext: 'Watches, Sunglasses, Belts',            weight: 200  },
   ],
   beauty: [
@@ -67,6 +65,9 @@ const ITEM_TYPES: Record<string, { id: string; label: string; subtext: string; w
   food: [
     { id: 'light_snack', label: 'Light Snacks & Spices',   subtext: 'Namkeen, Masalas, Tea, Coffee',        weight: 500, isFood: true },
     { id: 'heavy_groc',  label: 'Sweets & Groceries',      subtext: 'Mithai, Pickles, Lentils',             weight: 1500, isFood: true },
+  ],
+  promo: [
+    { id: 'free_small_items', label: '5 Small Cloths or Jewelry (Free)', subtext: 'Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!', weight: 0, isPromo: true },
   ],
 };
 
@@ -413,26 +414,60 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
             </div>
           </div>
 
-          {/* ── Unlocked Free Small Weight Items Announcement Banner ── */}
+          {/* ── Auto-added Promo Category when items are added in any category ── */}
           {calc.mainItemCount > 0 && (
-            <div className="bg-[#E8F5E9] border border-[#C8E6C9] rounded-2xl p-4 flex items-center justify-between gap-4 shadow-sm animate-fade-in">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#2E7D32] text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <span className="material-symbols-outlined text-lg leading-none">workspace_premium</span>
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
-                    Free small weight items( max 50 gm)- Maximum 5 ietms can be added.
-                  </h4>
-                  <p className="text-[11px] text-[#2E7D32] font-medium mt-0.5">
-                    Add small cloth accessories or light jewelry at 0kg extra shipping cost!
-                  </p>
+            <div className="bg-[#E8F5E9] border-2 border-[#A5D6A7] rounded-2xl overflow-hidden shadow-sm animate-fade-in space-y-0">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#C8E6C9] bg-[#DCEDC8]">
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-[#2E7D32] text-xl leading-none">workspace_premium</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
+                      Free small weight items( max 50 gm)-
+                    </span>
+                    <span className="text-[9px] text-[#2E7D32] bg-white px-2 py-0.5 rounded-md font-black uppercase tracking-wider border border-[#C8E6C9]">
+                      Limit: Max 5 Items
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="text-right flex-shrink-0">
-                <span className="text-xs font-black text-[#1B5E20] bg-white px-3 py-1.5 rounded-full border border-[#C8E6C9] shadow-xs">
-                  {calc.promoItemCount}/5 Free Added
-                </span>
+
+              <div className="px-5 py-3.5 flex items-center justify-between gap-3 bg-white">
+                <div className="flex-grow min-w-0">
+                  <p className="text-xs font-bold text-[#0E1F38] leading-tight">
+                    5 Small Cloths or Jewelry (Free)
+                  </p>
+                  <p className="text-[11px] text-[#0E1F38]/70 mt-0.5 font-light">
+                    Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!
+                    {(qtys['promo-0-default'] ?? 0) >= 5 && (
+                      <span className="text-[#FF5A65] font-bold ml-1.5">· Max 5 limit reached</span>
+                    )}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 bg-[#FAF8EE] rounded-full px-2 py-1 border border-black/10 flex-shrink-0 shadow-sm">
+                  <button
+                    onClick={() => changeQty('promo-0-default', -1)}
+                    disabled={(qtys['promo-0-default'] ?? 0) === 0}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center bg-white border border-black/5 transition-all ${
+                      (qtys['promo-0-default'] ?? 0) === 0 ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40' : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm leading-none">remove</span>
+                  </button>
+                  <span className="w-5 text-center text-xs font-bold text-[#0E1F38]">{qtys['promo-0-default'] ?? 0}</span>
+                  <button
+                    onClick={() => changeQty('promo-0-default', 1)}
+                    disabled={(qtys['promo-0-default'] ?? 0) >= 5}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center bg-white border border-black/5 transition-all ${
+                      (qtys['promo-0-default'] ?? 0) >= 5
+                        ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40'
+                        : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
+                    }`}
+                    title={(qtys['promo-0-default'] ?? 0) >= 5 ? 'Maximum limit of 5 free items reached' : undefined}
+                  >
+                    <span className="material-symbols-outlined text-sm leading-none">add</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
