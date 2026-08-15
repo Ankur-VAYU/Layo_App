@@ -931,8 +931,9 @@ export default function Home() {
           </div>
 
           {/* Disclaimer Box */}
-          <div className="bg-[#FFF5F5] border border-[#FFEBEE] rounded-2xl p-5 text-center text-xs font-semibold text-[#C62828] leading-relaxed">
-            *Disclaimer: Layo is a shipping forwarder, not a retailer. Prices are estimates showing typical savings when you shop your favorite Indian brands and ship with us.
+          <div className="bg-[#FFF5F5] border border-[#FFCDD2] rounded-3xl p-6 sm:p-7 md:p-8 text-center text-sm sm:text-base md:text-lg font-bold text-[#C62828] leading-relaxed shadow-xs">
+            <span className="font-black text-[#B71C1C] mr-1.5">*Disclaimer:</span>
+            Layo is a shipping forwarder, not a retailer. Prices are estimates showing typical savings when you shop your favorite Indian brands and ship with us.
           </div>
 
           {/* Save up to text & Button Actions */}
