@@ -805,7 +805,7 @@ export default function Home() {
                       <span className="text-[#0E1F38]/60">Estimated cost at a</span>
                       <span className="px-3 py-1.5 bg-[#FAF8EE] border border-black/5 rounded-xl font-bold text-[10px] uppercase tracking-wider text-[#0E1F38]">Canadian store</span>
                     </div>
-                    <span className="px-4 py-2 bg-[#FFD8D8] text-[#C62828] rounded-full font-black text-sm">
+                    <span className="min-w-[90px] px-5 py-2.5 bg-[#FFD8D8] text-[#C62828] rounded-full font-black text-base text-center inline-flex items-center justify-center shadow-xs">
                       ${canadianPrice}
                     </span>
                   </div>
@@ -864,7 +864,7 @@ export default function Home() {
                     <div className="px-4 py-2 bg-[#E6F4D0] border border-[#CADFAD] rounded-2xl text-[#2B3A1A] font-black text-xs md:text-sm uppercase tracking-wider">
                       YOU SAVE ${savings} CAD!
                     </div>
-                    <span className="px-5 py-2.5 bg-[#D6E9C6] text-[#2F4F2F] rounded-full font-black text-base">
+                    <span className="min-w-[90px] px-5 py-2.5 bg-[#D6E9C6] text-[#2F4F2F] rounded-full font-black text-base text-center inline-flex items-center justify-center shadow-xs">
                       ${totalPrice}
                     </span>
                   </div>
