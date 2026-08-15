@@ -9,83 +9,93 @@ import EstimatorModal from '@/components/EstimatorModal';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase } from '@/lib/supabase';
 
-// Define category data for the Essentials stacked card (Category Cards.pdf)
-interface CategoryData {
+// Define category configuration for the dynamic Essentials stacked card
+interface CategoryConfig {
   id: string;
   tabLabel: string;
   cardTitle: string;
   description: string;
-  topsQty: number;
   topsUnitRate: number;
-  bottomsQty: number;
   bottomsUnitRate: number;
-  canadianPrice: number;
-  indianPrice: number;
-  shippingPrice: number;
-  totalPrice: number;
-  savings: number;
+  defaultTops: number;
+  defaultBottoms: number;
+  inTopsCost: number;
+  inBottomsCost: number;
+  caTopsPrice: number;
+  caBottomsPrice: number;
+  topWeightKg: number;
+  bottomWeightKg: number;
+  shippingPerKgRate: number;
 }
 
-const CATEGORIES_DATA: CategoryData[] = [
+const CATEGORIES_CONFIG: CategoryConfig[] = [
   {
     id: 'baby',
     tabLabel: 'Baby & Toddler (0-4 years)',
     cardTitle: 'Baby & Toddler (0-4 years)',
-    description: 'Between rapid growth and daily messes, babies need about 14 tops and 10 bottoms every 3-6 months. Parenting is exhausting enough without dragging little ones to the store! Buying their whole wardrobe at once online from India protects both your sanity and your budget. Here’s how to easily save $116 per cycle.',
-    topsQty: 14,
+    description: 'Between rapid growth and daily messes, babies need about 14 tops and 10 bottoms every 3-6 months. Parenting is exhausting enough without dragging little ones to the store! Buying their whole wardrobe at once online from India protects both your sanity and your budget.',
     topsUnitRate: 8,
-    bottomsQty: 10,
     bottomsUnitRate: 12,
-    canadianPrice: 346,
-    indianPrice: 136,
-    shippingPrice: 94,
-    totalPrice: 230,
-    savings: 116,
+    defaultTops: 14,
+    defaultBottoms: 10,
+    inTopsCost: 4,
+    inBottomsCost: 8,
+    caTopsPrice: 14,
+    caBottomsPrice: 15,
+    topWeightKg: 0.12,
+    bottomWeightKg: 0.20,
+    shippingPerKgRate: 17.25,
   },
   {
     id: 'kids',
     tabLabel: 'Kids (5-12 years)',
     cardTitle: 'Kids (5-10 years)',
-    description: 'Kids between 5-10 grow more predictably, letting you trade constant shopping for one big annual wardrobe refresh. Stocking up for the school year typically requires about 12 tops and 8 bottoms. Buying this yearly haul from India lets you check everything off your list at once without overspending. Here’s how you can save $110 every single year, per child.',
-    topsQty: 12,
+    description: 'Kids between 5-10 grow more predictably, letting you trade constant shopping for one big annual wardrobe refresh. Stocking up for the school year typically requires about 12 tops and 8 bottoms. Buying this yearly haul from India lets you check everything off your list at once without overspending.',
     topsUnitRate: 10,
-    bottomsQty: 8,
     bottomsUnitRate: 18,
-    canadianPrice: 386,
-    indianPrice: 166,
-    shippingPrice: 110,
-    totalPrice: 276,
-    savings: 110,
+    defaultTops: 12,
+    defaultBottoms: 8,
+    inTopsCost: 5.5,
+    inBottomsCost: 12.5,
+    caTopsPrice: 18,
+    caBottomsPrice: 21.25,
+    topWeightKg: 0.20,
+    bottomWeightKg: 0.35,
+    shippingPerKgRate: 14.16,
   },
   {
     id: 'teens',
     tabLabel: 'Teens (13-18 years)',
     cardTitle: 'Teens (11-18 years)',
-    description: 'Teens hit unpredictable growth spurts every 6-12 months, and their style quickly shifts from basics to pricey popular brands. Keeping up with their yearly need of at least 10 tops and 7 bottoms can get expensive! Shopping from India lets you match their trendy tastes while protecting your budget. Here’s how to easily save $229 per cycle.',
-    topsQty: 10,
+    description: 'Teens hit unpredictable growth spurts every 6-12 months, and their style quickly shifts from basics to pricey popular brands. Keeping up with their yearly need of at least 10 tops and 7 bottoms can get expensive! Shopping from India lets you match their trendy tastes while protecting your budget.',
     topsUnitRate: 15,
-    bottomsQty: 7,
     bottomsUnitRate: 22,
-    canadianPrice: 585,
-    indianPrice: 230,
-    shippingPrice: 126,
-    totalPrice: 356,
-    savings: 229,
+    defaultTops: 10,
+    defaultBottoms: 7,
+    inTopsCost: 10,
+    inBottomsCost: 18.5714,
+    caTopsPrice: 30.5,
+    caBottomsPrice: 40,
+    topWeightKg: 0.28,
+    bottomWeightKg: 0.50,
+    shippingPerKgRate: 14.42,
   },
   {
     id: 'adults',
     tabLabel: 'Adults (18 & above)',
     cardTitle: 'Adults (18 & above)',
-    description: 'Building your wardrobe is now about upgrading your style, whether refreshing basics or adding premium extras. A typical year requires just 6 tops and 4 bottoms, but quality workwear and social outfits get pricey. Buying these elevated pieces from India lets you upgrade your look for a fraction of the cost. Here’s how to easily save $254 on your annual refresh.',
-    topsQty: 6,
+    description: 'Building your wardrobe is now about upgrading your style, whether refreshing basics or adding premium extras. A typical year requires just 6 tops and 4 bottoms, but quality workwear and social outfits get pricey. Buying these elevated pieces from India lets you upgrade your look for a fraction of the cost.',
     topsUnitRate: 20,
-    bottomsQty: 4,
     bottomsUnitRate: 30,
-    canadianPrice: 580,
-    indianPrice: 216,
-    shippingPrice: 110,
-    totalPrice: 326,
-    savings: 254,
+    defaultTops: 6,
+    defaultBottoms: 4,
+    inTopsCost: 16,
+    inBottomsCost: 30,
+    caTopsPrice: 45,
+    caBottomsPrice: 77.5,
+    topWeightKg: 0.35,
+    bottomWeightKg: 0.70,
+    shippingPerKgRate: 17,
   }
 ];
 
@@ -100,7 +110,77 @@ export default function Home() {
 
   // Active Category state for stacked sheets card
   const [activeCatIndex, setActiveCatIndex] = useState(2); // Default to Teens (index 2)
-  const activeCategory = CATEGORIES_DATA[activeCatIndex];
+  const activeCategory = CATEGORIES_CONFIG[activeCatIndex];
+
+  // Dynamic Quantities state per category
+  const [categoryQtys, setCategoryQtys] = useState<Record<string, { tops: number; bottoms: number; extras: number }>>({
+    baby:   { tops: 14, bottoms: 10, extras: 5 },
+    kids:   { tops: 12, bottoms: 8,  extras: 5 },
+    teens:  { tops: 10, bottoms: 7,  extras: 5 },
+    adults: { tops: 6,  bottoms: 4,  extras: 5 },
+  });
+
+  const currentQtys = categoryQtys[activeCategory.id] || {
+    tops: activeCategory.defaultTops,
+    bottoms: activeCategory.defaultBottoms,
+    extras: 5,
+  };
+
+  const handleUpdateQty = (catId: string, item: 'tops' | 'bottoms' | 'extras', delta: number) => {
+    setCategoryQtys((prev) => {
+      const cur = prev[catId] || {
+        tops: CATEGORIES_CONFIG.find((c) => c.id === catId)?.defaultTops || 10,
+        bottoms: CATEGORIES_CONFIG.find((c) => c.id === catId)?.defaultBottoms || 7,
+        extras: 5,
+      };
+      let nxt = cur[item] + delta;
+      if (item === 'extras') {
+        nxt = Math.max(0, Math.min(5, nxt));
+      } else {
+        nxt = Math.max(0, nxt);
+      }
+      return {
+        ...prev,
+        [catId]: {
+          ...cur,
+          [item]: nxt,
+        },
+      };
+    });
+  };
+
+  const handleResetQty = (catId: string) => {
+    const config = CATEGORIES_CONFIG.find((c) => c.id === catId);
+    if (!config) return;
+    setCategoryQtys((prev) => ({
+      ...prev,
+      [catId]: {
+        tops: config.defaultTops,
+        bottoms: config.defaultBottoms,
+        extras: 5,
+      },
+    }));
+  };
+
+  // Dynamic Calculations
+  const topsQty = currentQtys.tops;
+  const bottomsQty = currentQtys.bottoms;
+  const extrasQty = currentQtys.extras;
+
+  const indianPrice = Math.round(
+    topsQty * activeCategory.inTopsCost + bottomsQty * activeCategory.inBottomsCost
+  );
+
+  const canadianPrice = Math.round(
+    topsQty * activeCategory.caTopsPrice + bottomsQty * activeCategory.caBottomsPrice
+  );
+
+  const grossWeightKg = topsQty * activeCategory.topWeightKg + bottomsQty * activeCategory.bottomWeightKg;
+  const chargeableKg = Math.max(1, Math.ceil(grossWeightKg));
+  const shippingPrice = topsQty + bottomsQty === 0 ? 0 : Math.round(25 + chargeableKg * activeCategory.shippingPerKgRate);
+
+  const totalPrice = indianPrice + shippingPrice;
+  const savings = Math.max(0, canadianPrice - totalPrice);
 
   // Ref scroll anchors
   const heroRef = useRef<HTMLDivElement>(null);
@@ -500,7 +580,7 @@ export default function Home() {
 
           {/* Horizontal Category Tab Bar */}
           <div className="bg-[#ECEAE0] p-1.5 rounded-2xl flex flex-wrap md:flex-nowrap gap-1 w-full justify-between font-bold text-xs md:text-sm">
-            {CATEGORIES_DATA.map((cat, idx) => {
+            {CATEGORIES_CONFIG.map((cat, idx) => {
               const isSelected = activeCatIndex === idx;
               return (
                 <button
@@ -533,31 +613,89 @@ export default function Home() {
               <div className="lg:col-span-8 flex flex-col justify-between space-y-6">
                 
                 {/* Header title */}
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <h3 className="text-2xl md:text-3xl font-black text-[#0E1F38]">
                     {activeCategory.cardTitle}
                   </h3>
                   <p className="text-xs md:text-sm text-[#0E1F38]/70 leading-relaxed font-light">
-                    {activeCategory.description}
+                    {activeCategory.description} Here’s how you can save <span className="font-bold text-[#2E7D32]">${savings} CAD</span> on this haul.
                   </p>
                 </div>
 
-                {/* Clothing Quantities Grid */}
-                <div className="flex flex-wrap items-center gap-6 py-2 border-b border-black/5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">👕</span>
-                    <span className="text-sm font-black text-[#0E1F38]">
-                      x{activeCategory.topsQty}{' '}
-                      <span className="text-xs font-normal text-[#0E1F38]/60">(from ${activeCategory.topsUnitRate}/pc)</span>
-                    </span>
+                {/* Interactive Dynamic Quantities Stepper Bar */}
+                <div className="bg-[#FAF8EE] border border-black/5 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-6">
+                    {/* Tops Stepper */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">👕</span>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-black text-[#0E1F38] flex items-center gap-1">
+                          Tops / Shirts
+                          <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.topsUnitRate}/pc)</span>
+                        </span>
+                        <span className="text-[10px] text-[#0E1F38]/50">Indian Retail Rate</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-white rounded-full px-2 py-1 border border-black/10 shadow-xs ml-2">
+                        <button
+                          onClick={() => handleUpdateQty(activeCategory.id, 'tops', -1)}
+                          disabled={topsQty <= 0}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[#0E1F38] hover:bg-black/5 active:scale-90 transition-all disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
+                          aria-label="Decrease tops"
+                        >
+                          <span className="material-symbols-outlined text-sm leading-none">remove</span>
+                        </button>
+                        <span className="w-5 text-center font-bold text-xs text-[#0E1F38]">{topsQty}</span>
+                        <button
+                          onClick={() => handleUpdateQty(activeCategory.id, 'tops', 1)}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[#0E1F38] hover:bg-black/5 active:scale-90 transition-all cursor-pointer"
+                          aria-label="Increase tops"
+                        >
+                          <span className="material-symbols-outlined text-sm leading-none">add</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Bottoms Stepper */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">👖</span>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-black text-[#0E1F38] flex items-center gap-1">
+                          Bottoms / Pants
+                          <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.bottomsUnitRate}/pc)</span>
+                        </span>
+                        <span className="text-[10px] text-[#0E1F38]/50">Indian Retail Rate</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-white rounded-full px-2 py-1 border border-black/10 shadow-xs ml-2">
+                        <button
+                          onClick={() => handleUpdateQty(activeCategory.id, 'bottoms', -1)}
+                          disabled={bottomsQty <= 0}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[#0E1F38] hover:bg-black/5 active:scale-90 transition-all disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
+                          aria-label="Decrease bottoms"
+                        >
+                          <span className="material-symbols-outlined text-sm leading-none">remove</span>
+                        </button>
+                        <span className="w-5 text-center font-bold text-xs text-[#0E1F38]">{bottomsQty}</span>
+                        <button
+                          onClick={() => handleUpdateQty(activeCategory.id, 'bottoms', 1)}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[#0E1F38] hover:bg-black/5 active:scale-90 transition-all cursor-pointer"
+                          aria-label="Increase bottoms"
+                        >
+                          <span className="material-symbols-outlined text-sm leading-none">add</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">👖</span>
-                    <span className="text-sm font-black text-[#0E1F38]">
-                      x{activeCategory.bottomsQty}{' '}
-                      <span className="text-xs font-normal text-[#0E1F38]/60">(from ${activeCategory.bottomsUnitRate}/pc)</span>
-                    </span>
-                  </div>
+
+                  {/* Reset to Recommended */}
+                  {(topsQty !== activeCategory.defaultTops || bottomsQty !== activeCategory.defaultBottoms) && (
+                    <button
+                      onClick={() => handleResetQty(activeCategory.id)}
+                      className="px-3 py-1 bg-white border border-black/10 text-[11px] font-bold text-[#FF5A65] hover:bg-[#FF5A65]/10 rounded-full transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-xs">restart_alt</span>
+                      Reset
+                    </button>
+                  )}
                 </div>
 
                 {/* Price Comparisons */}
@@ -569,42 +707,66 @@ export default function Home() {
                       <span className="px-3 py-1.5 bg-[#FAF8EE] border border-black/5 rounded-xl font-bold text-[10px] uppercase tracking-wider text-[#0E1F38]">Canadian store</span>
                     </div>
                     <span className="px-4 py-2 bg-[#FFD8D8] text-[#C62828] rounded-full font-black text-sm">
-                      ${activeCategory.canadianPrice}
+                      ${canadianPrice}
                     </span>
                   </div>
 
                   {/* Indian bought products price */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[#0E1F38]/60">Indian bought products</span>
+                    <span className="text-[#0E1F38]/60">Indian bought products ({topsQty + bottomsQty} items)</span>
                     <span className="text-[#0E1F38] font-black text-sm">
-                      ${activeCategory.indianPrice}
+                      ${indianPrice}
                     </span>
                   </div>
 
                   {/* + Ship With Layo price */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[#0E1F38]/60">+ Ship With Layo</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[#0E1F38]/60">+ Ship With Layo</span>
+                      <span className="text-[10px] text-[#0E1F38]/40 font-normal">({chargeableKg} kg volumetric)</span>
+                    </div>
                     <span className="text-[#0E1F38] font-black text-sm">
-                      ${activeCategory.shippingPrice}
+                      ${shippingPrice}
                     </span>
                   </div>
 
-                  {/* Lightweight Extras FREE badge */}
+                  {/* Lightweight Extras FREE badge with interactive counter */}
                   <div className="flex items-center justify-between py-1">
                     <div className="flex items-center gap-2 px-3 py-2 bg-[#E2E8DD] text-[#3B4A2C] border border-[#C5D3BC] rounded-xl text-[10px] font-bold uppercase tracking-wider">
                       <span className="material-symbols-outlined text-sm leading-none">workspace_premium</span>
-                      x5 Shipping on Lightweight Extras
+                      x{extrasQty} Shipping on Lightweight Extras (Max 5)
                     </div>
-                    <span className="text-[#3B4A2C] font-black text-sm uppercase tracking-wider">FREE!</span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1 bg-white/70 rounded-full px-2 py-0.5 border border-[#C5D3BC]">
+                        <button
+                          onClick={() => handleUpdateQty(activeCategory.id, 'extras', -1)}
+                          disabled={extrasQty <= 0}
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-[#3B4A2C] hover:bg-black/5 disabled:opacity-30 cursor-pointer text-xs"
+                          aria-label="Decrease extras"
+                        >
+                          <span className="material-symbols-outlined text-[10px]">remove</span>
+                        </button>
+                        <span className="w-4 text-center font-bold text-[11px] text-[#3B4A2C]">{extrasQty}</span>
+                        <button
+                          onClick={() => handleUpdateQty(activeCategory.id, 'extras', 1)}
+                          disabled={extrasQty >= 5}
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-[#3B4A2C] hover:bg-black/5 disabled:opacity-30 cursor-pointer text-xs"
+                          aria-label="Increase extras"
+                        >
+                          <span className="material-symbols-outlined text-[10px]">add</span>
+                        </button>
+                      </div>
+                      <span className="text-[#3B4A2C] font-black text-sm uppercase tracking-wider">FREE!</span>
+                    </div>
                   </div>
 
                   {/* Total pricing */}
                   <div className="flex items-center justify-between pt-2 border-t border-black/5">
                     <div className="px-4 py-2 bg-[#E6F4D0] border border-[#CADFAD] rounded-2xl text-[#2B3A1A] font-black text-xs md:text-sm uppercase tracking-wider">
-                      YOU SAVE ${activeCategory.savings} CAD!
+                      YOU SAVE ${savings} CAD!
                     </div>
                     <span className="px-5 py-2.5 bg-[#D6E9C6] text-[#2F4F2F] rounded-full font-black text-base">
-                      ${activeCategory.totalPrice}
+                      ${totalPrice}
                     </span>
                   </div>
                 </div>
@@ -651,7 +813,7 @@ export default function Home() {
 
                 {/* Vertical Pagination Dots */}
                 <div className="absolute right-[-40px] top-[40%] flex flex-col gap-3 items-center">
-                  {CATEGORIES_DATA.map((_, dotIdx) => (
+                  {CATEGORIES_CONFIG.map((_, dotIdx) => (
                     <button
                       key={dotIdx}
                       onClick={() => setActiveCatIndex(dotIdx)}
