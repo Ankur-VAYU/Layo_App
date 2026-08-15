@@ -16,6 +16,7 @@ interface CategoryConfig {
   tabLabel: string;
   cardTitle: string;
   icons: string[];
+  image: string;
   description: string;
   topsUnitRate: number;
   bottomsUnitRate: number;
@@ -37,6 +38,7 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
     tabLabel: 'Baby & Toddler',
     cardTitle: 'Baby & Toddler (0-4 years)',
     icons: ['🍼', '🧸'],
+    image: '/categories/baby-box.png',
     description: 'Between rapid growth and daily messes, babies need about 14 tops and 10 bottoms every 3-6 months. Parenting is exhausting enough without dragging little ones to the store! Buying their whole wardrobe at once online from India protects both your sanity and your budget.',
     topsUnitRate: 8,
     bottomsUnitRate: 12,
@@ -52,10 +54,11 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
   },
   {
     id: 'kids',
-    ageLabel: '5-8 YEARS',
+    ageLabel: '5-10 YEARS',
     tabLabel: 'Kids',
-    cardTitle: 'Kids (5-8 years)',
+    cardTitle: 'Kids (5-10 years)',
     icons: ['🧴', '👟'],
+    image: '/categories/kids-box.png',
     description: 'Kids grow fast, letting you trade constant shopping for one big seasonal wardrobe refresh. Stocking up for the school year typically requires about 12 tops and 8 bottoms. Buying this yearly haul from India lets you check everything off your list without overspending.',
     topsUnitRate: 10,
     bottomsUnitRate: 18,
@@ -71,10 +74,11 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
   },
   {
     id: 'teens',
-    ageLabel: '9-13 YEARS',
+    ageLabel: '11-18 YEARS',
     tabLabel: 'Teens',
-    cardTitle: 'Teens (9-13 years)',
+    cardTitle: 'Teens (11-18 years)',
     icons: ['🧢', '👕'],
+    image: '/categories/teens-box.png',
     description: 'Teens hit unpredictable growth spurts every 6-12 months, and their style quickly shifts to trendy brands. Keeping up with their yearly need of at least 10 tops and 7 bottoms from India lets you match their tastes while protecting your budget.',
     topsUnitRate: 15,
     bottomsUnitRate: 22,
@@ -90,10 +94,11 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
   },
   {
     id: 'adults',
-    ageLabel: '14-18+ YEARS',
+    ageLabel: '18+ YEARS',
     tabLabel: 'Adults',
-    cardTitle: 'Adults (14-18+ years)',
+    cardTitle: 'Adults (18 & above)',
     icons: ['👔', '⌚'],
+    image: '/categories/adults-box.png',
     description: 'Building your wardrobe is now about upgrading your style, whether refreshing basics or adding premium outfits. Buying elevated pieces from India lets you upgrade your look for a fraction of Canadian retail costs.',
     topsUnitRate: 20,
     bottomsUnitRate: 30,
@@ -113,6 +118,7 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
     tabLabel: 'Seniors',
     cardTitle: 'Seniors (60+ years)',
     icons: ['💊', '👓'],
+    image: '/categories/seniors-box.png',
     description: 'Comfortable pure cotton kurtas, ayurvedic wellness essentials, and tailored ethnic apparel for seniors are often 4x more expensive or unavailable in Canada. Stocking up directly from trusted Indian stores brings authentic comfort and massive savings.',
     topsUnitRate: 18,
     bottomsUnitRate: 25,
@@ -123,8 +129,8 @@ const CATEGORIES_CONFIG: CategoryConfig[] = [
     caTopsPrice: 40,
     caBottomsPrice: 65,
     topWeightKg: 0.30,
-    bottomWeightKg: 0.45,
-    shippingPerKgRate: 15,
+    bottomWeightKg: 0.55,
+    shippingPerKgRate: 15.00,
   }
 ];
 
@@ -872,46 +878,23 @@ export default function Home() {
 
               </div>
 
-              {/* Right Column: Visual Box with Clothes Illustration */}
-              <div className="lg:col-span-4 flex flex-col justify-center items-center relative min-h-[220px] lg:border-l lg:border-black/5 lg:pl-8">
-                {/* Clothes Flying SVG Illustration */}
-                <div className="w-full max-w-[240px] aspect-square relative flex items-center justify-center">
-                  
-                  {/* Floating Shirt Blue */}
-                  <div className="absolute top-[8%] left-[10%] w-16 h-16 animate-float-1 z-20">
-                    <svg viewBox="0 0 100 100" className="w-full h-full fill-sky-200 stroke-sky-800" strokeWidth="2.5">
-                      <path d="M 20 40 L 40 25 L 50 32 L 60 25 L 80 40 L 70 50 L 60 45 L 60 85 H 40 V 45 L 30 50 Z" />
-                    </svg>
-                  </div>
-
-                  {/* Floating Pant Plaid */}
-                  <div className="absolute top-[20%] right-[8%] w-14 h-16 animate-float-2 z-20">
-                    <svg viewBox="0 0 100 100" className="w-full h-full fill-rose-200 stroke-rose-800" strokeWidth="2.5">
-                      <path d="M 30 15 H 70 V 85 H 52 V 45 H 48 V 85 H 30 Z" />
-                    </svg>
-                  </div>
-
-                  {/* Floating Shirt Yellow */}
-                  <div className="absolute top-[40%] left-[5%] w-14 h-14 animate-float-3 z-10">
-                    <svg viewBox="0 0 100 100" className="w-full h-full fill-amber-100 stroke-amber-700" strokeWidth="2.5">
-                      <path d="M 20 40 L 40 25 L 50 32 L 60 25 L 80 40 L 70 50 L 60 45 L 60 85 H 40 V 45 L 30 50 Z" />
-                    </svg>
-                  </div>
-
-                  {/* Cardboard Box at bottom */}
-                  <svg viewBox="0 0 200 200" className="w-full h-44 absolute bottom-0 fill-none stroke-[#0E1F38]" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M 50,80 L 100,110 L 150,80 L 100,50 Z" fill="#E8F4D0" opacity="0.3" />
-                    <path d="M 40,90 L 100,120 L 160,90 L 100,60 Z" strokeWidth="3" fill="#E8F4D0" />
-                    <path d="M 40,90 L 40,150 L 100,180 L 100,120" strokeWidth="3" fill="#CADFAD" />
-                    <path d="M 160,90 L 160,150 L 100,180" strokeWidth="3" fill="#B4CE93" />
-                    <path d="M 40,90 L 15,65 L 75,35 L 100,60" strokeWidth="2" fill="#F1F7EB" />
-                    <path d="M 160,90 L 185,65 L 125,35 L 100,60" strokeWidth="2" fill="#E2EDD3" />
-                  </svg>
-
+              {/* Right Column: Dynamic Category Box with floating items (from Image 1-4) */}
+              <div className="lg:col-span-4 flex flex-col justify-center items-center relative min-h-[280px] lg:border-l lg:border-black/5 lg:pl-8">
+                {/* Dynamic Category Box Image with smooth fade-in */}
+                <div className="w-full max-w-[280px] sm:max-w-[300px] relative flex items-center justify-center py-2 transition-all duration-300">
+                  <Image
+                    key={activeCategory.id}
+                    src={activeCategory.image}
+                    alt={`${activeCategory.cardTitle} curated haul items in shipping box`}
+                    width={400}
+                    height={500}
+                    className="w-full h-auto max-h-[340px] object-contain drop-shadow-md transition-all duration-300 hover:scale-105"
+                    priority
+                  />
                 </div>
 
                 {/* Vertical Pagination Dots */}
-                <div className="absolute right-[-40px] top-[40%] flex flex-col gap-3 items-center">
+                <div className="absolute right-[-24px] sm:right-[-32px] md:right-[-40px] top-[40%] flex flex-col gap-3 items-center">
                   {CATEGORIES_CONFIG.map((_, dotIdx) => (
                     <button
                       key={dotIdx}
