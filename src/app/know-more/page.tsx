@@ -195,38 +195,21 @@ export default function KnowMorePage() {
             </div>
           )}
 
-          {/* Interactive Steps Layout & Cardboard Box Illustration */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-            {/* Timeline Steps (7 cols) */}
-            <div className="lg:col-span-7 relative pl-8 space-y-6">
-              {/* Vertical connecting line */}
-              <div className="absolute left-[11px] top-3 bottom-3 w-0.5 bg-[#0E1F38]" />
+          {/* Interactive Steps Timeline Layout */}
+          <div className="max-w-2xl relative pl-8 space-y-6 pt-2">
+            {/* Vertical connecting line */}
+            <div className="absolute left-[11px] top-3 bottom-3 w-0.5 bg-[#0E1F38]" />
 
-              {activeSteps.map((step, idx) => (
-                <div key={idx} className="relative flex items-start gap-4 group">
-                  {/* Timeline dot */}
-                  <div className="absolute -left-[33px] top-1.5 w-3 h-3 rounded-full bg-[#0E1F38] border-2 border-[#FAF8EE] shadow-sm" />
-                  <div>
-                    <h3 className="text-base font-bold text-[#0E1F38] leading-snug">{step.title}</h3>
-                    <p className="text-xs text-[#0E1F38]/70 leading-relaxed mt-0.5 font-light">{step.desc}</p>
-                  </div>
+            {activeSteps.map((step, idx) => (
+              <div key={idx} className="relative flex items-start gap-4 group">
+                {/* Timeline dot */}
+                <div className="absolute -left-[33px] top-1.5 w-3 h-3 rounded-full bg-[#0E1F38] border-2 border-[#FAF8EE] shadow-sm" />
+                <div>
+                  <h3 className="text-base font-bold text-[#0E1F38] leading-snug">{step.title}</h3>
+                  <p className="text-xs text-[#0E1F38]/70 leading-relaxed mt-0.5 font-light">{step.desc}</p>
                 </div>
-              ))}
-            </div>
-
-            {/* Box Illustration (5 cols) */}
-            <div className="lg:col-span-5 flex flex-col items-center justify-center relative">
-              <div className="w-full max-w-[440px] relative">
-                <Image
-                  src="/how-layo-works-box.png"
-                  alt="How Layo Works - Combine Orders, Safe In Your Locker, Hold Orders Up To 30 Days"
-                  width={1024}
-                  height={621}
-                  className="w-full h-auto object-contain drop-shadow-md rounded-3xl transition-transform hover:scale-[1.02] duration-300"
-                  priority
-                />
               </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
