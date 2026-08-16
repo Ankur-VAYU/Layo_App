@@ -45,7 +45,7 @@ const categoryData: Record<string, CategoryDetail> = {
     ]
   },
   bags: {
-    name: 'Bags',
+    name: 'Bags & Luggage',
     icon: 'work',
     subs: [
       { name: 'Small Bag', weight: 300 },
@@ -54,14 +54,14 @@ const categoryData: Record<string, CategoryDetail> = {
     ]
   },
   jewelry: {
-    name: 'Jewelry',
+    name: 'Jewelry & Accessories',
     icon: 'diamond',
     subs: [
       { name: 'Structured Jewelry', weight: 200 }
     ]
   },
   beauty: {
-    name: 'Beauty',
+    name: 'Beauty & Personal Care',
     icon: 'face_3',
     subs: [
       { name: 'Light Cosmetics', weight: 80 },
@@ -69,7 +69,7 @@ const categoryData: Record<string, CategoryDetail> = {
     ]
   },
   home: {
-    name: 'Home',
+    name: 'Home, Kitchen & Living',
     icon: 'home',
     subs: [
       { name: 'Utensils', weight: 400 },
@@ -80,7 +80,7 @@ const categoryData: Record<string, CategoryDetail> = {
     ]
   },
   toys: {
-    name: 'Toys',
+    name: 'Toys, Games & Kids Gear',
     icon: 'smart_toy',
     subs: [
       { name: 'Small Toy', weight: 300 },
@@ -90,7 +90,7 @@ const categoryData: Record<string, CategoryDetail> = {
     ]
   },
   books: {
-    name: 'Books',
+    name: 'Books, Documents & Media',
     icon: 'menu_book',
     subs: [
       { name: 'Documents', weight: 200 },
@@ -100,7 +100,7 @@ const categoryData: Record<string, CategoryDetail> = {
     ]
   },
   food: {
-    name: 'Food',
+    name: 'Food, Snacks & Groceries',
     icon: 'restaurant',
     isFoodGlobal: true,
     subs: [

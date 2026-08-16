@@ -6,15 +6,15 @@ import { useAuth } from '@/components/AuthProvider';
 
 /* ── Weight matrix ── */
 const CATEGORIES = [
-  { id: 'clothing', label: 'Clothing',       icon: 'checkroom',   hasAge: true  },
-  { id: 'footwear', label: 'Footwear',       icon: 'steps',       hasAge: true  },
-  { id: 'bags',     label: 'Bags',           icon: 'work',        hasAge: false },
-  { id: 'jewelry',  label: 'Jewelry',        icon: 'diamond',     hasAge: false },
-  { id: 'beauty',   label: 'Beauty',         icon: 'face_3',      hasAge: false },
-  { id: 'home',     label: 'Home',           icon: 'home',        hasAge: false },
-  { id: 'toys',     label: 'Toys',           icon: 'smart_toy',   hasAge: false },
-  { id: 'books',    label: 'Books',          icon: 'menu_book',   hasAge: false },
-  { id: 'food',     label: 'Food',           icon: 'restaurant',  hasAge: false },
+  { id: 'clothing', label: 'Clothing',                   icon: 'checkroom',   hasAge: true  },
+  { id: 'footwear', label: 'Footwear',                   icon: 'steps',       hasAge: true  },
+  { id: 'bags',     label: 'Bags & Luggage',             icon: 'work',        hasAge: false },
+  { id: 'jewelry',  label: 'Jewelry & Accessories',      icon: 'diamond',     hasAge: false },
+  { id: 'beauty',   label: 'Beauty & Personal Care',     icon: 'face_3',      hasAge: false },
+  { id: 'home',     label: 'Home, Kitchen & Living',     icon: 'home',        hasAge: false },
+  { id: 'toys',     label: 'Toys, Games & Kids Gear',    icon: 'smart_toy',   hasAge: false },
+  { id: 'books',    label: 'Books, Documents & Media',   icon: 'menu_book',   hasAge: false },
+  { id: 'food',     label: 'Food, Snacks & Groceries',   icon: 'restaurant',  hasAge: false },
 ];
 
 const ITEM_TYPES: Record<string, { id: string; label: string; subtext: string; weight: number; isPromo?: boolean; isOversized?: boolean; isFood?: boolean }[]> = {
