@@ -422,7 +422,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                   <span className="material-symbols-outlined text-[#2E7D32] text-xl leading-none">workspace_premium</span>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
-                      Free small weight items( max 50 gm)-
+                      Free light weight items( max 50 gm)-
                     </span>
                     <span className="text-[9px] text-[#2E7D32] bg-white px-2 py-0.5 rounded-md font-black uppercase tracking-wider border border-[#C8E6C9]">
                       Limit: Max 5 Items

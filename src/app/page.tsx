@@ -738,7 +738,7 @@ export default function Home() {
                           Tops / Shirts
                           <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.topsUnitRate}/pc)</span>
                         </span>
-                        <span className="text-[10px] text-[#0E1F38]/50">Indian Retail Rate</span>
+                        <span className="text-[10px] text-[#0E1F38]/50">Canadian Retail Rate</span>
                       </div>
                       <div className="flex items-center gap-1.5 bg-white rounded-full px-2 py-1 border border-black/10 shadow-xs ml-2">
                         <button
@@ -768,7 +768,7 @@ export default function Home() {
                           Bottoms / Pants
                           <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.bottomsUnitRate}/pc)</span>
                         </span>
-                        <span className="text-[10px] text-[#0E1F38]/50">Indian Retail Rate</span>
+                        <span className="text-[10px] text-[#0E1F38]/50">Canadian Retail Rate</span>
                       </div>
                       <div className="flex items-center gap-1.5 bg-white rounded-full px-2 py-1 border border-black/10 shadow-xs ml-2">
                         <button
@@ -811,7 +811,7 @@ export default function Home() {
                       <span className="text-[#0E1F38]/60">Estimated cost at a</span>
                       <span className="px-3 py-1.5 bg-[#FAF8EE] border border-black/5 rounded-xl font-bold text-[10px] uppercase tracking-wider text-[#0E1F38]">Canadian store</span>
                     </div>
-                    <span className="min-w-[90px] px-5 py-2.5 bg-[#FFD8D8] text-[#C62828] rounded-full font-black text-base text-center inline-flex items-center justify-center shadow-xs">
+                    <span className="px-3.5 py-1.5 bg-[#FFD8D8] text-[#C62828] rounded-full font-bold text-xs sm:text-sm text-center inline-flex items-center justify-center shadow-xs">
                       ${canadianPrice}
                     </span>
                   </div>
@@ -837,43 +837,22 @@ export default function Home() {
 
                   {/* Lightweight Extras FREE badge with interactive counter */}
                   <div className="flex items-center justify-between py-1 gap-2">
-                    <div className="flex items-center gap-2 px-3 py-2 bg-[#E2E8DD] text-[#3B4A2C] border border-[#C5D3BC] rounded-xl text-[10px] sm:text-[11px] font-bold tracking-tight">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-[#E2E8DD] text-[#3B4A2C] border border-[#C5D3BC] rounded-xl text-[10px] sm:text-[11px] font-bold tracking-tight flex-grow">
                       <span className="material-symbols-outlined text-sm leading-none">workspace_premium</span>
-                      Free small weight items (max 50 gm) - Maximum 5 items can be added
+                      Free light weight items (max 50 gm) - Maximum 5 items can be added
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <div className="flex items-center gap-1 bg-white/70 rounded-full px-2 py-0.5 border border-[#C5D3BC]">
-                        <button
-                          onClick={() => handleUpdateQty(activeCategory.id, 'extras', -1)}
-                          disabled={extrasQty <= 0}
-                          className="w-5 h-5 rounded-full flex items-center justify-center text-[#3B4A2C] hover:bg-black/5 disabled:opacity-30 cursor-pointer text-xs"
-                          aria-label="Decrease extras"
-                        >
-                          <span className="material-symbols-outlined text-[10px]">remove</span>
-                        </button>
-                        <span className="w-4 text-center font-bold text-[11px] text-[#3B4A2C]">{extrasQty}</span>
-                        <button
-                          onClick={() => handleUpdateQty(activeCategory.id, 'extras', 1)}
-                          disabled={extrasQty >= 5}
-                          className="w-5 h-5 rounded-full flex items-center justify-center text-[#3B4A2C] hover:bg-black/5 disabled:opacity-30 cursor-pointer text-xs"
-                          aria-label="Increase extras"
-                        >
-                          <span className="material-symbols-outlined text-[10px]">add</span>
-                        </button>
-                      </div>
-                      <span className="text-[#3B4A2C] font-black text-sm uppercase tracking-wider">FREE!</span>
-                    </div>
+                    <span className="text-[#3B4A2C] font-black text-xs sm:text-sm uppercase tracking-wider px-2">FREE!</span>
                   </div>
 
-                  {/* Total pricing */}
-                  <div className="flex items-center justify-between pt-2 border-t border-black/5">
-                    <div className="px-4 py-2 bg-[#E6F4D0] border border-[#CADFAD] rounded-2xl text-[#2B3A1A] font-black text-xs md:text-sm uppercase tracking-wider">
-                      YOU SAVE ${savings} CAD!
+                    {/* Total pricing */}
+                    <div className="flex items-center justify-between pt-2 border-t border-black/5">
+                      <div className="px-4 py-2 bg-[#E6F4D0] border border-[#CADFAD] rounded-2xl text-[#2B3A1A] font-black text-xs md:text-sm uppercase tracking-wider">
+                        YOU SAVE ${savings} CAD!
+                      </div>
+                      <span className="px-3.5 py-1.5 bg-[#D6E9C6] text-[#2F4F2F] rounded-full font-bold text-xs sm:text-sm text-center inline-flex items-center justify-center shadow-xs">
+                        ${totalPrice}
+                      </span>
                     </div>
-                    <span className="min-w-[90px] px-5 py-2.5 bg-[#D6E9C6] text-[#2F4F2F] rounded-full font-black text-base text-center inline-flex items-center justify-center shadow-xs">
-                      ${totalPrice}
-                    </span>
-                  </div>
                 </div>
 
               </div>
