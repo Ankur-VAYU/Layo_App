@@ -1131,7 +1131,7 @@ export default function Dashboard() {
                         <div className="px-5 py-3.5 flex items-center justify-between gap-3 bg-white">
                           <div className="flex-grow min-w-0">
                             <p className="font-bold text-sm text-[#0E1F38]">
-                              5 Small Cloths or Jewelry (Free)
+                              5 Light Weight Items (Free)
                             </p>
                             <p className="text-[11px] text-[#0E1F38]/70 mt-0.5 font-light">
                               Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!

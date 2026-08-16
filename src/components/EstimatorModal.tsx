@@ -67,7 +67,7 @@ const ITEM_TYPES: Record<string, { id: string; label: string; subtext: string; w
     { id: 'heavy_groc',  label: 'Sweets & Groceries',      subtext: 'Mithai, Pickles, Lentils',             weight: 1500, isFood: true },
   ],
   promo: [
-    { id: 'free_small_items', label: '5 Small Cloths or Jewelry (Free)', subtext: 'Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!', weight: 0, isPromo: true },
+    { id: 'free_small_items', label: '5 Light Weight Items (Free)', subtext: 'Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!', weight: 0, isPromo: true },
   ],
 };
 
@@ -434,7 +434,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
               <div className="px-5 py-3.5 flex items-center justify-between gap-3 bg-white">
                 <div className="flex-grow min-w-0">
                   <p className="text-xs font-bold text-[#0E1F38] leading-tight">
-                    5 Small Cloths or Jewelry (Free)
+                    5 Light Weight Items (Free)
                   </p>
                   <p className="text-[11px] text-[#0E1F38]/70 mt-0.5 font-light">
                     Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!
