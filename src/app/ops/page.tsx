@@ -189,19 +189,24 @@ export default function WarehouseOpsPortal() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'draft':
+        return <span className="bg-slate-100 text-slate-700 border border-slate-300 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Draft Booking</span>;
+      case 'paid':
+        return <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Paid / Awaiting Hub</span>;
+      case 'arrived':
       case 'inwarded':
         return <span className="bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Inwarded @ Hub</span>;
       case 'qc_verified':
         return <span className="bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">QC Verified</span>;
       case 'repacked':
-        return <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Repacked in Box</span>;
+        return <span className="bg-orange-100 text-orange-800 border border-orange-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Repacked in Box</span>;
       case 'in_transit':
       case 'shipped':
         return <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">In Transit to Canada</span>;
       case 'delivered':
-        return <span className="bg-green-100 text-green-800 border border-green-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Delivered</span>;
+        return <span className="bg-green-100 text-green-800 border border-green-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Delivered in Canada</span>;
       default:
-        return <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Awaiting Arrival</span>;
+        return <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">{status || 'Draft'}</span>;
     }
   };
 
