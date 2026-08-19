@@ -708,17 +708,24 @@ export default function Dashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {shipments.map(s => {
-                  const STEPS = ['draft', 'paid', 'arrived', 'shipped', 'delivered'];
-                  const STEP_LABELS = ['Draft Estimate', 'Estimate Paid', 'Received in India', 'Weight Verified', 'Shipped to Canada'];
+                  const STEPS = ['paid', 'inwarded', 'repacked', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'];
+                  const STEP_LABELS = ['Paid', 'India Hub', 'SOP Repack', 'Airfreight', 'Canada Hub', 'Local Dispatch', 'Delivered'];
                   const STATUS_COLORS: Record<string, string> = {
                     draft: '#64748b',
                     paid: '#f59e0b',
+                    inwarded: '#8b5cf6',
                     arrived: '#8b5cf6',
-                    shipped: '#3b82f6',
+                    qc_verified: '#3b82f6',
+                    repacked: '#d97706',
+                    bulk_consolidated: '#6366f1',
+                    in_transit: '#059669',
+                    shipped: '#059669',
+                    received_canada: '#0d9488',
+                    out_for_delivery: '#0284c7',
                     delivered: '#10b981'
                   };
                   const statusNormalized = s.status?.toLowerCase() ?? 'paid';
-                  const currentIdx = STEPS.indexOf(statusNormalized);
+                  const currentIdx = STEPS.indexOf(statusNormalized) >= 0 ? STEPS.indexOf(statusNormalized) : (statusNormalized === 'arrived' ? 1 : statusNormalized === 'qc_verified' ? 2 : statusNormalized === 'bulk_consolidated' ? 3 : 0);
 
                   return (
                     <div key={s.id} className="bg-white p-6 rounded-3xl border border-black/5 space-y-4 shadow-sm text-[#0E1F38]">
@@ -745,7 +752,7 @@ export default function Dashboard() {
                             const isPassed = idx <= currentIdx;
                             const isCurrent = idx === currentIdx;
                             return (
-                              <div key={step} className="flex flex-col items-center gap-1.5 flex-1 relative">
+                              <div key={step} className="flex flex-col items-center gap-1 flex-1 relative">
                                 <div
                                   className="w-3.5 h-3.5 rounded-full transition-all border-2 border-transparent"
                                   style={{
@@ -754,7 +761,7 @@ export default function Dashboard() {
                                   }}
                                 />
                                 <span 
-                                  className={`text-[8px] uppercase tracking-widest font-bold ${
+                                  className={`text-[7px] uppercase tracking-wider font-bold text-center ${
                                     isPassed ? 'text-[#0E1F38]' : 'text-[#0E1F38]/40'
                                   }`}
                                 >

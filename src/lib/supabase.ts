@@ -32,25 +32,34 @@ export interface ShipmentPayload {
   status?: string;
   payment_method?: string;
   stage_timestamps?: Record<string, string>;
+  master_box_id?: string | null;
+  canada_local_carrier?: string | null;
+  canada_local_awb?: string | null;
 }
 
 export async function insertShipment(payload: ShipmentPayload) {
   const initialTimestamps = payload.stage_timestamps || {
     [payload.status || 'draft']: new Date().toISOString()
   };
-  const payloadWithTimestamps = { ...payload, stage_timestamps: initialTimestamps };
 
-  // 1. Try to insert with all columns
+  const payloadWithTimestamps = {
+    ...payload,
+    stage_timestamps: initialTimestamps,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  // 1. Try standard insert with all columns
   const { data, error } = await supabase
     .from('shipments')
     .insert([payloadWithTimestamps])
     .select();
 
-  if (error && error.message && error.message.includes('column')) {
+  if (error) {
     console.warn("Supabase insert with full columns failed. Retrying with JSON metadata fallback...", error);
     
     // 2. Fallback: Wrap metadata inside the items column
-    const { user_id, india_warehouse, external_order_id, external_tracking, items, stage_timestamps, ...basicFields } = payloadWithTimestamps;
+    const { user_id, india_warehouse, external_order_id, external_tracking, items, stage_timestamps, master_box_id, canada_local_carrier, canada_local_awb, ...basicFields } = payloadWithTimestamps;
     const fallbackPayload = {
       ...basicFields,
       items: {
@@ -60,7 +69,10 @@ export async function insertShipment(payload: ShipmentPayload) {
           india_warehouse,
           external_order_id,
           external_tracking,
-          stage_timestamps: initialTimestamps
+          stage_timestamps: initialTimestamps,
+          master_box_id,
+          canada_local_carrier,
+          canada_local_awb
         }
       }
     };
@@ -92,6 +104,9 @@ export function parseShipment(raw: any) {
     external_order_id: raw.external_order_id || metadata.external_order_id || null,
     external_tracking: raw.external_tracking || metadata.external_tracking || null,
     stage_timestamps: stageTimestamps,
+    master_box_id: raw.master_box_id || metadata.master_box_id || null,
+    canada_local_carrier: raw.canada_local_carrier || metadata.canada_local_carrier || null,
+    canada_local_awb: raw.canada_local_awb || metadata.canada_local_awb || null,
   };
 }
 

@@ -8,14 +8,28 @@ import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { loadHaulCards, saveHaulCards, fetchHaulCardsFromDb, saveHaulCardToDb, HaulCard, DEFAULT_HAUL_CARDS } from '@/lib/haul-cards';
 
-const STATUS_STEPS = ['draft', 'paid', 'inwarded', 'qc_verified', 'repacked', 'in_transit', 'delivered'];
+const STATUS_STEPS = [
+  'draft',
+  'paid',
+  'inwarded',
+  'qc_verified',
+  'repacked',
+  'bulk_consolidated',
+  'in_transit',
+  'received_canada',
+  'out_for_delivery',
+  'delivered'
+];
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft Booking',
-  paid: 'Paid / Awaiting Hub',
-  inwarded: 'Inwarded at Hub',
-  qc_verified: 'QC Verified',
-  repacked: 'Repacked in Box',
-  in_transit: 'In Transit to Canada',
+  paid: 'Paid / Awaiting India Hub',
+  inwarded: 'Received @ India Hub (DEL)',
+  qc_verified: 'QC Matched & Photographed',
+  repacked: 'Layo SOP Repacked',
+  bulk_consolidated: 'In Master Cargo Box',
+  in_transit: 'Bulk Airfreight to Canada',
+  received_canada: 'Received @ Canada Hub (YYZ)',
+  out_for_delivery: 'Local Canadian Courier Dispatch',
   delivered: 'Delivered in Canada',
 };
 const STATUS_COLORS: Record<string, string> = {
@@ -24,7 +38,10 @@ const STATUS_COLORS: Record<string, string> = {
   inwarded: '#8b5cf6',
   qc_verified: '#3b82f6',
   repacked: '#d97706',
+  bulk_consolidated: '#6366f1',
   in_transit: '#059669',
+  received_canada: '#0d9488',
+  out_for_delivery: '#0284c7',
   delivered: '#10b981',
 };
 

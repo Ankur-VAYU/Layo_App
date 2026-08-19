@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS shipments (
   box_dimensions JSONB DEFAULT '{}'::jsonb,
   discrepancy_note TEXT,
   customer_notes TEXT,
+  master_box_id VARCHAR,
+  canada_local_carrier VARCHAR,
+  canada_local_awb VARCHAR,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -45,6 +48,9 @@ ADD COLUMN IF NOT EXISTS qc_photos JSONB DEFAULT '[]'::jsonb,
 ADD COLUMN IF NOT EXISTS box_dimensions JSONB DEFAULT '{}'::jsonb,
 ADD COLUMN IF NOT EXISTS discrepancy_note TEXT,
 ADD COLUMN IF NOT EXISTS customer_notes TEXT,
+ADD COLUMN IF NOT EXISTS master_box_id VARCHAR,
+ADD COLUMN IF NOT EXISTS canada_local_carrier VARCHAR,
+ADD COLUMN IF NOT EXISTS canada_local_awb VARCHAR,
 ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- 2. Warehouses Table (India Hub Locations)
