@@ -8,19 +8,23 @@ import { supabase, fetchShipments } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { loadHaulCards, saveHaulCards, HaulCard, DEFAULT_HAUL_CARDS } from '@/lib/haul-cards';
 
-const STATUS_STEPS = ['draft', 'paid', 'arrived', 'shipped', 'delivered'];
+const STATUS_STEPS = ['draft', 'paid', 'inwarded', 'qc_verified', 'repacked', 'in_transit', 'delivered'];
 const STATUS_LABELS: Record<string, string> = {
-  draft: 'Draft Estimate',
-  paid: 'Estimate Paid',
-  arrived: 'Received in India',
-  shipped: 'Weight Verified',
-  delivered: 'Shipped to Canada',
+  draft: 'Draft Booking',
+  paid: 'Paid / Awaiting Hub',
+  inwarded: 'Inwarded at Hub',
+  qc_verified: 'QC Verified',
+  repacked: 'Repacked in Box',
+  in_transit: 'In Transit to Canada',
+  delivered: 'Delivered in Canada',
 };
 const STATUS_COLORS: Record<string, string> = {
   draft: '#64748b',
   paid: '#f59e0b',
-  arrived: '#8b5cf6',
-  shipped: '#3b82f6',
+  inwarded: '#8b5cf6',
+  qc_verified: '#3b82f6',
+  repacked: '#d97706',
+  in_transit: '#059669',
   delivered: '#10b981',
 };
 
@@ -214,6 +218,10 @@ export default function AdminPortal() {
 
         <div className="space-y-1 border-t border-white/5 pt-6">
           <p className="text-[9px] uppercase font-bold tracking-widest text-on-surface-variant mb-3">Quick Links</p>
+          <Link href="/ops" className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-[#8BC34A] bg-[#8BC34A]/10 border border-[#8BC34A]/20 hover:bg-[#8BC34A]/20 transition-all">
+            <span className="material-symbols-outlined text-lg">warehouse</span>
+            Warehouse Ops App
+          </Link>
           <Link href="/dashboard" className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-on-surface-variant hover:text-white hover:bg-white/5 transition-all">
             <span className="material-symbols-outlined text-lg">dashboard</span>
             Customer Locker
