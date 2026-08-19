@@ -894,18 +894,124 @@ export default function Dashboard() {
                     }
                   }
 
+                  const getStageInfo = (st: string) => {
+                    switch (st) {
+                      case 'paid':
+                        return {
+                          title: 'Step 1 of 7: Payment Confirmed (Order Active)',
+                          desc: 'Please ship your items from Myntra/Amazon/Ajio or local courier to your assigned Layo India Hub address below.',
+                          badge: 'Paid · Awaiting India Hub',
+                          color: '#f59e0b',
+                          bg: '#fffbeb',
+                          border: '#fef3c7'
+                        };
+                      case 'arrived':
+                      case 'inwarded':
+                        return {
+                          title: 'Step 2 of 7: Received at India Hub (Delhi NCR)',
+                          desc: 'Your package has arrived safely at our Delhi Hub! Floor associates are matching physical contents against your declared checklist.',
+                          badge: 'Received @ India Hub (DEL)',
+                          color: '#8b5cf6',
+                          bg: '#f5f3ff',
+                          border: '#ede9fe'
+                        };
+                      case 'qc_verified':
+                        return {
+                          title: 'Step 3 of 7: QC Verified & Unboxing Photographed',
+                          desc: 'All items matched against your declaration with zero discrepancies. Unboxing photos logged.',
+                          badge: 'QC Matched & Photographed',
+                          color: '#3b82f6',
+                          bg: '#eff6ff',
+                          border: '#dbeafe'
+                        };
+                      case 'repacked':
+                        return {
+                          title: 'Step 4 of 7: Layo SOP Repacked',
+                          desc: 'Merchant waste boxes removed, folded, and sealed in standard Layo Green Box. Gross scale weight verified.',
+                          badge: 'Layo SOP Repacked',
+                          color: '#d97706',
+                          bg: '#fffbeb',
+                          border: '#fef3c7'
+                        };
+                      case 'bulk_consolidated':
+                        return {
+                          title: 'Step 4 of 7: Packed into Master Cargo Crate',
+                          desc: `Bundled with Canada-bound cargo in Master Box ${s.master_box_id || 'BATCH-CA-801'} for bulk freight savings.`,
+                          badge: 'In Master Cargo Box',
+                          color: '#6366f1',
+                          bg: '#eef2ff',
+                          border: '#e0e7ff'
+                        };
+                      case 'in_transit':
+                      case 'shipped':
+                        return {
+                          title: 'Step 5 of 7: Bulk Airfreight in Flight to Canada',
+                          desc: 'Master Air Cargo pallet in flight from Delhi (DEL) to Toronto Pearson Airport (YYZ).',
+                          badge: 'Airfreight to Canada',
+                          color: '#059669',
+                          bg: '#ecfdf5',
+                          border: '#d1fae5'
+                        };
+                      case 'received_canada':
+                        return {
+                          title: 'Step 6 of 7: Received at Layo Canada Hub (Toronto)',
+                          desc: 'Bulk crate de-consolidated and individual customer box sorted for Canadian local delivery.',
+                          badge: 'Received @ Canada Hub (YYZ)',
+                          color: '#0d9488',
+                          bg: '#f0fdfa',
+                          border: '#ccfbf1'
+                        };
+                      case 'out_for_delivery':
+                        return {
+                          title: 'Step 7 of 7: Out for Local Canadian Delivery',
+                          desc: `Dispatched with ${s.canada_local_carrier || 'Canada Post'} · AWB: ${s.canada_local_awb || 'CP-TRACKING'}.`,
+                          badge: 'Local Courier Dispatch',
+                          color: '#0284c7',
+                          bg: '#f0f9ff',
+                          border: '#e0f2fe'
+                        };
+                      case 'delivered':
+                        return {
+                          title: 'Order Completed: Delivered to Doorstep',
+                          desc: 'Your parcel has been delivered to your Canadian address. Thank you for shipping with Layo!',
+                          badge: 'Delivered in Canada',
+                          color: '#10b981',
+                          bg: '#ecfdf5',
+                          border: '#d1fae5'
+                        };
+                      default:
+                        return {
+                          title: 'Draft Estimate (Awaiting Payment)',
+                          desc: 'Your shipment estimate is saved as a draft. Click below to pay and start your shipping journey.',
+                          badge: 'Draft Estimate',
+                          color: '#64748b',
+                          bg: '#f8fafc',
+                          border: '#f1f5f9'
+                        };
+                    }
+                  };
+
+                  const stageInfo = getStageInfo(statusNormalized);
+
                   return (
                     <div key={s.id} className="bg-white p-6 rounded-3xl border border-black/5 space-y-4 shadow-sm text-[#0E1F38]">
+                      {/* Top Header */}
                       <div className="flex justify-between items-center">
-                        <span
-                          className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                          style={{
-                            backgroundColor: `${STATUS_COLORS[statusNormalized] ?? '#64748b'}15`,
-                            color: STATUS_COLORS[statusNormalized] ?? '#64748b'
-                          }}
-                        >
-                          {isDraft ? 'Draft Estimate' : s.status?.toUpperCase() || 'PAID'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border"
+                            style={{
+                              backgroundColor: stageInfo.bg,
+                              borderColor: stageInfo.border,
+                              color: stageInfo.color
+                            }}
+                          >
+                            {stageInfo.badge}
+                          </span>
+                          <span className="font-mono text-xs font-bold text-[#0E1F38]/60 bg-[#FAF8EE] px-2 py-0.5 rounded">
+                            #{s.id ? s.id.slice(0, 8).toUpperCase() : 'LOCKER'}
+                          </span>
+                        </div>
                         <span className="text-[11px] text-[#0E1F38]/50">
                           {new Date(s.created_at).toLocaleDateString()}
                         </span>
@@ -940,7 +1046,63 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <div className="border-t border-black/5 pt-4 space-y-2">
+                      {/* Current Stage Status Banner */}
+                      <div
+                        className="p-3.5 rounded-2xl border text-xs space-y-1"
+                        style={{ backgroundColor: stageInfo.bg, borderColor: stageInfo.border }}
+                      >
+                        <p className="font-bold" style={{ color: stageInfo.color }}>
+                          {stageInfo.title}
+                        </p>
+                        <p className="text-[11px] text-[#0E1F38]/75 leading-relaxed">
+                          {stageInfo.desc}
+                        </p>
+                      </div>
+
+                      {/* Assigned India Hub Address (when Paid or Draft) */}
+                      {!isDraft && (statusNormalized === 'paid' || statusNormalized === 'inwarded') && (
+                        <div className="p-3 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">
+                              📦 Ship Your Packages To:
+                            </span>
+                            <button
+                              onClick={() => {
+                                const addr = `Layo Locker (Locker #${s.id ? s.id.slice(0, 8).toUpperCase() : 'USER'})\nPlot 42, Udyog Vihar Phase 4, Sector 18\nGurugram, Haryana - 122015\nPhone: +91 98100 12345`;
+                                navigator.clipboard.writeText(addr);
+                                alert('Warehouse Address copied! Paste this as delivery address on Myntra/Amazon.');
+                              }}
+                              className="text-[10px] bg-[#8BC34A] hover:bg-[#9ccc65] text-[#1B250F] font-black px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                            >
+                              <span className="material-symbols-outlined text-xs">content_copy</span>
+                              Copy Hub Address
+                            </button>
+                          </div>
+                          <p className="font-mono text-[11px] text-[#0E1F38] leading-tight">
+                            Layo Locker (Locker #{s.id ? s.id.slice(0, 8).toUpperCase() : ''})<br />
+                            Plot 42, Udyog Vihar Phase 4, Gurugram, Haryana - 122015
+                          </p>
+                        </div>
+                      )}
+
+                      {/* QC Inspection Photos (if verified by warehouse ops) */}
+                      {Array.isArray(s.qc_photos) && s.qc_photos.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">
+                            📸 Warehouse Unboxing Photos:
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {s.qc_photos.map((photo: any, pIdx: number) => (
+                              <div key={pIdx} className="aspect-square rounded-xl overflow-hidden border border-black/10 bg-black/5">
+                                <img src={photo.url} alt="QC Capture" className="w-full h-full object-cover" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Shipment Summary */}
+                      <div className="border-t border-black/5 pt-3 space-y-2">
                         <div className="flex justify-between items-start">
                           <div>
                             <h3 className="font-bold text-sm text-[#0E1F38]">✈ {s.destination_city || 'Toronto (GTA)'}</h3>
@@ -951,11 +1113,14 @@ export default function Dashboard() {
                             <p className="text-[#FF5A65] font-bold">₹{(s.total_cost || 0).toLocaleString()}</p>
                           </div>
                         </div>
+
                         {s.external_order_id && (
                           <p className="text-[10px] text-[#0E1F38]/80 bg-[#FAF8EE] p-2.5 rounded-xl border border-black/5 font-mono">
                             <strong>Reference Order:</strong> {s.external_order_id}
                           </p>
                         )}
+
+                        {/* Draft Controls */}
                         {isDraft && (
                           <div className="space-y-2 pt-3 border-t border-black/5">
                             <button
