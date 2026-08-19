@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
-import { supabase, fetchShipments } from '@/lib/supabase';
+import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 
 interface QCPhoto {
@@ -85,18 +85,13 @@ export default function WarehouseOpsPortal() {
   const handleMarkInwarded = async (shipmentId: string) => {
     setUpdating(true);
     try {
-      const { error } = await supabase
-        .from('shipments')
-        .update({
-          status: 'inwarded',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', shipmentId);
+      const current = shipments.find(s => s.id === shipmentId);
+      const result = await updateShipmentStage(shipmentId, 'inwarded', current?.stage_timestamps);
 
-      if (!error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'inwarded' } : s));
+      if (!result.error) {
+        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'inwarded', stage_timestamps: result.updatedTimestamps } : s));
         if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'inwarded' }));
+          setSelectedShipment((prev: any) => ({ ...prev, status: 'inwarded', stage_timestamps: result.updatedTimestamps }));
         }
       }
     } catch (err) {
@@ -110,18 +105,13 @@ export default function WarehouseOpsPortal() {
   const handleMarkQCVerified = async (shipmentId: string) => {
     setUpdating(true);
     try {
-      const { error } = await supabase
-        .from('shipments')
-        .update({
-          status: 'qc_verified',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', shipmentId);
+      const current = shipments.find(s => s.id === shipmentId);
+      const result = await updateShipmentStage(shipmentId, 'qc_verified', current?.stage_timestamps);
 
-      if (!error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'qc_verified' } : s));
+      if (!result.error) {
+        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'qc_verified', stage_timestamps: result.updatedTimestamps } : s));
         if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'qc_verified' }));
+          setSelectedShipment((prev: any) => ({ ...prev, status: 'qc_verified', stage_timestamps: result.updatedTimestamps }));
         }
       }
     } catch (err) {
@@ -136,19 +126,15 @@ export default function WarehouseOpsPortal() {
     setUpdating(true);
     try {
       const weightNum = parseFloat(grossWeightInput) || selectedShipment?.total_weight || 1.0;
-      const { error } = await supabase
-        .from('shipments')
-        .update({
-          status: 'repacked',
-          total_weight: weightNum,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', shipmentId);
+      const current = shipments.find(s => s.id === shipmentId);
+      const result = await updateShipmentStage(shipmentId, 'repacked', current?.stage_timestamps, {
+        total_weight: weightNum
+      });
 
-      if (!error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'repacked', total_weight: weightNum } : s));
+      if (!result.error) {
+        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'repacked', total_weight: weightNum, stage_timestamps: result.updatedTimestamps } : s));
         if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'repacked', total_weight: weightNum }));
+          setSelectedShipment((prev: any) => ({ ...prev, status: 'repacked', total_weight: weightNum, stage_timestamps: result.updatedTimestamps }));
         }
       }
     } catch (err) {
@@ -166,19 +152,15 @@ export default function WarehouseOpsPortal() {
     }
     setUpdating(true);
     try {
-      const { error } = await supabase
-        .from('shipments')
-        .update({
-          status: 'in_transit',
-          external_tracking: `${carrierName}: ${carrierAWB}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', shipmentId);
+      const current = shipments.find(s => s.id === shipmentId);
+      const result = await updateShipmentStage(shipmentId, 'in_transit', current?.stage_timestamps, {
+        external_tracking: `${carrierName}: ${carrierAWB}`
+      });
 
-      if (!error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'in_transit', external_tracking: `${carrierName}: ${carrierAWB}` } : s));
+      if (!result.error) {
+        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'in_transit', external_tracking: `${carrierName}: ${carrierAWB}`, stage_timestamps: result.updatedTimestamps } : s));
         if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'in_transit', external_tracking: `${carrierName}: ${carrierAWB}` }));
+          setSelectedShipment((prev: any) => ({ ...prev, status: 'in_transit', external_tracking: `${carrierName}: ${carrierAWB}`, stage_timestamps: result.updatedTimestamps }));
         }
       }
     } catch (err) {

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
-import { supabase, fetchShipments } from '@/lib/supabase';
+import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { loadHaulCards, saveHaulCards, HaulCard, DEFAULT_HAUL_CARDS } from '@/lib/haul-cards';
 
@@ -101,8 +101,11 @@ export default function AdminPortal() {
 
   const updateStatus = async (id: string, status: string) => {
     setUpdatingId(id);
-    const { error } = await supabase.from('shipments').update({ status }).eq('id', id);
-    if (!error) setShipments(prev => prev.map(s => s.id === id ? { ...s, status } : s));
+    const currentShipment = shipments.find(s => s.id === id);
+    const result = await updateShipmentStage(id, status, currentShipment?.stage_timestamps);
+    if (!result.error) {
+      setShipments(prev => prev.map(s => s.id === id ? { ...s, status, stage_timestamps: result.updatedTimestamps } : s));
+    }
     setUpdatingId(null);
   };
 
@@ -359,26 +362,50 @@ export default function AdminPortal() {
                                 {/* Shipment 5-step detailed tracker */}
                                 <div className="space-y-4">
                                   <h4 className="font-bold text-white uppercase tracking-wider text-[10px]">Aggregated Cargo Status Tracker</h4>
-                                  <div className="flex flex-col gap-3">
+                                  <div className="flex flex-col gap-2.5">
                                     {STATUS_STEPS.map((st, idx) => {
                                       const currentIdx = STATUS_STEPS.indexOf(s.status);
                                       const isDone = idx <= currentIdx;
                                       const isActive = idx === currentIdx;
+                                      const stageIso = s.stage_timestamps?.[st];
+                                      const formattedDate = stageIso 
+                                        ? new Date(stageIso).toLocaleString('en-IN', {
+                                            day: 'numeric',
+                                            month: 'numeric',
+                                            year: 'numeric',
+                                            hour: 'numeric',
+                                            minute: '2-digit',
+                                            hour12: true
+                                          })
+                                        : null;
+
                                       return (
-                                        <div key={st} className="flex items-center gap-3">
-                                          <div 
-                                            className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] text-background border"
-                                            style={{
-                                              backgroundColor: isDone ? STATUS_COLORS[s.status] : 'transparent',
-                                              borderColor: isDone ? STATUS_COLORS[s.status] : '#334155',
-                                              boxShadow: isActive ? `0 0 10px ${STATUS_COLORS[s.status]}` : 'none'
-                                            }}
-                                          >
-                                            {isDone && '✓'}
+                                        <div key={st} className="flex items-center justify-between gap-3 p-1.5 rounded-lg hover:bg-white/5 transition-all">
+                                          <div className="flex items-center gap-3">
+                                            <div 
+                                              className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] text-background border transition-all"
+                                              style={{
+                                                backgroundColor: isDone ? STATUS_COLORS[s.status] : 'transparent',
+                                                borderColor: isDone ? STATUS_COLORS[s.status] : '#334155',
+                                                boxShadow: isActive ? `0 0 10px ${STATUS_COLORS[s.status]}` : 'none'
+                                              }}
+                                            >
+                                              {isDone && '✓'}
+                                            </div>
+                                            <span className={`font-bold ${isDone ? 'text-white' : 'text-on-surface-variant'}`}>
+                                              {STATUS_LABELS[st]}
+                                            </span>
                                           </div>
-                                          <span className={`font-bold ${isDone ? 'text-white' : 'text-on-surface-variant'}`}>
-                                            {STATUS_LABELS[st]}
-                                          </span>
+
+                                          {formattedDate ? (
+                                            <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded border border-emerald-500/20">
+                                              {formattedDate}
+                                            </span>
+                                          ) : (
+                                            <span className="text-[10px] text-white/20 italic">
+                                              — Pending
+                                            </span>
+                                          )}
                                         </div>
                                       );
                                     })}

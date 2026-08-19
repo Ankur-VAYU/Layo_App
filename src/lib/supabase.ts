@@ -31,20 +31,26 @@ export interface ShipmentPayload {
   items: any[];
   status?: string;
   payment_method?: string;
+  stage_timestamps?: Record<string, string>;
 }
 
 export async function insertShipment(payload: ShipmentPayload) {
+  const initialTimestamps = payload.stage_timestamps || {
+    [payload.status || 'draft']: new Date().toISOString()
+  };
+  const payloadWithTimestamps = { ...payload, stage_timestamps: initialTimestamps };
+
   // 1. Try to insert with all columns
   const { data, error } = await supabase
     .from('shipments')
-    .insert([payload])
+    .insert([payloadWithTimestamps])
     .select();
 
   if (error && error.message && error.message.includes('column')) {
     console.warn("Supabase insert with full columns failed. Retrying with JSON metadata fallback...", error);
     
     // 2. Fallback: Wrap metadata inside the items column
-    const { user_id, india_warehouse, external_order_id, external_tracking, items, ...basicFields } = payload;
+    const { user_id, india_warehouse, external_order_id, external_tracking, items, stage_timestamps, ...basicFields } = payloadWithTimestamps;
     const fallbackPayload = {
       ...basicFields,
       items: {
@@ -53,7 +59,8 @@ export async function insertShipment(payload: ShipmentPayload) {
           user_id,
           india_warehouse,
           external_order_id,
-          external_tracking
+          external_tracking,
+          stage_timestamps: initialTimestamps
         }
       }
     };
@@ -73,6 +80,10 @@ export function parseShipment(raw: any) {
     metadata = raw.items.metadata || {};
   }
   
+  const stageTimestamps = raw.stage_timestamps || metadata.stage_timestamps || {
+    [raw.status || 'draft']: raw.created_at || new Date().toISOString()
+  };
+
   return {
     ...raw,
     items: itemsArray || [],
@@ -80,7 +91,45 @@ export function parseShipment(raw: any) {
     india_warehouse: raw.india_warehouse || metadata.india_warehouse || null,
     external_order_id: raw.external_order_id || metadata.external_order_id || null,
     external_tracking: raw.external_tracking || metadata.external_tracking || null,
+    stage_timestamps: stageTimestamps,
   };
+}
+
+export async function updateShipmentStage(id: string, newStatus: string, currentTimestamps?: Record<string, string>, extraFields?: any) {
+  const updatedTimestamps = {
+    ...(currentTimestamps || {}),
+    [newStatus]: new Date().toISOString()
+  };
+
+  const updatePayload: any = {
+    status: newStatus,
+    stage_timestamps: updatedTimestamps,
+    updated_at: new Date().toISOString(),
+    ...(extraFields || {})
+  };
+
+  // Try direct update with stage_timestamps
+  const { data, error } = await supabase
+    .from('shipments')
+    .update(updatePayload)
+    .eq('id', id)
+    .select();
+
+  // If column error, fallback to updating status and metadata
+  if (error && error.message && error.message.includes('column')) {
+    const fallbackRes = await supabase
+      .from('shipments')
+      .update({
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+        ...(extraFields || {})
+      })
+      .eq('id', id)
+      .select();
+    return { data: fallbackRes.data, error: fallbackRes.error, updatedTimestamps };
+  }
+
+  return { data, error, updatedTimestamps };
 }
 
 export async function fetchShipments(userId?: string) {
