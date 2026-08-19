@@ -82,16 +82,41 @@ CREATE TABLE IF NOT EXISTS haul_cards (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 4. Ops Staff Table (Warehouse Personnel & Admin Authorization)
+CREATE TABLE IF NOT EXISTS ops_staff (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  email VARCHAR UNIQUE NOT NULL,
+  full_name VARCHAR,
+  hub_location VARCHAR DEFAULT 'Delhi NCR Hub',
+  status VARCHAR DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+  approved_by VARCHAR,
+  approved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Seed default whitelisted staff
+INSERT INTO ops_staff (email, full_name, hub_location, status, approved_by, approved_at)
+VALUES 
+  ('ankur.iitd.nita@gmail.com', 'Ankur Sharma (Admin)', 'Delhi NCR Hub', 'approved', 'system', NOW()),
+  ('admin@layo.com', 'Layo Operations Master', 'Delhi NCR Hub', 'approved', 'system', NOW())
+ON CONFLICT (email) DO NOTHING;
+
 -- Enable Row Level Security (RLS) policies
 ALTER TABLE shipments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE warehouses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE haul_cards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ops_staff ENABLE ROW LEVEL SECURITY;
 
 -- Public read policies for authenticated/anon users
 CREATE POLICY IF NOT EXISTS "Allow public read warehouses" ON warehouses FOR SELECT USING (true);
 CREATE POLICY IF NOT EXISTS "Allow public read haul_cards" ON haul_cards FOR SELECT USING (true);
+CREATE POLICY IF NOT EXISTS "Allow public read ops_staff" ON ops_staff FOR SELECT USING (true);
 CREATE POLICY IF NOT EXISTS "Allow users read own shipments" ON shipments FOR SELECT USING (true);
 CREATE POLICY IF NOT EXISTS "Allow users insert shipments" ON shipments FOR INSERT WITH CHECK (true);
 CREATE POLICY IF NOT EXISTS "Allow users update shipments" ON shipments FOR UPDATE USING (true);
 CREATE POLICY IF NOT EXISTS "Allow admin modify warehouses" ON warehouses FOR ALL USING (true);
 CREATE POLICY IF NOT EXISTS "Allow admin modify haul_cards" ON haul_cards FOR ALL USING (true);
+CREATE POLICY IF NOT EXISTS "Allow admin modify ops_staff" ON ops_staff FOR ALL USING (true);
+

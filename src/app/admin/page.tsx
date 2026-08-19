@@ -28,7 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
   delivered: '#10b981',
 };
 
-type AdminTab = 'orders' | 'warehouses' | 'analytics' | 'cards';
+type AdminTab = 'orders' | 'warehouses' | 'ops_team' | 'analytics' | 'cards';
 
 const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com', 'ankur.iitd.nita@gmail.com'];
 
@@ -39,6 +39,7 @@ export default function AdminPortal() {
   const [activeTab, setActiveTab] = useState<AdminTab>('orders');
   const [shipments, setShipments] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [opsStaffList, setOpsStaffList] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -90,15 +91,65 @@ export default function AdminPortal() {
 
   const fetchAllData = async () => {
     setIsFetching(true);
-    const [shipsResult, whs, cards] = await Promise.all([
+    const [shipsResult, whs, cards, staff] = await Promise.all([
       fetchShipments(),
       supabase.from('warehouses').select('*').order('created_at', { ascending: true }),
       fetchHaulCardsFromDb(),
+      supabase.from('ops_staff').select('*').order('created_at', { ascending: false }),
     ]);
     if (shipsResult.data) setShipments(shipsResult.data);
     if (whs.data) setWarehouses(whs.data);
     if (cards) setHaulCards(cards);
+    if (staff.data) setOpsStaffList(staff.data);
     setIsFetching(false);
+  };
+
+  const handleApproveStaff = async (staffId: string, staffEmail: string) => {
+    try {
+      const { error } = await supabase
+        .from('ops_staff')
+        .update({
+          status: 'approved',
+          approved_by: user?.email || 'admin',
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', staffId);
+
+      if (error) throw error;
+      setOpsStaffList(prev => prev.map(s => s.id === staffId ? { ...s, status: 'approved', approved_by: user?.email } : s));
+    } catch (err: any) {
+      alert(`Failed to approve staff: ${err.message}`);
+    }
+  };
+
+  const handleRejectStaff = async (staffId: string) => {
+    if (!confirm('Reject / Revoke access for this staff member?')) return;
+    try {
+      const { error } = await supabase
+        .from('ops_staff')
+        .update({
+          status: 'rejected',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', staffId);
+
+      if (error) throw error;
+      setOpsStaffList(prev => prev.map(s => s.id === staffId ? { ...s, status: 'rejected' } : s));
+    } catch (err: any) {
+      alert(`Failed to reject staff: ${err.message}`);
+    }
+  };
+
+  const handleDeleteStaff = async (staffId: string) => {
+    if (!confirm('Delete this staff record permanently?')) return;
+    try {
+      const { error } = await supabase.from('ops_staff').delete().eq('id', staffId);
+      if (error) throw error;
+      setOpsStaffList(prev => prev.filter(s => s.id !== staffId));
+    } catch (err: any) {
+      alert(`Failed to delete staff: ${err.message}`);
+    }
   };
 
   const updateStatus = async (id: string, status: string) => {
@@ -200,24 +251,37 @@ export default function AdminPortal() {
             {(
               [
                 { id: 'orders',     icon: 'package_2',    label: 'Orders' },
+                { id: 'ops_team',   icon: 'badge',        label: 'Ops Staff' },
                 { id: 'warehouses', icon: 'home_storage', label: 'Warehouses' },
                 { id: 'analytics',  icon: 'bar_chart',    label: 'Analytics' },
                 { id: 'cards',      icon: 'style',        label: 'Haul Cards' },
               ] as { id: AdminTab; icon: string; label: string }[]
-            ).map(item => (
-              <button
-                key={item.id}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all ${
-                  activeTab === item.id 
-                    ? 'bg-primary text-background' 
-                    : 'text-on-surface-variant hover:text-white hover:bg-white/5'
-                }`}
-                onClick={() => setActiveTab(item.id)}
-              >
-                <span className="material-symbols-outlined text-lg">{item.icon}</span>
-                {item.label}
-              </button>
-            ))}
+            ).map(item => {
+              const pendingCount = item.id === 'ops_team' ? opsStaffList.filter(s => s.status === 'pending').length : 0;
+              return (
+                <button
+                  key={item.id}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                    activeTab === item.id 
+                      ? 'bg-primary text-background' 
+                      : 'text-on-surface-variant hover:text-white hover:bg-white/5'
+                  }`}
+                  onClick={() => setActiveTab(item.id)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-lg">{item.icon}</span>
+                    {item.label}
+                  </div>
+                  {pendingCount > 0 && (
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
+                      activeTab === item.id ? 'bg-background text-primary' : 'bg-amber-400 text-black'
+                    }`}>
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -649,6 +713,155 @@ export default function AdminPortal() {
                 </div>
               </div>
 
+            </div>
+          </section>
+        )}
+
+        {/* ──────────── OPS STAFF & APPROVALS TAB ──────────── */}
+        {activeTab === 'ops_team' && (
+          <section className="space-y-6">
+            <div className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">badge</span>
+                    Warehouse Floor Ops Personnel &amp; Approvals
+                  </h2>
+                  <p className="text-on-surface-variant text-xs mt-1">
+                    Review staff sign-up requests, authorize floor access to /ops, and manage India Hub assignments.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl font-mono text-white">
+                    Total Staff: {opsStaffList.length}
+                  </span>
+                  <span className="text-xs bg-amber-400/10 border border-amber-400/20 px-3 py-1.5 rounded-xl font-mono text-amber-400 font-bold">
+                    Pending: {opsStaffList.filter(s => s.status === 'pending').length}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Pending Requests Section */}
+            <div className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-4">
+              <div className="flex items-center gap-2 text-amber-400">
+                <span className="material-symbols-outlined">hourglass_top</span>
+                <h3 className="text-sm font-black uppercase tracking-wider text-white">Pending Floor Approvals ({opsStaffList.filter(s => s.status === 'pending').length})</h3>
+              </div>
+
+              {opsStaffList.filter(s => s.status === 'pending').length === 0 ? (
+                <div className="py-10 text-center text-on-surface-variant text-xs bg-background/30 rounded-xl border border-dashed border-white/10">
+                  <span className="material-symbols-outlined text-3xl mb-1 text-primary/60">check_circle</span>
+                  <p className="font-bold">No pending staff authorizations</p>
+                  <p className="text-[11px] text-white/40">When new warehouse staff sign up at /ops/login, their requests will appear here for 1-click approval.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {opsStaffList.filter(s => s.status === 'pending').map(staff => (
+                    <div key={staff.id} className="bg-background border border-amber-400/30 rounded-2xl p-5 space-y-4 shadow-lg">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <h4 className="font-bold text-white text-sm">{staff.full_name || 'Staff Member'}</h4>
+                          <p className="text-xs text-primary font-mono">{staff.email}</p>
+                          <p className="text-[11px] text-on-surface-variant flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs">location_on</span>
+                            {staff.hub_location || 'Delhi NCR Hub'}
+                          </p>
+                        </div>
+                        <span className="bg-amber-400/10 text-amber-400 border border-amber-400/30 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                          Pending
+                        </span>
+                      </div>
+
+                      <div className="flex gap-2 pt-2 border-t border-white/5">
+                        <button
+                          onClick={() => handleRejectStaff(staff.id)}
+                          className="flex-1 py-2.5 bg-white/5 hover:bg-error/10 text-on-surface-variant hover:text-error text-xs font-bold rounded-xl border border-white/10 transition-all cursor-pointer"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => handleApproveStaff(staff.id, staff.email)}
+                          className="flex-1 py-2.5 bg-[#8BC34A] hover:bg-[#9ccc65] text-[#1B250F] text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-sm">check</span>
+                          Approve Staff
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Approved Active Staff List */}
+            <div className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-wider text-white">All Registered Warehouse Associates ({opsStaffList.length})</h3>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-on-surface-variant">
+                  <thead className="bg-background/40 uppercase tracking-widest text-[9px] font-black text-white/60 border-b border-white/5">
+                    <tr>
+                      <th className="py-3 px-4">Staff Member</th>
+                      <th className="py-3 px-4">Assigned Hub</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Approved By</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 font-medium">
+                    {opsStaffList.map(staff => (
+                      <tr key={staff.id} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3.5 px-4">
+                          <p className="text-white font-bold">{staff.full_name || 'Staff'}</p>
+                          <p className="text-[11px] font-mono text-on-surface-variant">{staff.email}</p>
+                        </td>
+                        <td className="py-3.5 px-4 text-white">
+                          {staff.hub_location || 'Delhi NCR Hub'}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            staff.status === 'approved'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                              : staff.status === 'rejected'
+                              ? 'bg-red-500/10 text-red-400 border border-red-500/30'
+                              : 'bg-amber-400/10 text-amber-400 border border-amber-400/30'
+                          }`}>
+                            {staff.status}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-white/50 text-[11px]">
+                          {staff.approved_by || '—'}
+                        </td>
+                        <td className="py-3.5 px-4 text-right space-x-2">
+                          {staff.status !== 'approved' ? (
+                            <button
+                              onClick={() => handleApproveStaff(staff.id, staff.email)}
+                              className="px-3 py-1 bg-primary text-background font-bold text-[10px] uppercase rounded-lg hover:brightness-110 cursor-pointer"
+                            >
+                              Approve
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleRejectStaff(staff.id)}
+                              className="px-3 py-1 bg-white/5 text-amber-400 border border-amber-400/20 font-bold text-[10px] uppercase rounded-lg hover:bg-amber-400/10 cursor-pointer"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteStaff(staff.id)}
+                            className="p-1 text-error/60 hover:text-error transition-all inline-flex items-center cursor-pointer"
+                            title="Delete"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
         )}
