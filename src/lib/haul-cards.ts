@@ -114,3 +114,62 @@ export function saveHaulCards(cards: HaulCard[]): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
 }
+
+// ── Supabase Cloud Database Helpers ──
+export async function fetchHaulCardsFromDb(): Promise<HaulCard[]> {
+  try {
+    const { supabase } = await import('@/lib/supabase');
+    const { data, error } = await supabase.from('haul_cards').select('*').order('created_at', { ascending: true });
+    if (error || !data || data.length === 0) {
+      return loadHaulCards();
+    }
+    return data.map((d: any) => {
+      const def = DEFAULT_HAUL_CARDS.find(c => c.id === d.id);
+      return {
+        id: d.id,
+        headline: d.headline,
+        ageLabel: d.age_label,
+        asset1Icon: d.asset1_icon,
+        asset1Label: d.asset1_label,
+        asset1Qty: d.asset1_qty,
+        asset1Svg: def?.asset1Svg,
+        asset2Icon: d.asset2_icon,
+        asset2Label: d.asset2_label,
+        asset2Qty: d.asset2_qty,
+        asset2Svg: def?.asset2Svg,
+        canadaPrice: Number(d.canada_price),
+        indiaPrice: Number(d.india_price),
+        highlightSubtext: d.highlight_subtext,
+        status: d.status || 'active',
+        externalUrl: d.external_url,
+      };
+    });
+  } catch {
+    return loadHaulCards();
+  }
+}
+
+export async function saveHaulCardToDb(card: HaulCard): Promise<void> {
+  saveHaulCards([card]); // cache local
+  try {
+    const { supabase } = await import('@/lib/supabase');
+    await supabase.from('haul_cards').upsert([{
+      id: card.id,
+      headline: card.headline,
+      age_label: card.ageLabel,
+      asset1_icon: card.asset1Icon,
+      asset1_label: card.asset1Label,
+      asset1_qty: card.asset1Qty,
+      asset2_icon: card.asset2Icon,
+      asset2_label: card.asset2Label,
+      asset2_qty: card.asset2Qty,
+      canada_price: card.canadaPrice,
+      india_price: card.indiaPrice,
+      highlight_subtext: card.highlightSubtext,
+      status: card.status,
+      updated_at: new Date().toISOString()
+    }]);
+  } catch (err) {
+    console.warn('Failed to upsert haul card to db, saved locally', err);
+  }
+}

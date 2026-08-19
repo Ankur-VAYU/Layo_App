@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
-import { loadHaulCards, saveHaulCards, HaulCard, DEFAULT_HAUL_CARDS } from '@/lib/haul-cards';
+import { loadHaulCards, saveHaulCards, fetchHaulCardsFromDb, saveHaulCardToDb, HaulCard, DEFAULT_HAUL_CARDS } from '@/lib/haul-cards';
 
 const STATUS_STEPS = ['draft', 'paid', 'inwarded', 'qc_verified', 'repacked', 'in_transit', 'delivered'];
 const STATUS_LABELS: Record<string, string> = {
@@ -90,12 +90,14 @@ export default function AdminPortal() {
 
   const fetchAllData = async () => {
     setIsFetching(true);
-    const [shipsResult, whs] = await Promise.all([
+    const [shipsResult, whs, cards] = await Promise.all([
       fetchShipments(),
       supabase.from('warehouses').select('*').order('created_at', { ascending: true }),
+      fetchHaulCardsFromDb(),
     ]);
     if (shipsResult.data) setShipments(shipsResult.data);
     if (whs.data) setWarehouses(whs.data);
+    if (cards) setHaulCards(cards);
     setIsFetching(false);
   };
 
@@ -769,17 +771,20 @@ export default function AdminPortal() {
 
                 <div className="flex gap-2 pt-2">
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (!cardForm.headline || !cardForm.asset1Label || !cardForm.asset2Label) return;
                       let updated: HaulCard[];
+                      let savedCard: HaulCard;
                       if (editingCardId) {
-                        updated = haulCards.map(c => c.id === editingCardId ? { ...cardForm, id: editingCardId } : c);
+                        savedCard = { ...cardForm, id: editingCardId };
+                        updated = haulCards.map(c => c.id === editingCardId ? savedCard : c);
                       } else {
-                        const newCard: HaulCard = { ...cardForm, id: `card-${Date.now()}` };
-                        updated = [...haulCards, newCard];
+                        savedCard = { ...cardForm, id: `card-${Date.now()}` };
+                        updated = [...haulCards, savedCard];
                       }
                       saveHaulCards(updated);
                       setHaulCards(updated);
+                      await saveHaulCardToDb(savedCard);
                       setEditingCardId(null);
                       setCardForm({
                         headline: '', ageLabel: '',
