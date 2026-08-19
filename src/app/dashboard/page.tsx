@@ -477,8 +477,8 @@ export default function Dashboard() {
     return list;
   }, [activeItems]);
 
-  // Checkout redirect logic
-  const handleProceedToCheckout = () => {
+  // Checkout & Direct Booking Logic
+  const handleProceedToCheckout = async () => {
     if (originType === 'online' && !orderNumber.trim()) {
       setShowOrderNumberError(true);
       setCurrentStep(1);
@@ -503,29 +503,82 @@ export default function Dashboard() {
       });
     }
 
-    const payload = {
-      items: itemsPayload,
-      mode: 'Selection',
-      originType,
-      storeName,
-      orderNumber,
-      senderName,
-      originCity,
-      destinationCity,
-      destinationAddress,
-      indiaWarehouse: selectedWarehouse,
-      weight: totals.totalWeightKg,
-      cost: totals.totalPriceCAD,
-      totalWeight: totals.totalWeightKg,
-      totalCostCAD: totals.totalPriceCAD,
-      valueReclaimed: totals.valueReclaimed,
-      warehouseAction: warehouseAction || 'ship',
-      morePackages,
-      exchangeRate: cadToInrRate
-    };
+    try {
+      if (editingDraftId) {
+        // Upgrade existing draft to Paid
+        const currentTimestamps = { paid: new Date().toISOString() };
+        await supabase
+          .from('shipments')
+          .update({
+            destination_city: destinationCity || 'Toronto (GTA)',
+            destination_address: destinationAddress || '',
+            india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
+            external_order_id: orderNumber || null,
+            total_weight: totals.totalWeightKg,
+            total_cost: totals.totalPriceINR,
+            items: itemsPayload,
+            status: 'paid',
+            payment_method: 'online',
+            stage_timestamps: currentTimestamps,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingDraftId);
 
-    localStorage.setItem('layo_pending_shipment', JSON.stringify(payload));
-    router.push('/checkout');
+        setShipments(prev =>
+          prev.map(s =>
+            s.id === editingDraftId
+              ? {
+                  ...s,
+                  destination_city: destinationCity || 'Toronto (GTA)',
+                  destination_address: destinationAddress || '',
+                  india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
+                  external_order_id: orderNumber || null,
+                  total_weight: totals.totalWeightKg,
+                  total_cost: totals.totalPriceINR,
+                  items: itemsPayload,
+                  status: 'paid',
+                  stage_timestamps: currentTimestamps
+                }
+              : s
+          )
+        );
+        setEditingDraftId(null);
+      } else {
+        // Create new paid shipment
+        const { data } = await insertShipment({
+          user_id: user?.id || '00000000-0000-0000-0000-000000000000',
+          mode: 'Selection',
+          destination_city: destinationCity || 'Toronto (GTA)',
+          destination_address: destinationAddress || '123 Canada Way',
+          india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
+          external_order_id: orderNumber || null,
+          total_weight: totals.totalWeightKg,
+          total_cost: totals.totalPriceINR,
+          items: itemsPayload,
+          status: 'paid',
+          payment_method: 'online',
+          stage_timestamps: { paid: new Date().toISOString() }
+        });
+        if (data && data[0]) {
+          setShipments(prev => [data[0], ...prev]);
+        }
+      }
+
+      localStorage.removeItem('layo_pending_shipment');
+      localStorage.removeItem('layo_pending_shipment_draft');
+      
+      // Reset wizard inputs
+      setQtyState({});
+      setActiveDemoState({});
+      setSelectedCategories([]);
+      setPromoQty(0);
+      setCurrentStep(1);
+
+      // Switch to active shipments tracker view
+      setActiveTab('history');
+    } catch (err) {
+      console.error('Failed to complete booking:', err);
+    }
   };
 
   // Intercepting click on Logo to offer Draft Saving
