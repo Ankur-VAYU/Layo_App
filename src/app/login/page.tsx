@@ -88,10 +88,18 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-on-surface-variant">
-          Don't have an account? 
-          <Link href="/signup" className="text-primary font-bold hover:underline ml-1">Create Account</Link>
-        </p>
+        <div className="pt-2 border-t border-white/5 space-y-2 text-center text-xs">
+          <p className="text-on-surface-variant">
+            Don't have an account? 
+            <Link href="/signup" className="text-primary font-bold hover:underline ml-1">Create Account</Link>
+          </p>
+          <div className="pt-1">
+            <Link href="/admin/login" className="text-[11px] text-white/50 hover:text-white transition-colors flex items-center justify-center gap-1">
+              <span className="material-symbols-outlined text-xs">admin_panel_settings</span>
+              Staff / Admin Portal Sign In ➔
+            </Link>
+          </div>
+        </div>
       </div>
     </main>
   );

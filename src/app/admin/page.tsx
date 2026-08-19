@@ -73,7 +73,7 @@ export default function AdminPortal() {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        router.push('/login');
+        router.push('/admin/login');
       } else if (!ADMIN_EMAILS.includes(user.email || '')) {
         setIsAdmin(false);
         const timer = setTimeout(() => {
