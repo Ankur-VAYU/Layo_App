@@ -201,6 +201,7 @@ export default function Dashboard() {
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [showOrderNumberError, setShowOrderNumberError] = useState(false);
   const [promoQty, setPromoQty] = useState(0);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
 
   // Financial and math helpers
   const [cadToInrRate, setCadToInrRate] = useState(70.4);
@@ -542,6 +543,66 @@ export default function Dashboard() {
     }
   };
 
+  // Edit existing draft
+  const handleEditDraft = (s: any) => {
+    setEditingDraftId(s.id);
+    if (s.destination_city) setDestinationCity(s.destination_city);
+    if (s.destination_address) setDestinationAddress(s.destination_address);
+    if (s.india_warehouse) setSelectedWarehouse(s.india_warehouse);
+    if (s.external_order_id) setOrderNumber(s.external_order_id);
+
+    // Restore items
+    if (Array.isArray(s.items)) {
+      const newQtyState: Record<string, number> = {};
+      const newActiveDemoState: Record<string, string> = {};
+      const catsWithItems = new Set<string>();
+
+      s.items.forEach((it: any) => {
+        if (it.category === 'promo') {
+          setPromoQty(Math.min(5, it.quantity || 1));
+          return;
+        }
+        const catKey = it.category;
+        if (catKey && categoryData[catKey]) {
+          catsWithItems.add(catKey);
+          const subIndex = categoryData[catKey].subs.findIndex(
+            (sub: any) => sub.name.toLowerCase() === (it.subcategory || '').toLowerCase()
+          );
+          const effectiveSubIdx = subIndex >= 0 ? subIndex : 0;
+          const demo = it.demographic || 'Adult';
+          const key = categoryData[catKey].requiresAge
+            ? `${catKey}-${effectiveSubIdx}-${demo}`
+            : `${catKey}-${effectiveSubIdx}-default`;
+          newQtyState[key] = (newQtyState[key] || 0) + (it.quantity || 1);
+          if (categoryData[catKey].requiresAge) {
+            newActiveDemoState[catKey] = demo;
+          }
+        }
+      });
+
+      if (catsWithItems.size > 0) {
+        setSelectedCategories(Array.from(catsWithItems));
+      }
+      setQtyState(newQtyState);
+      setActiveDemoState(prev => ({ ...prev, ...newActiveDemoState }));
+    }
+
+    setActiveTab('new');
+    setCurrentStep(4);
+  };
+
+  // Delete draft
+  const handleDeleteDraft = async (shipmentId: string) => {
+    if (!confirm('Are you sure you want to delete this draft shipment?')) return;
+    try {
+      const { error } = await supabase.from('shipments').delete().eq('id', shipmentId);
+      if (error) throw error;
+      setShipments(prev => prev.filter(s => s.id !== shipmentId));
+    } catch (err: any) {
+      alert(`Failed to delete draft: ${err.message}`);
+    }
+  };
+
   // Save to drafts in DB
   const saveDraft = async () => {
     try {
@@ -563,25 +624,63 @@ export default function Dashboard() {
         });
       }
 
-      await insertShipment({
-        user_id: user?.id || '00000000-0000-0000-0000-000000000000',
-        mode: 'Selection',
-        destination_city: destinationCity || 'Draft City',
-        destination_address: destinationAddress || 'Draft Address',
-        india_warehouse: selectedWarehouse || null,
-        external_order_id: orderNumber || null,
-        total_weight: totals.totalWeightKg,
-        total_cost: totals.totalPriceINR,
-        items: itemsPayload,
-        status: 'Draft Estimate',
-        payment_method: 'draft'
-      });
+      if (editingDraftId) {
+        await supabase
+          .from('shipments')
+          .update({
+            destination_city: destinationCity || 'Draft City',
+            destination_address: destinationAddress || 'Draft Address',
+            india_warehouse: selectedWarehouse || null,
+            external_order_id: orderNumber || null,
+            total_weight: totals.totalWeightKg,
+            total_cost: totals.totalPriceINR,
+            items: itemsPayload,
+            status: 'Draft Estimate',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingDraftId);
+
+        setShipments(prev =>
+          prev.map(s =>
+            s.id === editingDraftId
+              ? {
+                  ...s,
+                  destination_city: destinationCity || 'Draft City',
+                  destination_address: destinationAddress || 'Draft Address',
+                  india_warehouse: selectedWarehouse || null,
+                  external_order_id: orderNumber || null,
+                  total_weight: totals.totalWeightKg,
+                  total_cost: totals.totalPriceINR,
+                  items: itemsPayload,
+                }
+              : s
+          )
+        );
+        setEditingDraftId(null);
+      } else {
+        const { data } = await insertShipment({
+          user_id: user?.id || '00000000-0000-0000-0000-000000000000',
+          mode: 'Selection',
+          destination_city: destinationCity || 'Draft City',
+          destination_address: destinationAddress || 'Draft Address',
+          india_warehouse: selectedWarehouse || null,
+          external_order_id: orderNumber || null,
+          total_weight: totals.totalWeightKg,
+          total_cost: totals.totalPriceINR,
+          items: itemsPayload,
+          status: 'Draft Estimate',
+          payment_method: 'draft'
+        });
+        if (data && data[0]) {
+          setShipments(prev => [data[0], ...prev]);
+        }
+      }
     } catch (err) {
       console.error('Failed to save draft shipment:', err);
     } finally {
       localStorage.removeItem('layo_pending_shipment');
       setShowDraftModal(false);
-      router.push('/');
+      setActiveTab('history');
     }
   };
 
@@ -788,6 +887,24 @@ export default function Dashboard() {
                           <p className="text-[10px] text-[#0E1F38]/80 bg-[#FAF8EE] p-2.5 rounded-xl border border-black/5 font-mono">
                             <strong>Reference Order:</strong> {s.external_order_id}
                           </p>
+                        )}
+                        {(statusNormalized === 'draft' || statusNormalized === 'draft estimate') && (
+                          <div className="flex items-center gap-2 pt-3 border-t border-black/5">
+                            <button
+                              onClick={() => handleEditDraft(s)}
+                              className="flex-1 py-2.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                              <span className="material-symbols-outlined text-sm">edit_square</span>
+                              Edit &amp; Resume Booking
+                            </button>
+                            <button
+                              onClick={() => handleDeleteDraft(s.id)}
+                              className="p-2.5 bg-black/5 hover:bg-red-50 text-black/60 hover:text-red-600 font-bold rounded-xl border border-black/5 transition-all flex items-center justify-center cursor-pointer"
+                              title="Delete Draft"
+                            >
+                              <span className="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
