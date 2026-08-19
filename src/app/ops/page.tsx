@@ -33,6 +33,15 @@ export default function WarehouseOpsPortal() {
   const [uploadedPhotos, setUploadedPhotos] = useState<QCPhoto[]>([]);
   const [updating, setUpdating] = useState(false);
 
+  // Live Camera Viewfinder State & Refs
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   // File input ref for camera capture
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -170,7 +179,85 @@ export default function WarehouseOpsPortal() {
     }
   };
 
-  // Simulated Photo Upload via Mobile Camera
+  // ── Live Camera Viewfinder Handlers ──
+  const startCamera = async (mode: 'environment' | 'user' = facingMode) => {
+    setCameraError(null);
+    setCapturedPhotoUrl(null);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err: any) {
+      console.error('Camera access error:', err);
+      setCameraError('Camera access denied or unavailable. Please grant camera permission or upload a photo.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const openCameraModal = () => {
+    setShowCameraModal(true);
+    startCamera(facingMode);
+  };
+
+  const closeCameraModal = () => {
+    stopCamera();
+    setShowCameraModal(false);
+    setCapturedPhotoUrl(null);
+    setCameraError(null);
+  };
+
+  const captureSnapshot = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current || document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      setCapturedPhotoUrl(dataUrl);
+      stopCamera();
+    }
+  };
+
+  const confirmCapturedPhoto = () => {
+    if (!capturedPhotoUrl) return;
+    const newPhoto: QCPhoto = {
+      url: capturedPhotoUrl,
+      type: 'unboxed',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setUploadedPhotos(prev => [newPhoto, ...prev]);
+    closeCameraModal();
+  };
+
+  const retakePhoto = () => {
+    setCapturedPhotoUrl(null);
+    startCamera(facingMode);
+  };
+
+  const toggleFacingMode = () => {
+    const nextMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextMode);
+    startCamera(nextMode);
+  };
+
+  // Simulated Photo Upload via File Picker
   const handleCapturePhoto = (e: React.ChangeEvent<HTMLInputElement>, photoType: 'intake' | 'unboxed' | 'packed') => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -482,17 +569,26 @@ export default function WarehouseOpsPortal() {
                     <p className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">
                       Mobile Unboxing Photos ({uploadedPhotos.length}):
                     </p>
-                    <label className="text-[10px] bg-white border border-black/10 hover:border-black/20 text-[#0E1F38] font-bold px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs">
-                      <span className="material-symbols-outlined text-xs">add_a_photo</span>
-                      Snap Photo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        onChange={e => handleCapturePhoto(e, 'unboxed')}
-                      />
-                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={openCameraModal}
+                        className="text-[10px] bg-[#8BC34A] hover:bg-[#9ccc65] text-[#1B250F] font-black px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                      >
+                        <span className="material-symbols-outlined text-xs">photo_camera</span>
+                        Open Camera
+                      </button>
+                      <label className="text-[10px] bg-white border border-black/10 hover:border-black/20 text-[#0E1F38] font-bold px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs">
+                        <span className="material-symbols-outlined text-xs">upload_file</span>
+                        Upload
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => handleCapturePhoto(e, 'unboxed')}
+                        />
+                      </label>
+                    </div>
                   </div>
 
                   {uploadedPhotos.length > 0 ? (
@@ -658,6 +754,122 @@ export default function WarehouseOpsPortal() {
         </div>
 
       </div>
+
+      {/* Live Camera Viewfinder Modal */}
+      {showCameraModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-[#1B250F] text-white rounded-3xl p-5 max-w-lg w-full border border-white/10 shadow-2xl space-y-4 animate-scale-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#8BC34A]">photo_camera</span>
+                <h3 className="text-sm font-black uppercase tracking-wider text-white">Live QC Photo Viewfinder</h3>
+              </div>
+              <button
+                onClick={closeCameraModal}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-all cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            {/* Video Viewfinder / Captured Photo Preview */}
+            <div className="relative aspect-4/3 bg-black rounded-2xl overflow-hidden border border-white/10 flex items-center justify-center">
+              {capturedPhotoUrl ? (
+                <img src={capturedPhotoUrl} alt="Captured Snapshot" className="w-full h-full object-cover" />
+              ) : cameraError ? (
+                <div className="p-6 text-center space-y-3">
+                  <span className="material-symbols-outlined text-4xl text-amber-400">videocam_off</span>
+                  <p className="text-xs text-white/80 leading-relaxed">{cameraError}</p>
+                  <label className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#8BC34A] text-[#1B250F] font-black text-xs rounded-xl cursor-pointer hover:bg-[#9ccc65]">
+                    <span className="material-symbols-outlined text-base">upload_file</span>
+                    Choose From Files
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        handleCapturePhoto(e, 'unboxed');
+                        closeCameraModal();
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                  {/* Viewfinder crosshairs */}
+                  <div className="absolute inset-4 border border-white/20 rounded-xl pointer-events-none flex items-center justify-center">
+                    <div className="w-6 h-6 border-t-2 border-l-2 border-[#8BC34A] absolute top-0 left-0" />
+                    <div className="w-6 h-6 border-t-2 border-r-2 border-[#8BC34A] absolute top-0 right-0" />
+                    <div className="w-6 h-6 border-b-2 border-l-2 border-[#8BC34A] absolute bottom-0 left-0" />
+                    <div className="w-6 h-6 border-b-2 border-r-2 border-[#8BC34A] absolute bottom-0 right-0" />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Viewfinder Controls */}
+            {capturedPhotoUrl ? (
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={retakePhoto}
+                  className="flex-1 py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-base">refresh</span>
+                  Retake Photo
+                </button>
+                <button
+                  onClick={confirmCapturedPhoto}
+                  className="flex-1 py-3 bg-[#8BC34A] hover:bg-[#9ccc65] text-[#1B250F] font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-base">check_circle</span>
+                  Use Photo
+                </button>
+              </div>
+            ) : !cameraError && (
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  onClick={toggleFacingMode}
+                  className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm">flip_camera_ios</span>
+                  Switch
+                </button>
+
+                {/* Big Shutter Button */}
+                <button
+                  onClick={captureSnapshot}
+                  className="w-14 h-14 rounded-full bg-white p-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer"
+                >
+                  <div className="w-full h-full rounded-full border-2 border-black/20 bg-[#8BC34A] flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[#1B250F] text-2xl">photo_camera</span>
+                  </div>
+                </button>
+
+                <label className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer">
+                  <span className="material-symbols-outlined text-sm">upload_file</span>
+                  Files
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => {
+                      handleCapturePhoto(e, 'unboxed');
+                      closeCameraModal();
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Discrepancy Flag Modal */}
       {showDiscrepancyModal && (
