@@ -30,7 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 type AdminTab = 'orders' | 'warehouses' | 'analytics' | 'cards';
 
-const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com'];
+const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com', 'ankur.iitd.nita@gmail.com'];
 
 export default function AdminPortal() {
   const router = useRouter();
