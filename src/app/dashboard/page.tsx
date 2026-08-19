@@ -876,8 +876,23 @@ export default function Dashboard() {
                     out_for_delivery: '#0284c7',
                     delivered: '#10b981'
                   };
-                  const statusNormalized = s.status?.toLowerCase() ?? 'paid';
-                  const currentIdx = STEPS.indexOf(statusNormalized) >= 0 ? STEPS.indexOf(statusNormalized) : (statusNormalized === 'arrived' ? 1 : statusNormalized === 'qc_verified' ? 2 : statusNormalized === 'bulk_consolidated' ? 3 : 0);
+                  const statusNormalized = s.status?.toLowerCase() ?? 'draft';
+                  const isDraft = statusNormalized === 'draft' || statusNormalized === 'draft estimate';
+                  
+                  let currentIdx = -1;
+                  if (!isDraft) {
+                    if (STEPS.indexOf(statusNormalized) >= 0) {
+                      currentIdx = STEPS.indexOf(statusNormalized);
+                    } else if (statusNormalized === 'arrived' || statusNormalized === 'inwarded') {
+                      currentIdx = 1;
+                    } else if (statusNormalized === 'qc_verified') {
+                      currentIdx = 2;
+                    } else if (statusNormalized === 'bulk_consolidated' || statusNormalized === 'shipped') {
+                      currentIdx = 3;
+                    } else {
+                      currentIdx = 0;
+                    }
+                  }
 
                   return (
                     <div key={s.id} className="bg-white p-6 rounded-3xl border border-black/5 space-y-4 shadow-sm text-[#0E1F38]">
@@ -889,7 +904,7 @@ export default function Dashboard() {
                             color: STATUS_COLORS[statusNormalized] ?? '#64748b'
                           }}
                         >
-                          {s.status || 'Paid'}
+                          {isDraft ? 'Draft Estimate' : s.status?.toUpperCase() || 'PAID'}
                         </span>
                         <span className="text-[11px] text-[#0E1F38]/50">
                           {new Date(s.created_at).toLocaleDateString()}
@@ -901,8 +916,8 @@ export default function Dashboard() {
                         <div className="absolute top-[13px] left-0 right-0 h-[2px] bg-black/5 -z-10"></div>
                         <div className="flex justify-between">
                           {STEPS.map((step, idx) => {
-                            const isPassed = idx <= currentIdx;
-                            const isCurrent = idx === currentIdx;
+                            const isPassed = !isDraft && idx <= currentIdx;
+                            const isCurrent = !isDraft && idx === currentIdx;
                             return (
                               <div key={step} className="flex flex-col items-center gap-1 flex-1 relative">
                                 <div
@@ -928,11 +943,11 @@ export default function Dashboard() {
                       <div className="border-t border-black/5 pt-4 space-y-2">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h3 className="font-bold text-sm text-[#0E1F38]">✈ {s.destination_city || 'Canada'}</h3>
-                            <p className="text-xs text-[#0E1F38]/70 leading-tight font-light">{s.destination_address}</p>
+                            <h3 className="font-bold text-sm text-[#0E1F38]">✈ {s.destination_city || 'Toronto (GTA)'}</h3>
+                            <p className="text-xs text-[#0E1F38]/70 leading-tight font-light">{s.destination_address || 'Delivery Address on File'}</p>
                           </div>
                           <div className="text-right text-xs">
-                            <p className="font-mono text-[#0E1F38] font-bold">{s.total_weight} kg</p>
+                            <p className="font-mono text-[#0E1F38] font-bold">{s.total_weight || 1.0} kg</p>
                             <p className="text-[#FF5A65] font-bold">₹{(s.total_cost || 0).toLocaleString()}</p>
                           </div>
                         </div>
@@ -941,22 +956,53 @@ export default function Dashboard() {
                             <strong>Reference Order:</strong> {s.external_order_id}
                           </p>
                         )}
-                        {(statusNormalized === 'draft' || statusNormalized === 'draft estimate') && (
-                          <div className="flex items-center gap-2 pt-3 border-t border-black/5">
+                        {isDraft && (
+                          <div className="space-y-2 pt-3 border-t border-black/5">
                             <button
-                              onClick={() => handleEditDraft(s)}
-                              className="flex-1 py-2.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                              onClick={async () => {
+                                try {
+                                  await supabase
+                                    .from('shipments')
+                                    .update({
+                                      status: 'paid',
+                                      payment_method: 'online',
+                                      stage_timestamps: { paid: new Date().toISOString() },
+                                      updated_at: new Date().toISOString()
+                                    })
+                                    .eq('id', s.id);
+                                  
+                                  setShipments(prev =>
+                                    prev.map(item =>
+                                      item.id === s.id
+                                        ? { ...item, status: 'paid', stage_timestamps: { paid: new Date().toISOString() } }
+                                        : item
+                                    )
+                                  );
+                                } catch (err) {
+                                  console.error('Failed to confirm payment:', err);
+                                }
+                              }}
+                              className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
                             >
-                              <span className="material-symbols-outlined text-sm">edit_square</span>
-                              Edit &amp; Resume Booking
+                              <span className="material-symbols-outlined text-sm">payments</span>
+                              Pay ₹{(s.total_cost || 1986).toLocaleString()} &amp; Start Shipping
                             </button>
-                            <button
-                              onClick={() => handleDeleteDraft(s.id)}
-                              className="p-2.5 bg-black/5 hover:bg-red-50 text-black/60 hover:text-red-600 font-bold rounded-xl border border-black/5 transition-all flex items-center justify-center cursor-pointer"
-                              title="Delete Draft"
-                            >
-                              <span className="material-symbols-outlined text-sm">delete</span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleEditDraft(s)}
+                                className="flex-1 py-2 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-sm">edit_square</span>
+                                Edit Items
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDraft(s.id)}
+                                className="p-2 bg-black/5 hover:bg-red-50 text-black/60 hover:text-red-600 font-bold rounded-xl border border-black/5 transition-all flex items-center justify-center cursor-pointer"
+                                title="Delete Draft"
+                              >
+                                <span className="material-symbols-outlined text-sm">delete</span>
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
