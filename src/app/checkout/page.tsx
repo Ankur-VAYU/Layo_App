@@ -172,7 +172,7 @@ export default function Checkout() {
     setTimeout(() => setCopiedAddress(false), 2500);
   };
 
-  // ── Core payment flow ────────────────────────────────────────────
+  // ── Core payment flow via Stripe ─────────────────────────────────
   const handlePayment = async () => {
     setError(null);
     setIsProcessing(true);
@@ -192,111 +192,62 @@ export default function Checkout() {
         return;
       }
 
-      // 2. Create Razorpay order on server
-      const createRes = await fetch('/api/razorpay/create-order', {
+      // 2. Pre-save draft shipment in Supabase
+      let shipmentId = '';
+      try {
+        const { data } = await insertShipment({
+          user_id: user.id,
+          mode: orderData?.mode || 'Selection',
+          destination_city: orderData?.destinationCity || 'Toronto (GTA)',
+          destination_address: orderData?.destinationAddress || 'Canada',
+          india_warehouse: selectedWarehouse?.name || selectedWarehouseId,
+          external_order_id: orderData?.orderNumber || null,
+          external_tracking: orderData?.externalTracking || null,
+          total_weight: totalWeightKg,
+          total_cost: totalINR,
+          items: itemsList,
+          status: 'Draft Estimate',
+          payment_method: 'stripe',
+        });
+        if (data && data[0]) {
+          shipmentId = data[0].id;
+        }
+      } catch (dbErr) {
+        console.warn('Pre-save draft in Supabase:', dbErr);
+      }
+
+      // 3. Create Stripe Checkout Session on server
+      const createRes = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amountINR: totalINR,
-          receipt: `layo_${user.id.slice(0, 8)}_${Date.now()}`,
-          notes: {
-            user_id: user.id,
-            destination: orderData?.destinationAddress || orderData?.destinationCity || 'Canada',
-            weight_kg: totalWeightKg.toString(),
-            warehouse: selectedWarehouse?.name || selectedWarehouseId,
-          },
+          amountCAD: costCAD.toFixed(2),
+          shipmentId: shipmentId,
+          userId: user.id,
+          userEmail: user.email,
+          destinationCity: orderData?.destinationCity || 'Canada',
+          destinationAddress: orderData?.destinationAddress || '',
+          warehouseName: selectedWarehouse?.name || selectedWarehouseId,
+          totalWeightKg: totalWeightKg,
+          itemCount: itemsList.length || 1,
+          itemsSummary: itemsList.map((i: any) => `${i.quantity || 1}x ${i.subcategory || i.category || 'Item'}`).join(', ') || 'Layo Locker Shipment',
         }),
       });
 
       if (!createRes.ok) {
         const errData = await createRes.json();
-        throw new Error(errData.error || 'Could not create payment order');
+        throw new Error(errData.error || 'Could not initialize Stripe payment');
       }
 
-      const { orderId, amount, currency } = await createRes.json();
-
-      // 3. Load Razorpay checkout
-      const loaded = await loadRazorpayScript();
-      if (!loaded) throw new Error('Razorpay failed to load. Please check your internet connection.');
-
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount,
-        currency,
-        name: 'Layo',
-        description: `Shipment · ${totalWeightKg.toFixed(2)} kg to Canada`,
-        order_id: orderId,
-        prefill: {
-          name:  user.user_metadata?.full_name || '',
-          email: user.email || '',
-          contact: user.user_metadata?.phone || '',
-        },
-        theme: { color: '#FF5A65' },
-        modal: {
-          ondismiss: () => {
-            setIsProcessing(false);
-            setError('Payment was cancelled.');
-          },
-        },
-        handler: async (response: {
-          razorpay_payment_id: string;
-          razorpay_order_id: string;
-          razorpay_signature: string;
-        }) => {
-          // 4. Verify signature on server
-          const verifyRes = await fetch('/api/razorpay/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(response),
-          });
-
-          if (!verifyRes.ok) {
-            const errData = await verifyRes.json();
-            setError(errData.error || 'Payment verification failed. Please contact support.');
-            setIsProcessing(false);
-            return;
-          }
-
-          // 5. Save shipment to Supabase
-          try {
-            await insertShipment({
-              user_id: user.id,
-              mode: orderData?.mode || 'Selection',
-              destination_city: orderData?.destinationCity || '',
-              destination_address: orderData?.destinationAddress || '',
-              india_warehouse: selectedWarehouse?.name || selectedWarehouseId,
-              external_order_id: orderData?.orderNumber || null,
-              external_tracking: orderData?.externalTracking || null,
-              total_weight: totalWeightKg,
-              total_cost: totalINR,
-              items: itemsList,
-              status: 'paid',
-              payment_method: 'razorpay',
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-            } as any);
-          } catch (dbErr) {
-            console.error('Supabase insert error:', dbErr);
-          }
-
-          localStorage.removeItem('layo_pending_shipment');
-          localStorage.removeItem('layo_pending_shipment_draft');
-          setCompletedPaymentId(response.razorpay_payment_id);
-          setCompletedOrderRef(orderId);
-          setIsProcessing(false);
-          setIsSuccess(true);
-        },
-      };
-
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', (err: any) => {
-        setError(`Payment failed: ${err.error?.description || 'Unknown error'}. Please try again.`);
-        setIsProcessing(false);
-      });
-      rzp.open();
-
+      const { url } = await createRes.json();
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error('No checkout URL received from Stripe');
+      }
     } catch (err: any) {
-      setError(err.message || 'Something went wrong. Please try again.');
+      console.error('Stripe payment error:', err);
+      setError(err?.message || 'Payment initiation failed. Please try again.');
       setIsProcessing(false);
     }
   };
@@ -628,11 +579,11 @@ export default function Checkout() {
 
               <div className="flex justify-between items-baseline border-t border-black/5 pt-4">
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#0E1F38]">You Pay (INR)</span>
-                  <p className="text-[10px] text-[#0E1F38]/50 mt-0.5">${costCAD.toFixed(2)} CAD equivalent</p>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#0E1F38]">Total Amount (CAD)</span>
+                  <p className="text-[10px] text-[#0E1F38]/50 mt-0.5">₹{totalINR.toLocaleString('en-IN')} INR equivalent</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-black text-[#FF5A65]">₹{totalINR.toLocaleString('en-IN')}</p>
+                  <p className="text-3xl font-black text-[#FF5A65]">${costCAD.toFixed(2)} CAD</p>
                 </div>
               </div>
             </div>
@@ -645,12 +596,12 @@ export default function Checkout() {
               {isProcessing ? (
                 <>
                   <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Opening Checkout…
+                  Connecting to Stripe…
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-lg leading-none">lock</span>
-                  Pay ₹{totalINR.toLocaleString('en-IN')}
+                  Pay ${costCAD.toFixed(2)} CAD with Stripe
                 </>
               )}
             </button>
@@ -662,7 +613,7 @@ export default function Checkout() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-emerald-600 text-sm">lock</span>
-                <span>Protected by Razorpay &amp; RBI Compliance</span>
+                <span>Protected by Stripe Secure 256-bit Encryption</span>
               </div>
             </div>
           </div>

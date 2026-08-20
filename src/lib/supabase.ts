@@ -38,12 +38,17 @@ export interface ShipmentPayload {
 }
 
 export async function insertShipment(payload: ShipmentPayload) {
+  const validUserId = payload.user_id && payload.user_id !== '00000000-0000-0000-0000-000000000000'
+    ? payload.user_id
+    : null;
+
   const initialTimestamps = payload.stage_timestamps || {
     [payload.status || 'draft']: new Date().toISOString()
   };
 
   const payloadWithTimestamps = {
     ...payload,
+    user_id: validUserId,
     stage_timestamps: initialTimestamps,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -58,14 +63,15 @@ export async function insertShipment(payload: ShipmentPayload) {
   if (error) {
     console.warn("Supabase insert with full columns failed. Retrying with JSON metadata fallback...", error);
     
-    // 2. Fallback: Wrap metadata inside the items column
-    const { user_id, india_warehouse, external_order_id, external_tracking, items, stage_timestamps, master_box_id, canada_local_carrier, canada_local_awb, ...basicFields } = payloadWithTimestamps;
+    // 2. Fallback: Wrap newer metadata inside the items column BUT keep user_id in the row
+    const { india_warehouse, external_order_id, external_tracking, items, stage_timestamps, master_box_id, canada_local_carrier, canada_local_awb, ...basicFields } = payloadWithTimestamps;
     const fallbackPayload = {
       ...basicFields,
+      user_id: validUserId,
       items: {
         items: items,
         metadata: {
-          user_id,
+          user_id: validUserId,
           india_warehouse,
           external_order_id,
           external_tracking,
@@ -76,7 +82,14 @@ export async function insertShipment(payload: ShipmentPayload) {
         }
       }
     };
-    return supabase.from('shipments').insert([fallbackPayload]).select();
+    
+    const fallbackRes = await supabase.from('shipments').insert([fallbackPayload]).select();
+    if (fallbackRes.error && validUserId) {
+      // If user_id foreign key constraint failed, try with user_id = null while keeping metadata
+      const { user_id: _uid, ...noUserPayload } = fallbackPayload;
+      return supabase.from('shipments').insert([noUserPayload]).select();
+    }
+    return fallbackRes;
   }
 
   return { data, error };
@@ -154,11 +167,25 @@ export async function fetchShipments(userId?: string) {
     .order('created_at', { ascending: false });
 
   if (userId) {
-    query = query.eq('user_id', userId);
+    // Look up by top-level user_id or nested JSON metadata user_id
+    query = query.or(`user_id.eq.${userId},items->metadata->>user_id.eq.${userId}`);
   }
 
   const { data, error } = await query;
-  if (error) return { data: null, error };
+  if (error) {
+    // If complex JSON query failed, fallback to standard user_id check
+    if (userId) {
+      const fallbackQuery = await supabase
+        .from('shipments')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      if (fallbackQuery.data) {
+        return { data: fallbackQuery.data.map(parseShipment), error: null };
+      }
+    }
+    return { data: null, error };
+  }
   const formatted = (data || []).map(parseShipment);
   return { data: formatted, error: null };
 }

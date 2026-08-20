@@ -288,11 +288,16 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
       ageGroups,
       effectiveWeight: calc.effectiveWeight,
       shippingEstCAD: calc.shipping,
+      totalCostCAD: calc.shipping,
+      totalWeight: calc.effectiveWeight / 1000,
+      mode: origin === 'online' ? 'Online Retailer' : 'Personal Goods',
     };
     sessionStorage.setItem('layo_active_booking', JSON.stringify(payload));
+    localStorage.setItem('layo_pending_shipment_draft', JSON.stringify(payload));
+    localStorage.setItem('layo_pending_shipment', JSON.stringify(payload));
     localStorage.removeItem('layo_anon_draft');
     onClose();
-    router.push('/checkout');
+    router.push('/dashboard');
   };
 
   if (!isOpen) return null;

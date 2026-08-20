@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase, insertShipment, fetchShipments } from '@/lib/supabase';
+import { supabase, insertShipment, fetchShipments, parseShipment } from '@/lib/supabase';
 
 interface SubCategoryItem {
   name: string;
@@ -202,6 +202,9 @@ export default function Dashboard() {
   const [showOrderNumberError, setShowOrderNumberError] = useState(false);
   const [promoQty, setPromoQty] = useState(0);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentBanner, setPaymentBanner] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
 
   // Financial and math helpers
   const [cadToInrRate, setCadToInrRate] = useState(70.4);
@@ -222,6 +225,62 @@ export default function Dashboard() {
     };
     fetchExchangeRate();
   }, []);
+
+  // Check for return from Stripe Checkout
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get('session_id');
+      const paymentStatus = params.get('payment_status');
+
+      if (paymentStatus === 'success' && sessionId) {
+        // Verify Stripe session with server
+        fetch(`/api/stripe/verify-session?session_id=${sessionId}`)
+          .then(res => res.json())
+          .then(async (data) => {
+            if (data.verified) {
+              const shipmentId = data.metadata?.shipment_id;
+              if (shipmentId) {
+                await supabase
+                  .from('shipments')
+                  .update({
+                    status: 'paid',
+                    payment_method: 'stripe',
+                    stage_timestamps: { paid: new Date().toISOString() },
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', shipmentId);
+              }
+              localStorage.removeItem('layo_pending_shipment');
+              localStorage.removeItem('layo_pending_shipment_draft');
+              setPaymentBanner({
+                type: 'success',
+                message: `Payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed via Stripe! Your shipment is active and dispatched to our Indian locker hub.`
+              });
+              setActiveTab('history');
+              if (user?.id) fetchDashboardData(user.id);
+            } else {
+              setPaymentBanner({
+                type: 'warning',
+                message: 'Stripe payment could not be automatically confirmed. Please contact support if your card was charged.'
+              });
+            }
+          })
+          .catch(err => {
+            console.error('Failed to verify stripe session:', err);
+          })
+          .finally(() => {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          });
+      } else if (paymentStatus === 'cancelled') {
+        setPaymentBanner({
+          type: 'warning',
+          message: 'Stripe payment was cancelled. Your locker booking items and address have been preserved in drafts.'
+        });
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!loading && !user) {
@@ -326,6 +385,21 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Failed to read clipboard', err);
     }
+  };
+
+  // Reset wizard cleanly when starting a new order
+  const handleStartNewOrder = () => {
+    setEditingDraftId(null);
+    setSelectedCategories([]);
+    setQtyState({});
+    setActiveDemoState({});
+    setPromoQty(0);
+    setOrderNumber('');
+    setDestinationAddress('');
+    setStoreName('');
+    setSenderName('');
+    setCurrentStep(1);
+    setActiveTab('new');
   };
 
   // Toggle Category selection
@@ -477,13 +551,19 @@ export default function Dashboard() {
     return list;
   }, [activeItems]);
 
-  // Checkout & Direct Booking Logic
+  // Checkout & Direct Booking Logic via Stripe
   const handleProceedToCheckout = async () => {
     if (originType === 'online' && !orderNumber.trim()) {
       setShowOrderNumberError(true);
       setCurrentStep(1);
       return;
     }
+
+    if (activeItems.length === 0 || !selectedWarehouse || !destinationAddress) {
+      return;
+    }
+
+    setIsProcessingPayment(true);
 
     const itemsPayload = activeItems.map(i => ({
       category: i.category,
@@ -504,9 +584,10 @@ export default function Dashboard() {
     }
 
     try {
+      let targetShipmentId = editingDraftId;
+
       if (editingDraftId) {
-        // Upgrade existing draft to Paid
-        const currentTimestamps = { paid: new Date().toISOString() };
+        // Upgrade / sync existing draft
         await supabase
           .from('shipments')
           .update({
@@ -517,67 +598,96 @@ export default function Dashboard() {
             total_weight: totals.totalWeightKg,
             total_cost: totals.totalPriceINR,
             items: itemsPayload,
-            status: 'paid',
-            payment_method: 'online',
-            stage_timestamps: currentTimestamps,
+            payment_method: 'stripe',
+            status: 'Draft Estimate',
             updated_at: new Date().toISOString()
           })
           .eq('id', editingDraftId);
-
-        setShipments(prev =>
-          prev.map(s =>
-            s.id === editingDraftId
-              ? {
-                  ...s,
-                  destination_city: destinationCity || 'Toronto (GTA)',
-                  destination_address: destinationAddress || '',
-                  india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
-                  external_order_id: orderNumber || null,
-                  total_weight: totals.totalWeightKg,
-                  total_cost: totals.totalPriceINR,
-                  items: itemsPayload,
-                  status: 'paid',
-                  stage_timestamps: currentTimestamps
-                }
-              : s
-          )
-        );
-        setEditingDraftId(null);
       } else {
-        // Create new paid shipment
+        // Create draft shipment linked to this payment
         const { data } = await insertShipment({
-          user_id: user?.id || '00000000-0000-0000-0000-000000000000',
-          mode: 'Selection',
+          user_id: user?.id,
+          mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
           destination_city: destinationCity || 'Toronto (GTA)',
-          destination_address: destinationAddress || '123 Canada Way',
+          destination_address: destinationAddress || 'Canada',
           india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
           external_order_id: orderNumber || null,
           total_weight: totals.totalWeightKg,
           total_cost: totals.totalPriceINR,
           items: itemsPayload,
-          status: 'paid',
-          payment_method: 'online',
-          stage_timestamps: { paid: new Date().toISOString() }
+          status: 'Draft Estimate',
+          payment_method: 'stripe',
         });
         if (data && data[0]) {
-          setShipments(prev => [data[0], ...prev]);
+          targetShipmentId = data[0].id;
         }
       }
 
-      localStorage.removeItem('layo_pending_shipment');
-      localStorage.removeItem('layo_pending_shipment_draft');
-      
-      // Reset wizard inputs
-      setQtyState({});
-      setActiveDemoState({});
-      setSelectedCategories([]);
-      setPromoQty(0);
-      setCurrentStep(1);
+      // Initialize Stripe Checkout Session
+      const amountCAD = totals.totalPriceCAD > 0 ? totals.totalPriceCAD : 25.0;
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountCAD: amountCAD.toFixed(2),
+          shipmentId: targetShipmentId,
+          userId: user?.id,
+          userEmail: user?.email,
+          destinationCity: destinationCity || 'Canada',
+          destinationAddress: destinationAddress || '',
+          warehouseName: selectedWarehouseObject?.name || selectedWarehouse || 'Indian Locker Hub',
+          totalWeightKg: totals.totalWeightKg,
+          itemCount: activeItems.reduce((sum, item) => sum + item.qty, 0),
+          itemsSummary: activeItems.map(i => `${i.qty}x ${i.subcategory}`).join(', '),
+        }),
+      });
 
-      // Switch to active shipments tracker view
-      setActiveTab('history');
-    } catch (err) {
-      console.error('Failed to complete booking:', err);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to initialize Stripe checkout');
+      }
+
+      const { url } = await res.json();
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error('No checkout URL returned from Stripe');
+      }
+    } catch (err: any) {
+      console.error('Failed to complete Stripe booking initialization:', err);
+      alert(`Payment Gateway Error: ${err.message || 'Could not connect to Stripe. Please try again.'}`);
+      setIsProcessingPayment(false);
+    }
+  };
+
+  // Pay existing draft directly via Stripe
+  const handlePayDraftWithStripe = async (s: any) => {
+    try {
+      const approxCAD = s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0;
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountCAD: approxCAD.toFixed(2),
+          shipmentId: s.id,
+          userId: user?.id,
+          userEmail: user?.email,
+          destinationCity: s.destination_city || 'Canada',
+          destinationAddress: s.destination_address || '',
+          warehouseName: s.india_warehouse || 'Indian Locker Hub',
+          totalWeightKg: s.total_weight || 1.0,
+          itemCount: Array.isArray(s.items) ? s.items.length : 1,
+          itemsSummary: Array.isArray(s.items) ? s.items.map((i: any) => `${i.quantity || 1}x ${i.subcategory || i.category}`).join(', ') : 'Layo Shipment',
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Unable to open Stripe checkout.');
+      }
+    } catch (err: any) {
+      alert(`Failed to start payment: ${err.message}`);
     }
   };
 
@@ -712,8 +822,8 @@ export default function Dashboard() {
         setEditingDraftId(null);
       } else {
         const { data } = await insertShipment({
-          user_id: user?.id || '00000000-0000-0000-0000-000000000000',
-          mode: 'Selection',
+          user_id: user?.id,
+          mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
           destination_city: destinationCity || 'Draft City',
           destination_address: destinationAddress || 'Draft Address',
           india_warehouse: selectedWarehouse || null,
@@ -725,7 +835,11 @@ export default function Dashboard() {
           payment_method: 'draft'
         });
         if (data && data[0]) {
-          setShipments(prev => [data[0], ...prev]);
+          const parsed = parseShipment(data[0]);
+          setShipments(prev => [parsed, ...prev.filter(x => x.id !== parsed.id)]);
+        }
+        if (user?.id) {
+          fetchDashboardData(user.id);
         }
       }
     } catch (err) {
@@ -808,6 +922,28 @@ export default function Dashboard() {
       {/* ── Main Panel ── */}
       <main className="flex-grow w-full max-w-[1200px] mx-auto px-6 py-12">
         
+        {/* Payment Banner Notice */}
+        {paymentBanner && (
+          <div className={`mb-6 p-4 rounded-2xl border flex items-center justify-between gap-3 animate-fade-in ${
+            paymentBanner.type === 'success' ? 'bg-emerald-50 border-emerald-300 text-emerald-900' :
+            paymentBanner.type === 'warning' ? 'bg-amber-50 border-amber-300 text-amber-900' :
+            'bg-red-50 border-red-300 text-red-900'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-2xl">
+                {paymentBanner.type === 'success' ? 'check_circle' : 'info'}
+              </span>
+              <p className="text-sm font-semibold leading-snug">{paymentBanner.message}</p>
+            </div>
+            <button
+              onClick={() => setPaymentBanner(null)}
+              className="text-xs font-bold uppercase tracking-wider opacity-60 hover:opacity-100 px-2 py-1 rounded cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Brand identity / Hero */}
         <div className="mb-10 text-center space-y-2">
           <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#FF5A65]">Member Locker</span>
@@ -822,7 +958,7 @@ export default function Dashboard() {
         {/* Tab switcher */}
         <div className="flex justify-center border-b border-black/10 mb-8 max-w-md mx-auto">
           <button
-            onClick={() => setActiveTab('new')}
+            onClick={handleStartNewOrder}
             className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
               activeTab === 'new' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
@@ -842,7 +978,16 @@ export default function Dashboard() {
         {activeTab === 'history' ? (
           /* ── MY SHIPMENTS / TRACKER TAB ── */
           <div className="space-y-6">
-            <h2 className="text-2xl font-black text-[#0E1F38] text-center md:text-left">Track Your Shipments</h2>
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+              <h2 className="text-2xl font-black text-[#0E1F38] text-center sm:text-left">Track Your Shipments</h2>
+              <button
+                onClick={handleStartNewOrder}
+                className="self-center sm:self-auto px-5 py-2.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">add</span>
+                Book New Shipment
+              </button>
+            </div>
             {shipments.length === 0 ? (
               <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
                 <span className="material-symbols-outlined text-6xl text-[#0E1F38]/30">inventory_2</span>
@@ -851,7 +996,7 @@ export default function Dashboard() {
                   Start generating quotes and book your first virtual locker address to begin international tracking.
                 </p>
                 <button
-                  onClick={() => setActiveTab('new')}
+                  onClick={handleStartNewOrder}
                   className="bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#e24550] active:scale-95 transition-all shadow-md shadow-[#FF5A65]/20 mt-2 cursor-pointer"
                 >
                   Book New Shipment
@@ -992,6 +1137,10 @@ export default function Dashboard() {
                   };
 
                   const stageInfo = getStageInfo(statusNormalized);
+                  const matchedHub = warehouses.find(
+                    w => w.city?.toLowerCase() === (s.india_warehouse || '').toLowerCase() ||
+                         w.address?.toLowerCase().includes((s.india_warehouse || '').toLowerCase())
+                  ) || warehouses[0] || { city: 'Delhi NCR Hub', address: 'Plot 42, Udyog Vihar Phase 4, Gurugram', pincode: '122015', contact: '+91 98100 12345' };
 
                   return (
                     <div key={s.id} className="bg-white p-6 rounded-3xl border border-black/5 space-y-4 shadow-sm text-[#0E1F38]">
@@ -1013,7 +1162,7 @@ export default function Dashboard() {
                           </span>
                         </div>
                         <span className="text-[11px] text-[#0E1F38]/50">
-                          {new Date(s.created_at).toLocaleDateString()}
+                          {s.created_at ? new Date(s.created_at).toLocaleDateString() : 'Recent'}
                         </span>
                       </div>
 
@@ -1059,8 +1208,25 @@ export default function Dashboard() {
                         </p>
                       </div>
 
-                      {/* Assigned India Hub Address (when Paid or Draft) */}
-                      {!isDraft && (statusNormalized === 'paid' || statusNormalized === 'inwarded') && (
+                      {/* Declared Items List Breakdown */}
+                      {Array.isArray(s.items) && s.items.length > 0 && (
+                        <div className="bg-[#FAF8EE] p-3.5 rounded-2xl border border-black/5 space-y-2 text-xs">
+                          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">
+                            <span>📦 Declared Items ({s.items.reduce((sum: number, it: any) => sum + (it.quantity || 1), 0)})</span>
+                            <span className="bg-white px-2 py-0.5 rounded border border-black/5">{s.mode || 'Online Retailer'}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {s.items.map((it: any, iIdx: number) => (
+                              <span key={iIdx} className="px-2.5 py-1 bg-white border border-black/5 rounded-lg text-[11px] font-medium text-[#0E1F38] shadow-2xs">
+                                {it.quantity || 1}x {it.subcategory || it.name || it.category} {it.demographic ? `(${it.demographic})` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Assigned India Hub Address (when Paid or Inwarded) */}
+                      {!isDraft && (statusNormalized === 'paid' || statusNormalized === 'inwarded' || statusNormalized === 'arrived') && (
                         <div className="p-3 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-2 text-xs">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">
@@ -1068,7 +1234,7 @@ export default function Dashboard() {
                             </span>
                             <button
                               onClick={() => {
-                                const addr = `Layo Locker (Locker #${s.id ? s.id.slice(0, 8).toUpperCase() : 'USER'})\nPlot 42, Udyog Vihar Phase 4, Sector 18\nGurugram, Haryana - 122015\nPhone: +91 98100 12345`;
+                                const addr = `Layo Locker (Locker #${s.id ? s.id.slice(0, 8).toUpperCase() : 'USER'})\n${matchedHub.address}\n${matchedHub.city} - ${matchedHub.pincode}\nPhone: ${matchedHub.contact || '+91 98100 12345'}`;
                                 navigator.clipboard.writeText(addr);
                                 alert('Warehouse Address copied! Paste this as delivery address on Myntra/Amazon.');
                               }}
@@ -1080,8 +1246,23 @@ export default function Dashboard() {
                           </div>
                           <p className="font-mono text-[11px] text-[#0E1F38] leading-tight">
                             Layo Locker (Locker #{s.id ? s.id.slice(0, 8).toUpperCase() : ''})<br />
-                            Plot 42, Udyog Vihar Phase 4, Gurugram, Haryana - 122015
+                            {matchedHub.address}, {matchedHub.city} - {matchedHub.pincode}
                           </p>
+                        </div>
+                      )}
+
+                      {/* Local Carrier Tracking (Canada) */}
+                      {(s.canada_local_carrier || s.canada_local_awb) && (
+                        <div className="flex items-center justify-between p-3 bg-blue-50/80 rounded-2xl border border-blue-100 text-xs">
+                          <div className="flex items-center gap-2 text-blue-950 font-bold">
+                            <span className="material-symbols-outlined text-sm text-blue-600">local_shipping</span>
+                            <span>{s.canada_local_carrier || 'Canada Local Dispatch'}</span>
+                          </div>
+                          {s.canada_local_awb && (
+                            <span className="font-mono text-xs font-bold text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs">
+                              {s.canada_local_awb}
+                            </span>
+                          )}
                         </div>
                       )}
 
@@ -1124,33 +1305,11 @@ export default function Dashboard() {
                         {isDraft && (
                           <div className="space-y-2 pt-3 border-t border-black/5">
                             <button
-                              onClick={async () => {
-                                try {
-                                  await supabase
-                                    .from('shipments')
-                                    .update({
-                                      status: 'paid',
-                                      payment_method: 'online',
-                                      stage_timestamps: { paid: new Date().toISOString() },
-                                      updated_at: new Date().toISOString()
-                                    })
-                                    .eq('id', s.id);
-                                  
-                                  setShipments(prev =>
-                                    prev.map(item =>
-                                      item.id === s.id
-                                        ? { ...item, status: 'paid', stage_timestamps: { paid: new Date().toISOString() } }
-                                        : item
-                                    )
-                                  );
-                                } catch (err) {
-                                  console.error('Failed to confirm payment:', err);
-                                }
-                              }}
+                              onClick={() => handlePayDraftWithStripe(s)}
                               className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
                             >
-                              <span className="material-symbols-outlined text-sm">payments</span>
-                              Pay ₹{(s.total_cost || 1986).toLocaleString()} &amp; Start Shipping
+                              <span className="material-symbols-outlined text-sm">lock</span>
+                              Pay ${s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate).toFixed(2) : '25.00'} CAD via Stripe &amp; Dispatch
                             </button>
                             <div className="flex items-center gap-2">
                               <button
@@ -1348,20 +1507,45 @@ export default function Dashboard() {
 
                     {/* Virtual address preview */}
                     {selectedWarehouseObject && (
-                      <div className="p-5 rounded-2xl border border-[#FF5A65]/30 bg-[#FAF8EE] space-y-2 animate-fade-in relative overflow-hidden text-[#0E1F38]">
+                      <div className="p-5 rounded-2xl border border-[#FF5A65]/30 bg-[#FAF8EE] space-y-3 animate-fade-in relative overflow-hidden text-[#0E1F38]">
                         <span className="material-symbols-outlined absolute top-4 right-4 text-7xl text-[#FF5A65] opacity-5 pointer-events-none">
                           location_on
                         </span>
-                        <div className="inline-block text-[9px] uppercase tracking-wider font-bold bg-[#FF5A65]/15 text-[#FF5A65] px-2.5 py-1 rounded">
-                          Preview of your Virtual Address
+                        
+                        <div className="flex items-center justify-between gap-2 relative z-10">
+                          <div className="inline-block text-[9px] uppercase tracking-wider font-bold bg-[#FF5A65]/15 text-[#FF5A65] px-2.5 py-1 rounded">
+                            Preview of your Virtual Address
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nameStr = `${user?.user_metadata?.full_name || 'Customer'} / LAYO-${user?.id?.substring(0, 5).toUpperCase() || 'LOCK'}`;
+                              const addrStr = `Name: ${nameStr}\nAddress: ${selectedWarehouseObject.address}\nCity/Pincode: ${selectedWarehouseObject.city} - ${selectedWarehouseObject.pincode || ''}\nPhone: ${selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'}`;
+                              navigator.clipboard.writeText(addrStr);
+                              setCopiedAddress(true);
+                              setTimeout(() => setCopiedAddress(false), 2000);
+                            }}
+                            className={`text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                              copiedAddress
+                                ? 'bg-green-600 text-white'
+                                : 'bg-[#FF5A65] hover:bg-[#e24550] text-white active:scale-95'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-sm leading-none">
+                              {copiedAddress ? 'check' : 'content_copy'}
+                            </span>
+                            <span>{copiedAddress ? 'Copied!' : 'Copy Address'}</span>
+                          </button>
                         </div>
-                        <div className="text-xs space-y-1.5 text-[#0E1F38] leading-relaxed pt-1.5 font-mono">
+
+                        <div className="text-xs space-y-1.5 text-[#0E1F38] leading-relaxed pt-1 font-mono relative z-10">
                           <p><strong>Name:</strong> {user?.user_metadata?.full_name || 'Customer'} / LAYO-{user?.id?.substring(0, 5).toUpperCase() || 'LOCK'}</p>
                           <p><strong>Address:</strong> {selectedWarehouseObject.address}</p>
                           <p><strong>City/Pincode:</strong> {selectedWarehouseObject.city} - {selectedWarehouseObject.pincode || ''}</p>
                           <p><strong>Phone Number:</strong> {selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'} <span className="text-[10px] text-[#FF5A65] font-sans font-semibold">(for courier &amp; order updates)</span></p>
                         </div>
-                        <p className="text-[10px] text-[#0E1F38]/60 italic pt-1">
+                        <p className="text-[10px] text-[#0E1F38]/60 italic pt-1 relative z-10">
                           Copy coordinates and tags. Full instructions will be shared on successful payment.
                         </p>
                       </div>
@@ -1833,16 +2017,27 @@ export default function Dashboard() {
                   <div className="flex gap-4 pt-4 border-t border-black/5">
                     <button
                       onClick={() => setShowDraftModal(true)}
-                      className="flex-1 py-4 border border-black/20 text-[#0E1F38] font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-black/5 active:scale-95 transition-all cursor-pointer"
+                      disabled={isProcessingPayment}
+                      className="flex-1 py-4 border border-black/20 text-[#0E1F38] font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-black/5 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                     >
                       Save to Drafts
                     </button>
                     <button
                       onClick={handleProceedToCheckout}
-                      disabled={activeItems.length === 0 || !selectedWarehouse || !destinationAddress}
-                      className="flex-1 py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                      disabled={activeItems.length === 0 || !selectedWarehouse || !destinationAddress || isProcessingPayment}
+                      className="flex-1 py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
                     >
-                      Pay ${totals.totalPriceCAD > 0 ? totals.totalPriceCAD.toFixed(2) : '25.00'} CAD &amp; Book
+                      {isProcessingPayment ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Redirecting to Stripe…</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-sm">lock</span>
+                          <span>Pay ${totals.totalPriceCAD > 0 ? totals.totalPriceCAD.toFixed(2) : '25.00'} CAD &amp; Book</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </section>
