@@ -122,7 +122,9 @@ CREATE POLICY IF NOT EXISTS "Allow public read ops_staff" ON ops_staff FOR SELEC
 CREATE POLICY IF NOT EXISTS "Allow users read own shipments" ON shipments FOR SELECT USING (true);
 CREATE POLICY IF NOT EXISTS "Allow users insert shipments" ON shipments FOR INSERT WITH CHECK (true);
 CREATE POLICY IF NOT EXISTS "Allow users update shipments" ON shipments FOR UPDATE USING (true);
+CREATE POLICY IF NOT EXISTS "Allow users delete shipments" ON shipments FOR DELETE USING (true);
 CREATE POLICY IF NOT EXISTS "Allow admin modify warehouses" ON warehouses FOR ALL USING (true);
 CREATE POLICY IF NOT EXISTS "Allow admin modify haul_cards" ON haul_cards FOR ALL USING (true);
 CREATE POLICY IF NOT EXISTS "Allow admin modify ops_staff" ON ops_staff FOR ALL USING (true);
+
 

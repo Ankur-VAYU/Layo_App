@@ -754,15 +754,42 @@ export default function Dashboard() {
     setCurrentStep(4);
   };
 
-  // Delete draft
+  // Delete draft or shipment
   const handleDeleteDraft = async (shipmentId: string) => {
-    if (!confirm('Are you sure you want to delete this draft shipment?')) return;
+    if (!confirm('Are you sure you want to delete this shipment?')) return;
     try {
-      const { error } = await supabase.from('shipments').delete().eq('id', shipmentId);
-      if (error) throw error;
+      // 1. Delete via server endpoint to guarantee database deletion
+      const res = await fetch('/api/shipments/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shipmentId, userId: user?.id })
+      });
+
+      if (!res.ok) {
+        // Fallback to client SDK delete
+        const { error } = await supabase.from('shipments').delete().eq('id', shipmentId);
+        if (error) throw error;
+      }
+
+      // 2. Remove from local React state
       setShipments(prev => prev.filter(s => s.id !== shipmentId));
+
+      // 3. Reset form wizard if this draft was being edited
+      if (editingDraftId === shipmentId) {
+        handleStartNewOrder();
+      }
+
+      // 4. Clear any local storage draft items
+      localStorage.removeItem('layo_pending_shipment');
+      localStorage.removeItem('layo_pending_shipment_draft');
+
+      // 5. Refresh from database to sync
+      if (user?.id) {
+        fetchDashboardData(user.id);
+      }
     } catch (err: any) {
-      alert(`Failed to delete draft: ${err.message}`);
+      console.error('Delete shipment error:', err);
+      alert(`Failed to delete shipment: ${err.message}`);
     }
   };
 
