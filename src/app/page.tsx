@@ -761,7 +761,7 @@ export default function Home() {
                           Tops / Shirts
                           <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.topsUnitRate}/pc)</span>
                         </span>
-                        <span className="text-[10px] text-[#0E1F38]/50 font-medium">Canadian Retail Rate</span>
+                        <span className="text-[10px] text-[#0E1F38]/50 font-medium">$CAD/pc.</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 bg-white rounded-full px-3 py-1.5 border border-black/10 shadow-sm flex-shrink-0">
@@ -793,7 +793,7 @@ export default function Home() {
                           Bottoms / Pants
                           <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.bottomsUnitRate}/pc)</span>
                         </span>
-                        <span className="text-[10px] text-[#0E1F38]/50 font-medium">Canadian Retail Rate</span>
+                        <span className="text-[10px] text-[#0E1F38]/50 font-medium">$CAD/pc.</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 bg-white rounded-full px-3 py-1.5 border border-black/10 shadow-sm flex-shrink-0">
