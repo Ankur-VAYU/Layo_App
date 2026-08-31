@@ -54,6 +54,7 @@ export default function Signup() {
         email,
         password,
         options: {
+          emailRedirectTo: 'https://www.getlayo.com/login',
           data: {
             full_name: fullName,
             phone: phone || undefined,

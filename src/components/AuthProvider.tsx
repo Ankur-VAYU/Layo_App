@@ -31,6 +31,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
     window.addEventListener('unhandledrejection', handleRejection);
 
+    // Fetch system settings from Supabase to sync them to localStorage
+    const syncSystemSettings = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('system_settings')
+          .select('*');
+        if (data && !error) {
+          const pricingRow = data.find(r => r.key === 'pricing_settings');
+          const categoryRow = data.find(r => r.key === 'category_matrix');
+          if (pricingRow) {
+            localStorage.setItem('layo_pricing_settings', JSON.stringify(pricingRow.value));
+          }
+          if (categoryRow) {
+            localStorage.setItem('layo_master_categories', JSON.stringify(categoryRow.value));
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to sync system settings from Supabase:", e);
+      }
+    };
+    syncSystemSettings();
+
     // 1. Get initial session safely
     supabase.auth.getSession()
       .then(({ data, error }) => {
@@ -54,13 +76,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // 2. Listen for auth changes
     let subscription: any = null;
     try {
-      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data } = supabase.auth.onAuthStateChange((event, session) => {
         setUser(session?.user ?? null);
         setLoading(false);
+
+        if (
+          event === 'PASSWORD_RECOVERY' ||
+          (typeof window !== 'undefined' && (window.location.hash.includes('type=recovery') || window.location.hash.includes('access_token')))
+        ) {
+          if (window.location.pathname !== '/reset-password') {
+            window.location.href = '/reset-password' + window.location.hash;
+          }
+        }
       });
-      subscription = data?.subscription;
-    } catch (err) {
-      console.warn("Supabase auth listener error:", err);
+      subscription = data.subscription;
+    } catch (e) {
+      console.warn("Failed to subscribe to auth state changes:", e);
     }
 
     return () => {

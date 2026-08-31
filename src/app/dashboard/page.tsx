@@ -1,15 +1,22 @@
 'use client';
 
+// ── Imports ──────────────────────────────────────────────────────────────
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase, insertShipment, fetchShipments, parseShipment } from '@/lib/supabase';
+import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage } from '@/lib/supabase';
+import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
+import { formatShipmentId, formatTransactionId, formatUserId, formatWarehouseId } from '@/lib/idGenerator';
+import { loadMasterCategories } from '@/lib/categoryMatrix';
+
+// ── Types & Interfaces ───────────────────────────────────────────────────────
 
 interface SubCategoryItem {
   name: string;
   weight: number;
+  subtext: string;
   promo?: boolean;
   oversized?: boolean;
   isRestricted?: boolean;
@@ -29,10 +36,14 @@ const categoryData: Record<string, CategoryDetail> = {
     icon: 'checkroom',
     requiresAge: true,
     subs: [
-      { name: 'Tops', weight: 450 },
-      { name: 'Bottoms', weight: 375 },
-      { name: 'Dresses', weight: 700 },
-      { name: 'Winter Wear', weight: 1300 },
+      { name: 'Light Topwear', weight: 200, subtext: 'T-shirts, Shirts, Kurtis, or similar lightweight tops.' },
+      { name: 'Heavy Topwear & Outerwear', weight: 900, subtext: 'Jackets, Sweaters, Coats, or any thick winter tops.' },
+      { name: 'Light Bottoms', weight: 250, subtext: 'Shorts, Leggings, Light Pajamas, or thin pants.' },
+      { name: 'Heavy Bottoms', weight: 500, subtext: 'Jeans, Trousers, Joggers, or heavy material pants.' },
+      { name: 'Light Dresses & Sets', weight: 400, subtext: 'Casual Dresses, Light Cotton Suits, Daily-Wear Sarees, Rompers or 2-piece co-ords.' },
+      { name: 'Heavy Ethnic & Party', weight: 1000, subtext: 'Heavy Lehengas, Bridal Sarees, Embroidered Suits, Gowns.' },
+      { name: 'Heavy Winter Sets', weight: 1300, subtext: 'Tracksuits, Snowsuits, or heavy 2-piece winter combos.' },
+      { name: 'Small Cloth Accessories', weight: 50, subtext: 'Socks, innerwear, ties, handkerchiefs, light earrings, chains (up to 50g each).' }
     ]
   },
   footwear: {
@@ -40,63 +51,64 @@ const categoryData: Record<string, CategoryDetail> = {
     icon: 'steps',
     requiresAge: true,
     subs: [
-      { name: 'Light Footwear', weight: 400 },
-      { name: 'Heavy Boots', weight: 1000 }
+      { name: 'Light Footwear', weight: 400, subtext: "Flip-Flops, Flats, Sandals, Ballet Flats, or kids' shoes." },
+      { name: 'Heavy Footwear', weight: 1000, subtext: 'Sneakers, Running Shoes, Formal Leather Shoes, Boots, or Block Heels.' }
     ]
   },
   bags: {
     name: 'Bags & Luggage',
     icon: 'work',
     subs: [
-      { name: 'Small Bag', weight: 300 },
-      { name: 'Medium Bag', weight: 800 },
-      { name: 'Luggage', weight: 3000, oversized: true }
+      { name: 'Small Bags & Wallets', weight: 300, subtext: 'Wallets, Purses, Clutches, Sling Bags, or Fanny Packs.' },
+      { name: 'Medium/Heavy Bags', weight: 800, subtext: 'Backpacks, Laptop Bags, Handbags, Tote Bags, or Duffle Bags.' },
+      { name: 'Luggage / Trolleys', weight: 3000, oversized: true, subtext: 'Cabin Luggage, Suitcases, or Check-in Bags.' }
     ]
   },
   jewelry: {
     name: 'Jewelry & Accessories',
     icon: 'diamond',
     subs: [
-      { name: 'Structured Jewelry', weight: 200 }
+      { name: 'Light Jewelry', weight: 50, subtext: 'Earrings, Rings, Chains, Bracelets, Hair Clips, or similar light items.' },
+      { name: 'Structured Accessories', weight: 200, subtext: 'Watches, Sunglasses, Leather Belts, or heavy Bridal Jewelry sets.' }
     ]
   },
   beauty: {
     name: 'Beauty & Personal Care',
     icon: 'face_3',
     subs: [
-      { name: 'Light Cosmetics', weight: 80 },
-      { name: 'Heavy Beauty', weight: 400 }
+      { name: 'Light Cosmetics', weight: 80, subtext: 'Lipsticks, Kajal, Makeup Brushes, Compacts, or small serums.' },
+      { name: 'Heavy Bath & Body', weight: 400, subtext: 'Shampoo Bottles, Perfumes, Body Lotions, or Skincare Kits.' }
     ]
   },
   home: {
     name: 'Home, Kitchen & Living',
     icon: 'home',
     subs: [
-      { name: 'Utensils', weight: 400 },
-      { name: 'Textiles', weight: 1000 },
-      { name: 'Decor', weight: 1500 },
-      { name: 'Kitchenware', weight: 3000, oversized: true },
-      { name: 'Oversized Home', weight: 5000, oversized: true }
+      { name: 'Light Kitchen Utensils', weight: 400, subtext: 'Cutlery, Spatulas, Small Steel Bowls, Rolling Pins (Belan), or Plastic Containers.' },
+      { name: 'Soft Home Textiles', weight: 1000, subtext: 'Bedsheets, Blankets, Towel Sets, Curtains, or Cushion Covers.' },
+      { name: 'Standard Cookware & Decor', weight: 1500, subtext: 'Dinner Plates, Frying Pans, Tawas, Wall Clocks, Small Rugs, or Table Lamps.' },
+      { name: 'Heavy Kitchenware & Appliances', weight: 3000, subtext: 'Pressure Cookers, Mixer Grinders, Heavy Kadhais, or Cast Iron Pans.' },
+      { name: 'Oversized Home Goods', weight: 5000, oversized: true, subtext: 'Rugs, Large Carpets, Floor Lamps, Large Mirrors, or Small Furniture.' }
     ]
   },
   toys: {
     name: 'Toys, Games & Kids Gear',
     icon: 'smart_toy',
     subs: [
-      { name: 'Small Toy', weight: 300 },
-      { name: 'Standard Toy', weight: 1200 },
-      { name: 'Wooden Toy', weight: 2500 },
-      { name: 'Oversized Toy', weight: 5000, oversized: true }
+      { name: 'Small Toys & Activity Kits', weight: 300, subtext: 'Action Figures, Card Games, Small Plushies, Rattles, or Craft & Stationery Kits.' },
+      { name: 'Standard Boxed Toys', weight: 1200, subtext: 'Board Games, Building Blocks (LEGO), Remote Control Cars, Doll Sets, or Medium Soft Toys.' },
+      { name: 'Heavy / Wooden Toys', weight: 2500, subtext: 'Wooden Train Sets, DIY Science Kits, Large Puzzles, or Electronic Learning Toys.' },
+      { name: 'Oversized Toys & Play Gear', weight: 5000, oversized: true, subtext: 'Play Tents, Large Dollhouses, Baby Walkers, Ride-on Toys, or Large Play Mats.' }
     ]
   },
   books: {
     name: 'Books, Documents & Media',
     icon: 'menu_book',
     subs: [
-      { name: 'Documents', weight: 200 },
-      { name: 'Light Book', weight: 400 },
-      { name: 'Standard Book', weight: 1000 },
-      { name: 'Heavy Book', weight: 2500 }
+      { name: 'Important Documents & Papers', weight: 200, subtext: 'Visas, Legal Papers, Transcripts, Certificates, Planners, or Greeting Cards.' },
+      { name: 'Light Books & Magazines', weight: 400, subtext: 'Paperbacks, Comic Books, Children’s Storybooks, or Thin Magazines.' },
+      { name: 'Standard Hardcovers & Medium Books', weight: 1000, subtext: 'Hardcover Novels, Cookbooks, Biographies, or Medium Graphic Novels.' },
+      { name: 'Heavy Books & Textbooks', weight: 2500, subtext: 'University Textbooks, Coffee Table Books, Heavy Encyclopedias, or Book Box-Sets.' }
     ]
   },
   food: {
@@ -104,8 +116,8 @@ const categoryData: Record<string, CategoryDetail> = {
     icon: 'restaurant',
     isFoodGlobal: true,
     subs: [
-      { name: 'Snacks', weight: 500 },
-      { name: 'Sweets/Groceries', weight: 1500, isRestricted: true }
+      { name: 'Light Snacks & Spices', weight: 500, isRestricted: true, subtext: 'Namkeen, Dry Snacks, Spices (Masalas), Tea Leaves, or Coffee Powder.' },
+      { name: 'Heavy Sweets & Groceries', weight: 1500, isRestricted: true, subtext: 'Mithai / Sweets Boxes, Pickles (Glass Jars), Lentils (Dals), or Baking Ingredients.' }
     ]
   }
 };
@@ -153,11 +165,41 @@ const stepPills = [
   { id: 5, label: 'Review & Actions' }
 ];
 
+// ── Component ────────────────────────────────────────────────────────────
+
 export default function Dashboard() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
+  const [deliveryType, setDeliveryType] = useState<'normal' | 'express'>('normal');
+
+  // Dynamic Category Matrix Settings
+  const [activeCategoryData, setActiveCategoryData] = useState(categoryData);
+
+  useEffect(() => {
+    try {
+      const masterCats = loadMasterCategories();
+      const updated = JSON.parse(JSON.stringify(categoryData)); // Deep clone
+      masterCats.forEach(group => {
+        const catKey = group.id; // e.g. 'clothing'
+        if (updated[catKey]) {
+          group.items.forEach(item => {
+            const sub = updated[catKey].subs.find((s: any) => s.name === item.label);
+            if (sub) {
+              sub.weight = item.weightGrams;
+              sub.subtext = item.subtext;
+            }
+          });
+        }
+      });
+      setActiveCategoryData(updated);
+    } catch (e) {
+      console.warn("Failed to sync category matrix in dashboard:", e);
+    }
+  }, []);
+
   // Navigation and view tabs
+  // ── State ────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
 
   useEffect(() => {
@@ -199,6 +241,7 @@ export default function Dashboard() {
 
   // Modals & Errors
   const [showDraftModal, setShowDraftModal] = useState(false);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<any | null>(null);
   const [showOrderNumberError, setShowOrderNumberError] = useState(false);
   const [promoQty, setPromoQty] = useState(0);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
@@ -226,6 +269,76 @@ export default function Dashboard() {
     fetchExchangeRate();
   }, []);
 
+  // Load saved flow state from localStorage if exists
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Prioritize fresh estimator modal drafts over previous flow state
+      const hasFreshModalDraft = localStorage.getItem('layo_pending_shipment_draft');
+      if (hasFreshModalDraft) {
+        localStorage.removeItem('layo_dashboard_flow_state');
+        return;
+      }
+
+      const saved = localStorage.getItem('layo_dashboard_flow_state');
+      if (saved) {
+        try {
+          const stateObj = JSON.parse(saved);
+          if (stateObj.currentStep) setCurrentStep(stateObj.currentStep);
+          if (stateObj.originType) setOriginType(stateObj.originType);
+          if (stateObj.storeName !== undefined) setStoreName(stateObj.storeName);
+          if (stateObj.orderNumber !== undefined) setOrderNumber(stateObj.orderNumber);
+          if (stateObj.senderName !== undefined) setSenderName(stateObj.senderName);
+          if (stateObj.originCity !== undefined) setOriginCity(stateObj.originCity);
+          if (stateObj.selectedWarehouse !== undefined) setSelectedWarehouse(stateObj.selectedWarehouse);
+          if (stateObj.destinationCity !== undefined) setDestinationCity(stateObj.destinationCity);
+          if (stateObj.destinationAddress !== undefined) setDestinationAddress(stateObj.destinationAddress);
+          if (stateObj.selectedCategories) setSelectedCategories(stateObj.selectedCategories);
+          if (stateObj.qtyState) setQtyState(stateObj.qtyState);
+          if (stateObj.activeDemoState) setActiveDemoState(stateObj.activeDemoState);
+          if (stateObj.promoQty !== undefined) setPromoQty(stateObj.promoQty);
+          if (stateObj.warehouseAction !== undefined) setWarehouseAction(stateObj.warehouseAction);
+          if (stateObj.morePackages !== undefined) setMorePackages(stateObj.morePackages);
+          if (stateObj.deliveryType) setDeliveryType(stateObj.deliveryType);
+          if (stateObj.editingDraftId !== undefined) setEditingDraftId(stateObj.editingDraftId);
+        } catch (e) {
+          console.error("Failed to restore dashboard flow state:", e);
+        }
+      }
+    }
+  }, []);
+
+  // Auto-save dashboard step flow state to localStorage
+  useEffect(() => {
+    const hasProgress = currentStep > 1 || selectedCategories.length > 0 || storeName || senderName || orderNumber || destinationAddress || promoQty > 0;
+    if (hasProgress) {
+      const stateObj = {
+        currentStep,
+        originType,
+        storeName,
+        orderNumber,
+        senderName,
+        originCity,
+        selectedWarehouse,
+        destinationCity,
+        destinationAddress,
+        selectedCategories,
+        qtyState,
+        activeDemoState,
+        promoQty,
+        warehouseAction,
+        morePackages,
+        deliveryType,
+        editingDraftId,
+      };
+      localStorage.setItem('layo_dashboard_flow_state', JSON.stringify(stateObj));
+    }
+  }, [
+    currentStep, originType, storeName, orderNumber, senderName, originCity,
+    selectedWarehouse, destinationCity, destinationAddress, selectedCategories,
+    qtyState, activeDemoState, promoQty, warehouseAction, morePackages,
+    deliveryType, editingDraftId
+  ]);
+
   // Check for return from Stripe Checkout
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -239,20 +352,63 @@ export default function Dashboard() {
           .then(res => res.json())
           .then(async (data) => {
             if (data.verified) {
-              const shipmentId = data.metadata?.shipment_id;
-              if (shipmentId) {
-                await supabase
-                  .from('shipments')
-                  .update({
-                    status: 'paid',
-                    payment_method: 'stripe',
-                    stage_timestamps: { paid: new Date().toISOString() },
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', shipmentId);
+              const targetId = (data.metadata?.shipment_id && data.metadata.shipment_id.length === 36)
+                ? data.metadata.shipment_id
+                : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-000000000000');
+
+              const { data: updatedShipment } = await updateShipmentStage(
+                targetId,
+                'paid',
+                {},
+                {
+                  payment_method: 'stripe',
+                  user_id: user?.id || data.metadata?.user_id || null,
+                  destination_city: data.metadata?.destination_city || 'Canada',
+                  destination_address: data.metadata?.destination_address || '',
+                  india_warehouse: data.metadata?.warehouse || 'Indian Locker Hub',
+                  total_weight: parseFloat(data.metadata?.total_weight_kg || '1.0'),
+                  total_cost: Math.round((data.amountTotal || 0) * (cadToInrRate || 70.4)),
+                  items: data.metadata?.items_summary
+                    ? [{ category: 'Parcel', subcategory: data.metadata.items_summary, quantity: 1, weight: parseFloat(data.metadata?.total_weight_kg || '1.0') }]
+                    : [{ category: 'Parcel', subcategory: 'Layo Locker Dispatch', quantity: 1, weight: 1.0 }],
+                },
+                { id: user?.id || null, email: user?.email || data.customerEmail || null, role: 'customer' },
+                `Payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD completed via Stripe`
+              );
+
+              // Look up customer_id for proper FK linkage
+              let customerId: string | null = null;
+              if (user?.id) {
+                const { data: custRow } = await supabase
+                  .from('customers')
+                  .select('id')
+                  .eq('user_id', user.id)
+                  .maybeSingle();
+                customerId = custRow?.id || null;
               }
+
+              // Record transaction
+              await supabase.from('transactions').insert({
+                shipment_id: targetId,
+                user_id: user?.id || null,
+                amount_cad: data.amountTotal || 0,
+                amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 61)) : 0,
+                currency: data.currency?.toUpperCase() || 'CAD',
+                exchange_rate: cadToInrRate || 61,
+                payment_method: 'stripe',
+                stripe_session_id: sessionId,
+                stripe_payment_intent_id: data.paymentIntentId || null,
+                status: 'completed',
+                customer_email: data.customerEmail || user?.email || null,
+                customer_name: user?.email || null,
+                description: `Layo shipment payment — Locker #${targetId.slice(0, 8).toUpperCase()}`,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
               localStorage.removeItem('layo_pending_shipment');
               localStorage.removeItem('layo_pending_shipment_draft');
+              localStorage.removeItem('layo_dashboard_flow_state');
+              handleStartNewOrder();
               setPaymentBanner({
                 type: 'success',
                 message: `Payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed via Stripe! Your shipment is active and dispatched to our Indian locker hub.`
@@ -303,7 +459,7 @@ export default function Dashboard() {
             if (!qty || qty <= 0) return;
 
             if (key.startsWith('promo-')) {
-              setPromoQty(Math.min(5, qty as number));
+              setPromoQty(qty as number);
               return;
             }
 
@@ -317,7 +473,7 @@ export default function Dashboard() {
             const ageSuffix = key.slice(secondDash + 1);       // e.g. "Adults (18+)" or "default"
 
             const dashSubIdx = MODAL_TO_DASH_SUB[`${catId}-${typeIdx}`];
-            if (dashSubIdx === undefined || !categoryData[catId]) return;
+            if (dashSubIdx === undefined || !activeCategoryData[catId]) return;
 
             const demo    = MODAL_AGE_TO_DEMO[ageSuffix] ?? 'Adult';
             const rowKey  = `${catId}-${dashSubIdx}`;
@@ -349,6 +505,7 @@ export default function Dashboard() {
     }
   }, [user, loading, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Data Fetching ───────────────────────────────────────────────────────
   const fetchDashboardData = async (userId?: string) => {
     setIsFetching(true);
     try {
@@ -357,19 +514,47 @@ export default function Dashboard() {
         supabase.from('warehouses').select('*')
       ]);
 
-      if (shipsResult.data) setShipments(shipsResult.data);
+      const dbShips = shipsResult.data ?? [];
+
+      // Merge local storage drafts — only include drafts belonging to this user
+      let localShips: any[] = [];
+      try {
+        const rawLocal = localStorage.getItem('layo_local_shipments');
+        if (rawLocal) {
+          const allLocal = JSON.parse(rawLocal);
+          // Only keep local drafts for this specific user
+          localShips = allLocal.filter((s: any) => !userId || !s.user_id || s.user_id === userId);
+        }
+      } catch (e) {}
+
+      // Dual-sync merge: DB records take precedence, local backups fill any gaps
+      const mergedMap = new Map();
+      localShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
+      dbShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
+
+      const mergedList = Array.from(mergedMap.values()).sort(
+        (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+
+      setShipments(mergedList);
+      const hasFlowState = typeof window !== 'undefined' ? localStorage.getItem('layo_dashboard_flow_state') : null;
+      const hasProgress = currentStep > 1 || selectedCategories.length > 0 || storeName || senderName || orderNumber || destinationAddress || promoQty > 0 || hasFlowState;
+      if (mergedList.length > 0 && !hasProgress) {
+        setActiveTab('history');
+      }
+
       if (whs.data && whs.data.length > 0) {
         setWarehouses(whs.data);
       } else {
         setWarehouses([
-          { id: 'wh1', city: 'Delhi', pincode: '110001', address: 'Plot 42, Layo Hub, Okhla Phase 3', contact: '+91 98100 12345' },
+          { id: 'wh1', city: 'Delhi', pincode: '110077', address: 'C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi', contact: '+91 9321852629' },
           { id: 'wh2', city: 'Mumbai', pincode: '400001', address: 'Gala 5, Hub 2, Andheri East', contact: '+91 98200 54321' }
         ]);
       }
     } catch (err) {
       console.error('Failed to fetch database information', err);
       setWarehouses([
-        { id: 'wh1', city: 'Delhi', pincode: '110001', address: 'Plot 42, Layo Hub, Okhla Phase 3' },
+        { id: 'wh1', city: 'Delhi', pincode: '110077', address: 'C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi' },
         { id: 'wh2', city: 'Mumbai', pincode: '400001', address: 'Gala 5, Hub 2, Andheri East' }
       ]);
     } finally {
@@ -377,6 +562,7 @@ export default function Dashboard() {
     }
   };
 
+  // ── Event Handlers ──────────────────────────────────────────────────────
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
@@ -389,6 +575,9 @@ export default function Dashboard() {
 
   // Reset wizard cleanly when starting a new order
   const handleStartNewOrder = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('layo_dashboard_flow_state');
+    }
     setEditingDraftId(null);
     setSelectedCategories([]);
     setQtyState({});
@@ -410,7 +599,7 @@ export default function Dashboard() {
       // Remove all qty and activeDemo entries for this category
       setQtyState(prev => {
         const next = { ...prev };
-        categoryData[key].subs.forEach((_, idx) => {
+        activeCategoryData[key].subs.forEach((_, idx) => {
           demographicOptions.forEach(opt => {
             delete next[`${key}-${idx}-${opt.label}`];
           });
@@ -437,7 +626,6 @@ export default function Dashboard() {
     setQtyState(prev => {
       const cur = prev[fullKey] ?? 0;
       let nxt = cur + delta;
-      if (isPromo && nxt > 5) nxt = 5;
       nxt = Math.max(0, nxt);
       return {
         ...prev,
@@ -452,10 +640,11 @@ export default function Dashboard() {
   };
 
   // Active configurations extractor
+  // ── Derived State (memoised) ────────────────────────────────────────────
   const activeItems = useMemo(() => {
     const list: any[] = [];
     selectedCategories.forEach(catKey => {
-      const cat = categoryData[catKey];
+      const cat = activeCategoryData[catKey];
       if (!cat) return;
       cat.subs.forEach((sub, idx) => {
         const rowKey = `${catKey}-${idx}`;
@@ -503,28 +692,64 @@ export default function Dashboard() {
     return list;
   }, [qtyState, selectedCategories]);
 
+
+
   // Unified Totals Engine
   const totals = useMemo(() => {
-    let totalWeightGrams = 0;
+    let nonPromoWeightGrams = 0;
+    let totalPromoQty = promoQty;
+    let isDocument = false;
 
     activeItems.forEach(item => {
-      totalWeightGrams += item.weightGrams;
+      if (item.category === 'books' && item.subcategory.includes('Document')) {
+        isDocument = true;
+      }
+      if (item.promo) {
+        totalPromoQty += item.qty;
+      } else {
+        nonPromoWeightGrams += item.weightGrams;
+      }
     });
 
-    const hasItems = totalWeightGrams > 0;
-    const displayWeightGrams = hasItems ? Math.max(500, totalWeightGrams) : 0;
-    const weightCost = hasItems ? totalWeightGrams * 0.05 : 0;
-    const totalPriceCAD = hasItems ? 25.0 + weightCost : 0;
-    const valueReclaimed = 0;
+    // 5 Free Essentials dynamic promo weight calculation
+    const promoWeightGrams = Math.max(0, totalPromoQty - 5) * 50;
+    const totalWeightGrams = nonPromoWeightGrams + promoWeightGrams;
+
+    const hasItems = totalWeightGrams > 0 || totalPromoQty > 0;
+    const displayWeightGrams = hasItems ? Math.max(50, totalWeightGrams) : 0;
+    const weightKg = displayWeightGrams / 1000;
+
+    if (!hasItems) {
+      return {
+        totalWeightGrams: 0,
+        totalWeightKg: 0,
+        totalPriceCAD: 0,
+        totalPriceINR: 0,
+        carrierBaseINR: 0,
+        opsFeeINR: 0,
+        marginINR: 0,
+        valueReclaimed: 0,
+      };
+    }
+
+    const costCalc = calculateLayoDeliveryCost({
+      weightKg,
+      deliveryType,
+      isDocument,
+      cadToInrRate,
+    });
 
     return {
       totalWeightGrams: displayWeightGrams,
-      totalWeightKg: displayWeightGrams / 1000,
-      totalPriceCAD,
-      totalPriceINR: Math.round(totalPriceCAD * cadToInrRate),
-      valueReclaimed: Math.round(valueReclaimed)
+      totalWeightKg: weightKg,
+      totalPriceCAD: costCalc.finalPriceCAD,
+      totalPriceINR: costCalc.finalPriceINR,
+      carrierBaseINR: costCalc.carrierBaseINR,
+      opsFeeINR: costCalc.opsFeeINR,
+      marginINR: costCalc.marginINR,
+      valueReclaimed: 0
     };
-  }, [activeItems, cadToInrRate]);
+  }, [activeItems, deliveryType, cadToInrRate]);
 
   // Warnings checker
   const warnings = useMemo(() => {
@@ -617,7 +842,9 @@ export default function Dashboard() {
           items: itemsPayload,
           status: 'Draft Estimate',
           payment_method: 'stripe',
-        });
+          warehouse_action: warehouseAction || 'ship',
+          expected_packages: morePackages || 1,
+        }, { id: user?.id, email: user?.email, role: 'customer' });
         if (data && data[0]) {
           targetShipmentId = data[0].id;
         }
@@ -722,22 +949,22 @@ export default function Dashboard() {
 
       s.items.forEach((it: any) => {
         if (it.category === 'promo') {
-          setPromoQty(Math.min(5, it.quantity || 1));
+          setPromoQty(it.quantity || 1);
           return;
         }
         const catKey = it.category;
-        if (catKey && categoryData[catKey]) {
+        if (catKey && activeCategoryData[catKey]) {
           catsWithItems.add(catKey);
-          const subIndex = categoryData[catKey].subs.findIndex(
+          const subIndex = activeCategoryData[catKey].subs.findIndex(
             (sub: any) => sub.name.toLowerCase() === (it.subcategory || '').toLowerCase()
           );
           const effectiveSubIdx = subIndex >= 0 ? subIndex : 0;
           const demo = it.demographic || 'Adult';
-          const key = categoryData[catKey].requiresAge
+          const key = activeCategoryData[catKey].requiresAge
             ? `${catKey}-${effectiveSubIdx}-${demo}`
             : `${catKey}-${effectiveSubIdx}-default`;
           newQtyState[key] = (newQtyState[key] || 0) + (it.quantity || 1);
-          if (categoryData[catKey].requiresAge) {
+          if (activeCategoryData[catKey].requiresAge) {
             newActiveDemoState[catKey] = demo;
           }
         }
@@ -826,6 +1053,8 @@ export default function Dashboard() {
             total_cost: totals.totalPriceINR,
             items: itemsPayload,
             status: 'Draft Estimate',
+            warehouse_action: warehouseAction || 'ship',
+            expected_packages: morePackages || 1,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingDraftId);
@@ -859,11 +1088,19 @@ export default function Dashboard() {
           total_cost: totals.totalPriceINR,
           items: itemsPayload,
           status: 'Draft Estimate',
-          payment_method: 'draft'
-        });
+          payment_method: 'draft',
+          warehouse_action: warehouseAction || 'ship',
+          expected_packages: morePackages || 1,
+        }, { id: user?.id, email: user?.email, role: 'customer' });
         if (data && data[0]) {
           const parsed = parseShipment(data[0]);
-          setShipments(prev => [parsed, ...prev.filter(x => x.id !== parsed.id)]);
+          setShipments(prev => {
+            const nextList = [parsed, ...prev.filter(x => x.id !== parsed.id)];
+            try {
+              localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+            } catch (e) {}
+            return nextList;
+          });
         }
         if (user?.id) {
           fetchDashboardData(user.id);
@@ -873,6 +1110,9 @@ export default function Dashboard() {
       console.error('Failed to save draft shipment:', err);
     } finally {
       localStorage.removeItem('layo_pending_shipment');
+      localStorage.removeItem('layo_pending_shipment_draft');
+      localStorage.removeItem('layo_dashboard_flow_state');
+      handleStartNewOrder();
       setShowDraftModal(false);
       setActiveTab('history');
     }
@@ -924,22 +1164,23 @@ export default function Dashboard() {
 
   const selectedWarehouseObject = warehouses.find(w => w.id === selectedWarehouse);
 
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="bg-[#FAF8EE] text-[#0E1F38] min-h-screen flex flex-col font-sans selection:bg-[#FF5A65] selection:text-white">
       
       {/* ── Top App Bar ── */}
-      <header className="bg-[#FAF8EE]/90 backdrop-blur-md border-b border-black/5 flex justify-between items-center w-full px-6 md:px-16 py-4 sticky top-0 z-50 shadow-sm">
-        <div className="flex items-center gap-4">
+      <header className="bg-[#FAF8EE]/90 backdrop-blur-md border-b border-black/5 flex justify-between items-center w-full px-4 sm:px-6 md:px-16 py-3 sm:py-4 sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center gap-2 sm:gap-4">
           <Logo showTagline={false} darkText={true} onClick={handleLogoClick} />
         </div>
-        <div className="flex items-center gap-6">
-          <Link href="/" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-sm font-semibold">Home</Link>
+        <div className="flex items-center gap-3 sm:gap-6">
+          <Link href="/" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-xs sm:text-sm font-semibold">Home</Link>
           {['admin@layo.com', 'ankur@layo.com'].includes(user?.email || '') && (
-            <Link href="/admin" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-sm font-semibold">Admin Portal</Link>
+            <Link href="/admin" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-xs sm:text-sm font-semibold">Admin</Link>
           )}
           <button 
             onClick={() => supabase.auth.signOut()} 
-            className="text-[#FF5A65] hover:bg-[#FF5A65] hover:text-white text-xs font-bold uppercase tracking-wider border border-[#FF5A65]/30 bg-white px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
+            className="text-[#FF5A65] hover:bg-[#FF5A65] hover:text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider border border-[#FF5A65]/30 bg-white px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all shadow-sm cursor-pointer"
           >
             Sign Out
           </button>
@@ -947,7 +1188,7 @@ export default function Dashboard() {
       </header>
 
       {/* ── Main Panel ── */}
-      <main className="flex-grow w-full max-w-[1200px] mx-auto px-6 py-12">
+      <main className="flex-grow w-full max-w-[1200px] mx-auto px-3 sm:px-6 py-6 sm:py-12">
         
         {/* Payment Banner Notice */}
         {paymentBanner && (
@@ -1167,7 +1408,7 @@ export default function Dashboard() {
                   const matchedHub = warehouses.find(
                     w => w.city?.toLowerCase() === (s.india_warehouse || '').toLowerCase() ||
                          w.address?.toLowerCase().includes((s.india_warehouse || '').toLowerCase())
-                  ) || warehouses[0] || { city: 'Delhi NCR Hub', address: 'Plot 42, Udyog Vihar Phase 4, Gurugram', pincode: '122015', contact: '+91 98100 12345' };
+                  ) || warehouses[0] || { city: 'Delhi NCR Hub', address: 'C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi', pincode: '110077', contact: '+91 9321852629' };
 
                   return (
                     <div key={s.id} className="bg-white p-6 rounded-3xl border border-black/5 space-y-4 shadow-sm text-[#0E1F38]">
@@ -1185,7 +1426,7 @@ export default function Dashboard() {
                             {stageInfo.badge}
                           </span>
                           <span className="font-mono text-xs font-bold text-[#0E1F38]/60 bg-[#FAF8EE] px-2 py-0.5 rounded">
-                            #{s.id ? s.id.slice(0, 8).toUpperCase() : 'LOCKER'}
+                            #{formatShipmentId(s.id)}
                           </span>
                         </div>
                         <span className="text-[11px] text-[#0E1F38]/50">
@@ -1252,6 +1493,26 @@ export default function Dashboard() {
                         </div>
                       )}
 
+                       {/* Hold & Combine Status Banner */}
+                       {s.warehouse_action === 'hold' && (
+                         <div className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50 flex items-start gap-3 text-xs">
+                           <span className="text-xl leading-none mt-0.5">📦</span>
+                           <div className="flex-1">
+                             <p className="font-black text-amber-800 uppercase tracking-wider text-[10px]">Hold &amp; Combine Active</p>
+                             <p className="text-amber-700 mt-0.5 leading-relaxed">
+                               {s.status === 'Draft Estimate'
+                                 ? `Your estimate is saved. Pay to activate Hold & Combine — we'll wait for all ${s.expected_packages || 2} packages before dispatching.`
+                                 : s.status === 'holding'
+                                 ? `Holding at India Hub — waiting for remaining packages. Expected: ${s.expected_packages || 2} total.`
+                                 : s.status === 'hold_combined'
+                                 ? `All packages combined and ready for airfreight dispatch!`
+                                 : `Hold & Combine preference saved. Expecting ${s.expected_packages || 2} packages.`
+                               }
+                             </p>
+                           </div>
+                         </div>
+                       )}
+
                       {/* Assigned India Hub Address (when Paid or Inwarded) */}
                       {!isDraft && (statusNormalized === 'paid' || statusNormalized === 'inwarded' || statusNormalized === 'arrived') && (
                         <div className="p-3 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-2 text-xs">
@@ -1261,7 +1522,7 @@ export default function Dashboard() {
                             </span>
                             <button
                               onClick={() => {
-                                const addr = `Layo Locker (Locker #${s.id ? s.id.slice(0, 8).toUpperCase() : 'USER'})\n${matchedHub.address}\n${matchedHub.city} - ${matchedHub.pincode}\nPhone: ${matchedHub.contact || '+91 98100 12345'}`;
+                                const addr = `Layo Locker (Locker #${formatShipmentId(s.id)})\n${matchedHub.address}\n${matchedHub.city} - ${matchedHub.pincode}\nPhone: ${matchedHub.contact || '+91 98100 12345'}`;
                                 navigator.clipboard.writeText(addr);
                                 alert('Warehouse Address copied! Paste this as delivery address on Myntra/Amazon.');
                               }}
@@ -1272,7 +1533,7 @@ export default function Dashboard() {
                             </button>
                           </div>
                           <p className="font-mono text-[11px] text-[#0E1F38] leading-tight">
-                            Layo Locker (Locker #{s.id ? s.id.slice(0, 8).toUpperCase() : ''})<br />
+                            Layo Locker (Locker #{formatShipmentId(s.id)})<br />
                             {matchedHub.address}, {matchedHub.city} - {matchedHub.pincode}
                           </p>
                         </div>
@@ -1310,7 +1571,7 @@ export default function Dashboard() {
                       )}
 
                       {/* Shipment Summary */}
-                      <div className="border-t border-black/5 pt-3 space-y-2">
+                      <div className="border-t border-black/5 pt-3 space-y-3">
                         <div className="flex justify-between items-start">
                           <div>
                             <h3 className="font-bold text-sm text-[#0E1F38]">✈ {s.destination_city || 'Toronto (GTA)'}</h3>
@@ -1318,7 +1579,12 @@ export default function Dashboard() {
                           </div>
                           <div className="text-right text-xs">
                             <p className="font-mono text-[#0E1F38] font-bold">{s.total_weight || 1.0} kg</p>
-                            <p className="text-[#FF5A65] font-bold">₹{(s.total_cost || 0).toLocaleString()}</p>
+                            <p className="text-[#FF5A65] font-black text-sm">
+                              ${(s.amount_cad || Number(((s.total_cost || 0) / (cadToInrRate || 70.4)).toFixed(2))).toFixed(2)} CAD
+                            </p>
+                            <p className="text-[10px] text-[#0E1F38]/60 font-bold font-mono">
+                              (₹{(s.total_cost || 0).toLocaleString()})
+                            </p>
                           </div>
                         </div>
 
@@ -1327,6 +1593,14 @@ export default function Dashboard() {
                             <strong>Reference Order:</strong> {s.external_order_id}
                           </p>
                         )}
+
+                        <button
+                          onClick={() => setSelectedOrderDetails(s)}
+                          className="w-full py-2.5 bg-[#FAF8EE] hover:bg-[#1B250F] text-[#0E1F38] hover:text-white border border-black/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <span className="material-symbols-outlined text-sm">info</span>
+                          View Order &amp; Item Details
+                        </button>
 
                         {/* Draft Controls */}
                         {isDraft && (
@@ -1657,8 +1931,8 @@ export default function Dashboard() {
                   </div>
 
                   {/* 3x3 Grid */}
-                  <div className="grid grid-cols-3 gap-3">
-                    {Object.entries(categoryData).map(([key, val]) => {
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {Object.entries(activeCategoryData).map(([key, val]) => {
                       const isSelected = selectedCategories.includes(key);
                       return (
                         <button
@@ -1718,10 +1992,10 @@ export default function Dashboard() {
                             <span className="material-symbols-outlined text-[#2E7D32] text-xl leading-none">workspace_premium</span>
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
-                                Free light weight items( max 50 gm)-
+                                Light Weight Accessories (max 50 gm)-
                               </span>
                               <span className="text-[9px] text-[#2E7D32] bg-white px-2 py-0.5 rounded-md font-black uppercase tracking-wider border border-[#C8E6C9]">
-                                Limit: Max 5 Items
+                                First 5 Free
                               </span>
                             </div>
                           </div>
@@ -1730,13 +2004,10 @@ export default function Dashboard() {
                         <div className="px-5 py-3.5 flex items-center justify-between gap-3 bg-white">
                           <div className="flex-grow min-w-0">
                             <p className="font-bold text-sm text-[#0E1F38]">
-                              5 Light Weight Items (Free)
+                              Small Cloth &amp; Light Accessories (Max 50g)
                             </p>
                             <p className="text-[11px] text-[#0E1F38]/70 mt-0.5 font-light">
-                              Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!
-                              {promoQty >= 5 && (
-                                <span className="text-[#FF5A65] font-bold ml-1.5">· Limit of 5 reached</span>
-                              )}
+                              Socks, innerwear, ties, handkerchiefs, light earrings, chains (up to 50g each). First 5 items ship free! Additional items add 50g each.
                             </p>
                           </div>
 
@@ -1752,12 +2023,8 @@ export default function Dashboard() {
                             </button>
                             <span className="w-5 text-center font-bold text-sm text-[#0E1F38]">{promoQty}</span>
                             <button
-                              onClick={() => setPromoQty(prev => Math.min(5, prev + 1))}
-                              disabled={promoQty >= 5}
-                              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                                promoQty >= 5 ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40' : 'bg-white hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer shadow-xs'
-                              }`}
-                              title={promoQty >= 5 ? 'Maximum limit of 5 free items reached' : undefined}
+                              onClick={() => setPromoQty(prev => prev + 1)}
+                              className="w-8 h-8 rounded-full flex items-center justify-center transition-all bg-white hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer shadow-xs"
                             >
                               <span className="material-symbols-outlined text-sm">add</span>
                             </button>
@@ -1767,12 +2034,12 @@ export default function Dashboard() {
                     )}
 
                     {selectedCategories.map(catKey => {
-                      const cat = categoryData[catKey];
+                      const cat = activeCategoryData[catKey];
                       const activeDemo = activeDemoState[catKey] ?? 'Adult';
                       return (
                         <div key={catKey} className="pt-6 first:pt-0">
                           {/* Category header */}
-                          <div className="flex items-start justify-between mb-4 gap-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
                             <h4 className="text-xs font-black text-[#FF5A65] uppercase tracking-[0.2em] flex items-center gap-2 pt-0.5">
                               <span className="material-symbols-outlined text-base leading-none">{cat.icon}</span>
                               {cat.name}
@@ -1830,11 +2097,6 @@ export default function Dashboard() {
                                   <div className="flex-grow pr-4">
                                     <p className="font-bold text-sm text-[#0E1F38] flex items-center gap-1.5">
                                       {sub.name}
-                                      {sub.promo && (
-                                        <span className="text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
-                                          FREE (Max 50g · Max 5)
-                                        </span>
-                                      )}
                                       {(sub.oversized || sub.isRestricted || cat.isFoodGlobal) && (
                                         <span
                                           className="material-symbols-outlined text-xs text-[#FF5A65] leading-none cursor-help"
@@ -1844,10 +2106,10 @@ export default function Dashboard() {
                                         </span>
                                       )}
                                     </p>
-                                    <p className="text-[10px] text-[#0E1F38]/60 mt-0.5 uppercase tracking-wider font-semibold">
-                                      {sub.weight}g
-                                      {sub.promo && currentQty >= 5 && (
-                                        <span className="text-[#FF5A65] normal-case ml-1 font-medium">· Max 5 limit reached</span>
+                                    <p className="text-[11px] text-[#0E1F38]/60 mt-0.5 font-light normal-case">
+                                      {sub.subtext}
+                                      {sub.promo && (
+                                        <span className="text-emerald-600 font-bold ml-1.5">· Promo (First 5 Free)</span>
                                       )}
                                     </p>
                                   </div>
@@ -1872,19 +2134,11 @@ export default function Dashboard() {
                                         } else {
                                           setQtyState(prev => {
                                             const cur = prev[`${rowKey}-default`] ?? 0;
-                                            let nxt = cur + 1;
-                                            if (sub.promo && nxt > 5) nxt = 5;
-                                            return { ...prev, [`${rowKey}-default`]: nxt };
+                                            return { ...prev, [`${rowKey}-default`]: cur + 1 };
                                           });
                                         }
                                       }}
-                                      disabled={sub.promo && currentQty >= 5}
-                                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                                        sub.promo && currentQty >= 5
-                                          ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40'
-                                          : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
-                                      }`}
-                                      title={sub.promo && currentQty >= 5 ? 'Maximum limit of 5 free promo items reached' : undefined}
+                                      className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer"
                                     >
                                       <span className="material-symbols-outlined text-sm leading-none">add</span>
                                     </button>
@@ -1945,7 +2199,7 @@ export default function Dashboard() {
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-white border border-black/10 flex items-center justify-center text-[#FF5A65] shadow-sm">
                               <span className="material-symbols-outlined text-xl leading-none">
-                                {categoryData[item.category].icon}
+                                {activeCategoryData[item.category].icon}
                               </span>
                             </div>
                             <div>
@@ -2115,9 +2369,36 @@ export default function Dashboard() {
                     <span className="text-[#0E1F38]/60 font-medium">Conversion Index</span>
                     <span className="text-[#0E1F38] font-bold font-mono">1 CAD = ₹{cadToInrRate.toFixed(2)} INR</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#0E1F38]/60 font-medium">Base Dispatch Floor</span>
-                    <span className="text-[#0E1F38] font-semibold">{activeItems.length === 0 ? '—' : '$25.00 CAD'}</span>
+
+                  {/* Delivery Option Selector */}
+                  <div className="space-y-1.5 pt-2 border-t border-black/5">
+                    <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60 block">Delivery Speed</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryType('normal')}
+                        className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-between transition-all cursor-pointer ${
+                          deliveryType === 'normal'
+                            ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-xs ring-1 ring-[#8BC34A]/40'
+                            : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/10 hover:border-black/20'
+                        }`}
+                      >
+                        <span>📦 Normal</span>
+                        {deliveryType === 'normal' && <span className="text-[8px] bg-[#8BC34A] text-[#1B250F] font-black px-1 rounded">ON</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryType('express')}
+                        className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-between transition-all cursor-pointer ${
+                          deliveryType === 'express'
+                            ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-xs ring-1 ring-[#8BC34A]/40'
+                            : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/10 hover:border-black/20'
+                        }`}
+                      >
+                        <span>⚡ Express</span>
+                        {deliveryType === 'express' && <span className="text-[8px] bg-[#8BC34A] text-[#1B250F] font-black px-1 rounded">ON</span>}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="h-px bg-black/5 my-2"></div>
@@ -2187,6 +2468,139 @@ export default function Dashboard() {
                 className="flex-1 py-3.5 border border-red-200 text-red-600 hover:bg-red-50 font-bold text-xs uppercase tracking-widest rounded-2xl transition-all cursor-pointer"
               >
                 No, Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Order Details Popup Modal ── */}
+      {selectedOrderDetails && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#FAF8EE] border border-black/10 rounded-3xl w-full max-w-2xl p-6 sm:p-8 shadow-2xl space-y-6 animate-fade-in relative text-[#0E1F38] my-8 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex justify-between items-start border-b border-black/10 pb-4">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#FF5A65] block">
+                  Complete Order Specification
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38] flex items-center gap-2 mt-0.5">
+                  Locker Order #{formatShipmentId(selectedOrderDetails.id)}
+                </h2>
+                <p className="text-xs text-[#0E1F38]/60 mt-0.5 font-medium">
+                  Created on {selectedOrderDetails.created_at ? new Date(selectedOrderDetails.created_at).toLocaleString() : 'N/A'}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedOrderDetails(null)}
+                className="w-9 h-9 rounded-full bg-white border border-black/10 flex items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38] hover:border-black/30 transition-all cursor-pointer font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Financial & Weight Overview Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Customer Rate ($ CAD)</span>
+                <p className="text-lg font-black text-[#FF5A65] font-mono">
+                  ${(selectedOrderDetails.amount_cad || Number(((selectedOrderDetails.total_cost || 0) / (cadToInrRate || 70.4)).toFixed(2))).toFixed(2)}
+                </p>
+                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">CAD Price</span>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">INR Equivalent (₹)</span>
+                <p className="text-lg font-black text-[#0E1F38] font-mono">
+                  ₹{(selectedOrderDetails.total_cost || 0).toLocaleString()}
+                </p>
+                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">1 CAD ≈ 70.4 INR</span>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Gross Weight</span>
+                <p className="text-lg font-black text-[#0E1F38] font-mono">
+                  {selectedOrderDetails.total_weight || 1.0} kg
+                </p>
+                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">{((selectedOrderDetails.total_weight || 1.0) * 1000).toLocaleString()} grams</span>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Status Stage</span>
+                <p className="text-xs font-black text-emerald-700 capitalize mt-1 truncate">
+                  {selectedOrderDetails.status || 'Active'}
+                </p>
+                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Trackable</span>
+              </div>
+            </div>
+
+            {/* Declared Parcel Items */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-black/5 space-y-3">
+              <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
+                <span>📦</span> Declared Items &amp; Parcel Breakdown ({Array.isArray(selectedOrderDetails.items) ? selectedOrderDetails.items.length : 0})
+              </h3>
+              {Array.isArray(selectedOrderDetails.items) && selectedOrderDetails.items.length > 0 ? (
+                <div className="divide-y divide-black/5">
+                  {selectedOrderDetails.items.map((it: any, idx: number) => (
+                    <div key={idx} className="py-2.5 flex justify-between items-center text-xs">
+                      <div>
+                        <p className="font-bold text-[#0E1F38]">
+                          {it.subcategory || it.name || it.category || 'Parcel Item'}
+                        </p>
+                        <p className="text-[10px] text-[#0E1F38]/60 font-medium">
+                          Category: {it.category || 'General'} {it.demographic ? `· ${it.demographic}` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="bg-[#FAF8EE] px-2.5 py-1 rounded-lg border border-black/5 font-mono font-bold text-[#0E1F38]">
+                          {it.quantity || 1} qty
+                        </span>
+                        {it.weight && (
+                          <span className="text-[10px] text-[#0E1F38]/60 block mt-0.5 font-mono">
+                            {it.weight} kg each
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-[#0E1F38]/60 font-light">No individual item declarations logged.</p>
+              )}
+            </div>
+
+            {/* Assigned Hub & Destination Address */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-white p-4 rounded-2xl border border-black/5 space-y-1.5 text-xs">
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">🇮🇳 India Hub Location</span>
+                <p className="font-bold text-[#0E1F38]">{selectedOrderDetails.india_warehouse || 'Delhi NCR Hub'}</p>
+                <p className="text-[11px] text-[#0E1F38]/70 font-light leading-relaxed">
+                  Layo Locker (Locker #{selectedOrderDetails.id ? selectedOrderDetails.id.slice(0, 8).toUpperCase() : ''})<br />
+                  C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi, Delhi - 110077
+                </p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-black/5 space-y-1.5 text-xs">
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">🇨🇦 Canada Destination</span>
+                <p className="font-bold text-[#0E1F38]">{selectedOrderDetails.destination_city || 'Toronto (GTA)'}</p>
+                <p className="text-[11px] text-[#0E1F38]/70 font-light leading-relaxed">
+                  {selectedOrderDetails.destination_address || 'Delivery Address on File'}
+                </p>
+                {selectedOrderDetails.external_order_id && (
+                  <p className="text-[10px] font-mono text-[#0E1F38]/70 pt-1">
+                    <strong>Ref Order:</strong> {selectedOrderDetails.external_order_id}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <div className="pt-2">
+              <button
+                onClick={() => setSelectedOrderDetails(null)}
+                className="w-full py-3 bg-[#1B250F] text-white font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-[#2c3b19] transition-all cursor-pointer shadow-md"
+              >
+                Close Order Details
               </button>
             </div>
           </div>

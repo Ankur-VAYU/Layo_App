@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
+import { loadMasterCategories } from '@/lib/categoryMatrix';
 
 /* ── Weight matrix ── */
 const CATEGORIES = [
@@ -19,55 +21,55 @@ const CATEGORIES = [
 
 const ITEM_TYPES: Record<string, { id: string; label: string; subtext: string; weight: number; isPromo?: boolean; isOversized?: boolean; isFood?: boolean }[]> = {
   clothing: [
-    { id: 'light_top',    label: 'Light Topwear',        subtext: 'T-shirts, Shirts, Kurtis',              weight: 200  },
-    { id: 'heavy_top',    label: 'Heavy Outerwear',       subtext: 'Jackets, Sweaters, Coats',              weight: 900  },
-    { id: 'light_bot',    label: 'Light Bottoms',         subtext: 'Shorts, Leggings, Light Pajamas',       weight: 250  },
-    { id: 'heavy_bot',    label: 'Heavy Bottoms',         subtext: 'Jeans, Trousers, Joggers',              weight: 500  },
-    { id: 'light_dress',  label: 'Light Dresses & Sets',  subtext: 'Casual Dresses, Rompers, Co-ords',      weight: 400  },
-    { id: 'heavy_eth',    label: 'Heavy Ethnic & Party',  subtext: 'Lehengas, Bridal Sarees, Gowns',        weight: 1000 },
-    { id: 'heavy_win',    label: 'Heavy Winter Sets',     subtext: 'Tracksuits, Snowsuits',                 weight: 1300 },
+    { id: 'light_top',    label: 'Light Topwear',               subtext: 'T-shirts, Shirts, Kurtis, or similar lightweight tops.',                      weight: 200  },
+    { id: 'heavy_top',    label: 'Heavy Topwear & Outerwear',   subtext: 'Jackets, Sweaters, Coats, or any thick winter tops.',                        weight: 900  },
+    { id: 'light_bot',    label: 'Light Bottoms',               subtext: 'Shorts, Leggings, Light Pajamas, or thin pants.',                            weight: 250  },
+    { id: 'heavy_bot',    label: 'Heavy Bottoms',               subtext: 'Jeans, Trousers, Joggers, or heavy material pants.',                         weight: 500  },
+    { id: 'light_dress',  label: 'Light Dresses & Sets',        subtext: 'Casual Dresses, Light Cotton Suits, Daily-Wear Sarees, Rompers or co-ords.', weight: 400  },
+    { id: 'heavy_eth',    label: 'Heavy Ethnic & Party',        subtext: 'Heavy Lehengas, Bridal Sarees, Embroidered Suits, Gowns.',                   weight: 1000 },
+    { id: 'heavy_win',    label: 'Heavy Winter Sets',           subtext: 'Tracksuits, Snowsuits, or heavy 2-piece winter combos.',                     weight: 1300 },
   ],
   footwear: [
-    { id: 'light_shoe',   label: 'Light Footwear',        subtext: 'Flip-Flops, Flats, Sandals',           weight: 400  },
-    { id: 'heavy_shoe',   label: 'Heavy Footwear',        subtext: 'Sneakers, Boots, Leather Shoes',        weight: 1000 },
+    { id: 'light_shoe',   label: 'Light Footwear',              subtext: "Flip-Flops, Flats, Sandals, Ballet Flats, or kids' shoes.",                  weight: 400  },
+    { id: 'heavy_shoe',   label: 'Heavy Footwear',              subtext: 'Sneakers, Running Shoes, Formal Leather Shoes, Boots, or Block Heels.',      weight: 1000 },
   ],
   bags: [
-    { id: 'small_bag',    label: 'Small Bags & Wallets',  subtext: 'Wallets, Clutches, Sling Bags',         weight: 300  },
-    { id: 'medium_bag',   label: 'Medium / Heavy Bags',   subtext: 'Backpacks, Tote Bags, Duffle',          weight: 800  },
-    { id: 'luggage',      label: 'Luggage / Trolleys',    subtext: 'Suitcases, Cabin Bags',                 weight: 3000, isOversized: true },
+    { id: 'small_bag',    label: 'Small Bags & Wallets',        subtext: 'Wallets, Purses, Clutches, Sling Bags, or Fanny Packs.',                     weight: 300  },
+    { id: 'medium_bag',   label: 'Medium/Heavy Bags',           subtext: 'Backpacks, Laptop Bags, Handbags, Tote Bags, or Duffle Bags.',               weight: 800  },
+    { id: 'luggage',      label: 'Luggage / Trolleys',          subtext: 'Cabin Luggage, Suitcases, or Check-in Bags.',                                weight: 3000, isOversized: true },
   ],
   jewelry: [
-    { id: 'struct_acc',  label: 'Structured Accessories', subtext: 'Watches, Sunglasses, Belts',            weight: 200  },
+    { id: 'struct_acc',   label: 'Structured Accessories',      subtext: 'Watches, Sunglasses, Leather Belts, or heavy Bridal Jewelry sets.',          weight: 200  },
   ],
   beauty: [
-    { id: 'light_cos',   label: 'Light Cosmetics',        subtext: 'Lipsticks, Brushes, Serums',           weight: 80   },
-    { id: 'heavy_bath',  label: 'Heavy Bath & Body',      subtext: 'Shampoo, Perfumes, Lotions',            weight: 400  },
+    { id: 'light_cos',    label: 'Light Cosmetics',             subtext: 'Lipsticks, Kajal, Makeup Brushes, Compacts, or small serums.',               weight: 80   },
+    { id: 'heavy_bath',   label: 'Heavy Bath & Body',           subtext: 'Shampoo Bottles, Perfumes, Body Lotions, or Skincare Kits.',                 weight: 400  },
   ],
   home: [
-    { id: 'light_kit',      label: 'Light Utensils',          subtext: 'Cutlery, Small Bowls',              weight: 400  },
-    { id: 'soft_tex',       label: 'Soft Home Textiles',      subtext: 'Bedsheets, Blankets, Towels',       weight: 1000 },
-    { id: 'std_cook',       label: 'Cookware & Decor',        subtext: 'Dinner Plates, Pans, Lamps',        weight: 1500 },
-    { id: 'heavy_kit',      label: 'Heavy Kitchenware',       subtext: 'Pressure Cookers, Grinders',        weight: 3000 },
-    { id: 'oversized_home', label: 'Oversized Home Goods',    subtext: 'Carpets, Floor Lamps, Mirrors',     weight: 5000, isOversized: true },
+    { id: 'light_kit',      label: 'Light Utensils',            subtext: 'Cutlery, Spatulas, Small Steel Bowls, Rolling Pins (Belan), Plastic.',       weight: 400  },
+    { id: 'soft_tex',       label: 'Soft Home Textiles',        subtext: 'Bedsheets, Blankets, Towel Sets, Curtains, or Cushion Covers.',              weight: 1000 },
+    { id: 'std_cook',       label: 'Standard Cookware & Decor', subtext: 'Dinner Plates, Frying Pans, Tawas, Wall Clocks, Small Rugs, Lamps.',        weight: 1500 },
+    { id: 'heavy_kit',      label: 'Heavy Kitchenware',         subtext: 'Pressure Cookers, Mixer Grinders, Heavy Kadhais, or Cast Iron Pans.',        weight: 3000 },
+    { id: 'oversized_home', label: 'Oversized Home Goods',      subtext: 'Rugs, Large Carpets, Floor Lamps, Large Mirrors, or Small Furniture.',       weight: 5000, isOversized: true },
   ],
   toys: [
-    { id: 'small_toy',     label: 'Small Toys',            subtext: 'Action Figures, Plushies',             weight: 300  },
-    { id: 'std_toy',       label: 'Boxed Toys',            subtext: 'Board Games, LEGO, RC Cars',           weight: 1200 },
-    { id: 'heavy_toy',     label: 'Heavy / Wooden Toys',   subtext: 'Wooden Trains, Large Puzzles',         weight: 2500 },
-    { id: 'oversized_toy', label: 'Oversized Toys',        subtext: 'Play Tents, Baby Walkers',             weight: 5000, isOversized: true },
+    { id: 'small_toy',     label: 'Small Toys & Activity Kits', subtext: 'Action Figures, Card Games, Small Plushies, Rattles, Stationery Kits.',       weight: 300  },
+    { id: 'std_toy',       label: 'Standard Boxed Toys',        subtext: 'Board Games, Building Blocks (LEGO), Remote Control Cars, Doll Sets.',       weight: 1200 },
+    { id: 'heavy_toy',     label: 'Heavy / Wooden Toys',        subtext: 'Wooden Train Sets, DIY Science Kits, Large Puzzles, Electronic Toys.',       weight: 2500 },
+    { id: 'oversized_toy', label: 'Oversized Toys & Play Gear', subtext: 'Play Tents, Large Dollhouses, Baby Walkers, Ride-on Toys, Play Mats.',       weight: 5000, isOversized: true },
   ],
   books: [
-    { id: 'docs',       label: 'Documents & Papers',       subtext: 'Certificates, Planners',               weight: 200  },
-    { id: 'light_book', label: 'Light Books',              subtext: 'Paperbacks, Magazines',                weight: 400  },
-    { id: 'std_book',   label: 'Hardcovers',               subtext: 'Novels, Cookbooks, Biographies',       weight: 1000 },
-    { id: 'heavy_book', label: 'Heavy Books',              subtext: 'Textbooks, Coffee Table Books',         weight: 2500 },
+    { id: 'docs',       label: 'Important Documents & Papers',   subtext: 'Visas, Legal Papers, Transcripts, Certificates, Planners, Cards.',           weight: 200  },
+    { id: 'light_book', label: 'Light Books & Magazines',       subtext: 'Paperbacks, Comic Books, Children’s Storybooks, or Thin Magazines.',         weight: 400  },
+    { id: 'std_book',   label: 'Standard Hardcovers & Books',   subtext: 'Hardcover Novels, Cookbooks, Biographies, or Medium Graphic Novels.',        weight: 1000 },
+    { id: 'heavy_book', label: 'Heavy Books & Textbooks',       subtext: 'University Textbooks, Coffee Table Books, Heavy Encyclopedias, Sets.',       weight: 2500 },
   ],
   food: [
-    { id: 'light_snack', label: 'Light Snacks & Spices',   subtext: 'Namkeen, Masalas, Tea, Coffee',        weight: 500, isFood: true },
-    { id: 'heavy_groc',  label: 'Sweets & Groceries',      subtext: 'Mithai, Pickles, Lentils',             weight: 1500, isFood: true },
+    { id: 'light_snack', label: 'Light Snacks & Spices',        subtext: 'Namkeen, Dry Snacks, Spices (Masalas), Tea Leaves, or Coffee Powder.',       weight: 500, isFood: true },
+    { id: 'heavy_groc',  label: 'Heavy Sweets & Groceries',     subtext: 'Mithai / Sweets Boxes, Pickles (Glass Jars), Dals, Baking Ingredients.',      weight: 1500, isFood: true },
   ],
   promo: [
-    { id: 'free_small_items', label: '5 Light Weight Items (Free)', subtext: 'Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!', weight: 0, isPromo: true },
+    { id: 'free_small_items', label: '5 Light Weight Items (Free)', subtext: 'Socks, Innerwear, Lingerie Sets, Ties, Handkerchiefs, Light Jewelry (up to 50g each). Ships free!', weight: 0, isPromo: true },
   ],
 };
 
@@ -81,7 +83,7 @@ const AGE_OPTIONS = Object.keys(AGE_MULTIPLIERS);
 
 const SHIPPING_BASE    = 12;
 const SHIPPING_PER_KG  = 12;
-const WEIGHT_FLOOR     = 500;
+const WEIGHT_FLOOR     = 50;
 const INR_TO_CAD       = 0.016;
 const CANADA_MULT      = 2.2;
 
@@ -94,6 +96,31 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
   const router = useRouter();
   const { user } = useAuth();
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Sync category weights from saved master category matrix
+  const [activeItemTypes, setActiveItemTypes] = useState(ITEM_TYPES);
+
+  useEffect(() => {
+    try {
+      const masterCats = loadMasterCategories();
+      const updated = JSON.parse(JSON.stringify(ITEM_TYPES)); // Deep clone
+      masterCats.forEach(group => {
+        const catKey = group.id; // e.g. 'clothing'
+        if (updated[catKey]) {
+          group.items.forEach(item => {
+            const sub = updated[catKey].find((s: any) => s.label === item.label);
+            if (sub) {
+              sub.weight = item.weightGrams;
+              sub.subtext = item.subtext;
+            }
+          });
+        }
+      });
+      setActiveItemTypes(updated);
+    } catch (e) {
+      console.warn("Failed to sync category matrix in EstimatorModal:", e);
+    }
+  }, [isOpen]);
 
   /* ── Origin ── */
   const [origin, setOrigin] = useState<'online' | 'personal'>('online');
@@ -164,15 +191,12 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
     const parts = key.split('-');
     const catId = parts[0];
     const typeIdx = parseInt(parts[1], 10);
-    const item = ITEM_TYPES[catId]?.[typeIdx];
+    const item = activeItemTypes[catId]?.[typeIdx];
     const isPromo = item?.isPromo;
 
     setQtys(prev => {
       const cur = prev[key] ?? 0;
       let nxt = cur + delta;
-      if (isPromo && nxt > 5) {
-        nxt = 5;
-      }
       nxt = Math.max(0, nxt);
       if (nxt === 0) {
         const copy = { ...prev };
@@ -209,7 +233,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
       const typeIdx = parseInt(parts[1], 10);
       const age = parts.slice(2).join('-');
 
-      const item = ITEM_TYPES[catId]?.[typeIdx];
+      const item = activeItemTypes[catId]?.[typeIdx];
       if (!item) return;
 
       if (item.isPromo) {
@@ -222,6 +246,10 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
         grossWeight += item.weight * count * mult;
       }
     });
+
+    // 5 Free Essentials dynamic promo weight calculation
+    const promoWeightGrams = Math.max(0, promoItemCount - 5) * 50;
+    grossWeight += promoWeightGrams;
 
     const isPromoOnly = mainItemCount === 0 && promoItemCount > 0;
     const effectiveWeight = mainItemCount === 0 ? 0 : Math.max(WEIGHT_FLOOR, grossWeight);
@@ -247,6 +275,21 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
     };
   }, [qtys]);
 
+  /* ── Delivery Option ── */
+  const [deliveryType, setDeliveryType] = useState<'normal' | 'express'>('normal');
+
+  /* ── Delivery Cost Calculation Engine ── */
+  const deliveryResult = useMemo(() => {
+    const weightKg = calc.effectiveWeight / 1000;
+    const isDoc = Object.keys(qtys).some(k => k.startsWith('books-0') && (qtys[k] || 0) > 0);
+    return calculateLayoDeliveryCost({
+      weightKg,
+      deliveryType,
+      isDocument: isDoc,
+      cadToInrRate: 70.4
+    });
+  }, [calc.effectiveWeight, deliveryType, qtys]);
+
   const totalItemCount = Object.values(qtys).reduce((s, n) => s + n, 0);
 
   /* ── Warnings ── */
@@ -255,7 +298,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
     Object.entries(qtys).forEach(([key, count]) => {
       if (count <= 0) return;
       const [catId, idxStr] = key.split('-');
-      const item = ITEM_TYPES[catId]?.[parseInt(idxStr, 10)];
+      const item = activeItemTypes[catId]?.[parseInt(idxStr, 10)];
       if (item?.isOversized && !list.some(w => w.includes('oversized'))) {
         list.push('Oversized items (luggage/large toys/furniture) may incur additional volumetric weight charges at warehouse verification.');
       }
@@ -286,9 +329,11 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
       senderName,
       qtys,
       ageGroups,
+      deliveryType,
       effectiveWeight: calc.effectiveWeight,
-      shippingEstCAD: calc.shipping,
-      totalCostCAD: calc.shipping,
+      shippingEstCAD: deliveryResult.finalPriceCAD,
+      totalCostCAD: deliveryResult.finalPriceCAD,
+      shippingEstINR: deliveryResult.finalPriceINR,
       totalWeight: calc.effectiveWeight / 1000,
       mode: origin === 'online' ? 'Online Retailer' : 'Personal Goods',
     };
@@ -392,7 +437,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
           {/* ── Category Grid ── */}
           <div className="space-y-3">
             <p className="text-[11px] font-bold uppercase tracking-widest text-[#0E1F38]/60">Select Item Categories</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {CATEGORIES.map(cat => {
                 const count   = catItemCount(cat.id);
                 const isOpen  = openCats.includes(cat.id);
@@ -427,10 +472,10 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                   <span className="material-symbols-outlined text-[#2E7D32] text-xl leading-none">workspace_premium</span>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
-                      Free light weight items( max 50 gm)-
+                      Light Weight Accessories (max 50 gm)-
                     </span>
                     <span className="text-[9px] text-[#2E7D32] bg-white px-2 py-0.5 rounded-md font-black uppercase tracking-wider border border-[#C8E6C9]">
-                      Limit: Max 5 Items
+                      First 5 Free
                     </span>
                   </div>
                 </div>
@@ -439,13 +484,10 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
               <div className="px-5 py-3.5 flex items-center justify-between gap-3 bg-white">
                 <div className="flex-grow min-w-0">
                   <p className="text-xs font-bold text-[#0E1F38] leading-tight">
-                    5 Light Weight Items (Free)
+                    Small Cloth &amp; Light Accessories (Max 50g)
                   </p>
                   <p className="text-[11px] text-[#0E1F38]/70 mt-0.5 font-light">
-                    Socks, ties, handkerchiefs, innerwear, light earrings, chains (up to 50g each). Ships free!
-                    {(qtys['promo-0-default'] ?? 0) >= 5 && (
-                      <span className="text-[#FF5A65] font-bold ml-1.5">· Max 5 limit reached</span>
-                    )}
+                    Socks, innerwear, ties, handkerchiefs, light earrings, chains (up to 50g each). First 5 items ship free! Additional items add 50g each.
                   </p>
                 </div>
 
@@ -462,13 +504,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                   <span className="w-5 text-center text-xs font-bold text-[#0E1F38]">{qtys['promo-0-default'] ?? 0}</span>
                   <button
                     onClick={() => changeQty('promo-0-default', 1)}
-                    disabled={(qtys['promo-0-default'] ?? 0) >= 5}
-                    className={`w-7 h-7 rounded-full flex items-center justify-center bg-white border border-black/5 transition-all ${
-                      (qtys['promo-0-default'] ?? 0) >= 5
-                        ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40'
-                        : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
-                    }`}
-                    title={(qtys['promo-0-default'] ?? 0) >= 5 ? 'Maximum limit of 5 free items reached' : undefined}
+                    className="w-7 h-7 rounded-full flex items-center justify-center bg-white border border-black/5 transition-all hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-sm leading-none">add</span>
                   </button>
@@ -480,7 +516,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
           {/* ── Expanded category panels ── */}
           {openCats.map(catId => {
             const cat   = CATEGORIES.find(c => c.id === catId)!;
-            const types = ITEM_TYPES[catId];
+            const types = activeItemTypes[catId];
             const age   = ageGroups[catId] || 'Adults (18+)';
 
             return (
@@ -542,7 +578,6 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                         <div className="flex-grow min-w-0">
                           <p className="text-xs font-bold text-[#0E1F38] leading-tight">
                             {type.label}
-                            {type.isPromo && <span className="ml-1.5 text-[9px] text-[#2E7D32] bg-[#E8F5E9] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">FREE (Max 50g · Max 5)</span>}
                             {type.isOversized && <span className="ml-1.5 text-[9px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-semibold">⚠ oversized</span>}
                             {type.isFood && <span className="ml-1.5 text-[9px] text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md font-semibold">⚠ customs</span>}
                           </p>
@@ -566,13 +601,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                           <span className="w-5 text-center text-xs font-bold text-[#0E1F38]">{qty}</span>
                           <button
                             onClick={() => changeQty(key, 1)}
-                            disabled={type.isPromo && qty >= 5}
-                            className={`w-7 h-7 rounded-full flex items-center justify-center bg-white border border-black/5 transition-all ${
-                              type.isPromo && qty >= 5
-                                ? 'opacity-30 cursor-not-allowed text-[#0E1F38]/40'
-                                : 'hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer'
-                            }`}
-                            title={type.isPromo && qty >= 5 ? 'Maximum limit of 5 free promo items reached' : undefined}
+                            className="w-7 h-7 rounded-full flex items-center justify-center bg-white border border-black/5 transition-all hover:bg-black/5 text-[#0E1F38] active:scale-90 cursor-pointer"
                           >
                             <span className="material-symbols-outlined text-sm leading-none">add</span>
                           </button>
@@ -601,16 +630,67 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
             </div>
           )}
 
-          {/* ── Live estimate strip ── */}
+          {/* ── Live estimate strip with Normal vs Express toggle ── */}
           {totalItemCount > 0 && (
-            <div className="bg-[#ECEAE0] border border-black/10 rounded-2xl p-4 flex justify-between items-center shadow-sm">
-              <div>
-                <p className="text-[10px] text-[#0E1F38]/60 uppercase font-bold tracking-wider">Estimated Shipping</p>
-                <p className="text-2xl font-black text-[#FF5A65] font-mono">${calc.shipping.toFixed(2)} <span className="text-xs font-bold text-[#0E1F38]/70">CAD</span></p>
-                <p className="text-[10px] text-[#0E1F38]/60 font-medium mt-0.5">{calc.effectiveWeight}g · {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}</p>
+            <div className="bg-white border border-black/10 rounded-2xl p-4 space-y-3 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#0E1F38] flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-base text-[#FF5A65]">local_shipping</span>
+                  Delivery Speed Option:
+                </span>
+                <span className="text-[10px] text-[#0E1F38]/60 font-medium">
+                  {calc.effectiveWeight}g · {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
+                </span>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-white border border-black/5 flex items-center justify-center shadow-sm">
-                <span className="material-symbols-outlined text-2xl text-[#FF5A65]">local_shipping</span>
+
+              {/* Delivery Type Option Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeliveryType('normal')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    deliveryType === 'normal'
+                      ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-sm ring-2 ring-[#8BC34A]/30'
+                      : 'bg-[#FAF8EE] text-[#0E1F38] border-black/10 hover:border-black/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black">📦 Normal Delivery</span>
+                    {deliveryType === 'normal' && <span className="text-[9px] bg-[#8BC34A] text-[#1B250F] font-black px-1.5 py-0.5 rounded uppercase">Selected</span>}
+                  </div>
+                  <p className="text-[10px] opacity-70 mt-1">Best Value (Standard Air Cargo)</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDeliveryType('express')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    deliveryType === 'express'
+                      ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-sm ring-2 ring-[#8BC34A]/30'
+                      : 'bg-[#FAF8EE] text-[#0E1F38] border-black/10 hover:border-black/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black">⚡ Express Delivery</span>
+                    {deliveryType === 'express' && <span className="text-[9px] bg-[#8BC34A] text-[#1B250F] font-black px-1.5 py-0.5 rounded uppercase">Selected</span>}
+                  </div>
+                  <p className="text-[10px] opacity-70 mt-1">Priority Air Cargo</p>
+                </button>
+              </div>
+
+              {/* Final Rate Display (Customer View) */}
+              <div className="bg-[#FAF8EE] border border-black/5 rounded-xl p-3.5 flex justify-between items-center">
+                <div>
+                  <p className="text-[10px] text-[#0E1F38]/60 uppercase font-bold tracking-wider">Final Estimate ({deliveryType.toUpperCase()})</p>
+                  <p className="text-2xl font-black text-[#FF5A65] font-mono">
+                    ${deliveryResult.finalPriceCAD.toFixed(2)} <span className="text-xs font-bold text-[#0E1F38]/70">CAD</span>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-mono font-bold text-[#0E1F38]/80">
+                    ≈ ₹{deliveryResult.finalPriceINR.toLocaleString('en-IN')} INR
+                  </span>
+                </div>
               </div>
             </div>
           )}

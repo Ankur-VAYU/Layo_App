@@ -29,11 +29,11 @@ const DEFAULT_WAREHOUSES = [
   {
     id: 'delhi',
     name: 'Delhi NCR Hub (North India)',
-    address: 'Plot 42, Udyog Vihar Phase 4, Sector 18, Gurugram, Haryana',
-    city: 'Gurugram',
-    state: 'Haryana',
-    pincode: '122015',
-    contact: '+91 98100 12345',
+    address: 'C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi',
+    city: 'New Delhi',
+    state: 'Delhi',
+    pincode: '110077',
+    contact: '+91 9321852629',
     tag: 'Recommended for Delhi, Punjab, UP & North India sellers',
   },
   {
@@ -61,14 +61,14 @@ const DEFAULT_WAREHOUSES = [
 export default function Checkout() {
   const router = useRouter();
   const [isProcessing, setIsProcessing]   = useState(false);
-  const [isSuccess, setIsSuccess]         = useState(false);
+  const [isSuccess, setIsSuccess]         = useState(false);         // Razorpay success state
   const [error, setError]                 = useState<string | null>(null);
   const [orderData, setOrderData]         = useState<any>(null);
   const [warehouses, setWarehouses]       = useState<any[]>(DEFAULT_WAREHOUSES);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('delhi');
   const [copiedAddress, setCopiedAddress] = useState(false);
-  const [completedPaymentId, setCompletedPaymentId] = useState<string | null>(null);
-  const [completedOrderRef, setCompletedOrderRef]   = useState<string | null>(null);
+  const [completedPaymentId, setCompletedPaymentId] = useState<string | null>(null); // Razorpay payment ID
+  const [completedOrderRef, setCompletedOrderRef]   = useState<string | null>(null); // Razorpay order ref
   const [currentUser, setCurrentUser]     = useState<any>(null);
 
   // Exchange rate & pricing

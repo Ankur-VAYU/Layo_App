@@ -48,3 +48,13 @@ CREATE TABLE IF NOT EXISTS public.warehouses (
 -- 4. Enable Row Level Security (RLS) or add policies if needed (optional)
 -- ALTER TABLE public.shipments ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE public.warehouses ENABLE ROW LEVEL SECURITY;
+
+-- 5. Create contact_submissions table for contact form leads
+CREATE TABLE IF NOT EXISTS public.contact_submissions (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    contact text NOT NULL,
+    message text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+

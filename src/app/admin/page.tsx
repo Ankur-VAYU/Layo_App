@@ -7,6 +7,9 @@ import Logo from '@/components/Logo';
 import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { loadHaulCards, saveHaulCards, fetchHaulCardsFromDb, saveHaulCardToDb, HaulCard, DEFAULT_HAUL_CARDS } from '@/lib/haul-cards';
+import { getPricingSettings, savePricingSettings, calculateLayoDeliveryCost, LayoPricingSettings, getDelhiveryRate } from '@/lib/delhiveryRates';
+import { loadMasterCategories, saveMasterCategories, MasterCategoryGroup, DEFAULT_MASTER_CATEGORIES } from '@/lib/categoryMatrix';
+import { formatShipmentId, formatTransactionId, formatCustomerId, formatUserId, formatWarehouseId, formatOrderId } from '@/lib/idGenerator';
 
 const STATUS_STEPS = [
   'draft',
@@ -45,7 +48,7 @@ const STATUS_COLORS: Record<string, string> = {
   delivered: '#10b981',
 };
 
-type AdminTab = 'orders' | 'warehouses' | 'ops_team' | 'analytics' | 'cards';
+type AdminTab = 'orders' | 'warehouses' | 'ops_team' | 'analytics' | 'cards' | 'pricing' | 'categories';
 
 const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com', 'ankur.iitd.nita@gmail.com'];
 
@@ -62,6 +65,72 @@ export default function AdminPortal() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Pricing Settings
+  const [pricingSettings, setPricingSettings] = useState<LayoPricingSettings>({
+    opsFeeLow: 300,
+    opsFeeHigh: 500,
+    opsFeeThreshold: 2500,
+    grossMarginPercent: 20,
+    gstPercent: 18,
+  });
+  const [pricingSavedNotice, setPricingSavedNotice] = useState(false);
+
+  // Category Matrix Settings
+  const [masterCategories, setMasterCategories] = useState<MasterCategoryGroup[]>([]);
+  const [categorySavedNotice, setCategorySavedNotice] = useState(false);
+
+  useEffect(() => {
+    setPricingSettings(getPricingSettings());
+    setMasterCategories(loadMasterCategories());
+  }, []);
+
+  const handleSavePricingSettings = async () => {
+    savePricingSettings(pricingSettings);
+    setPricingSavedNotice(true);
+    setTimeout(() => setPricingSavedNotice(false), 3000);
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert({ key: 'pricing_settings', value: pricingSettings });
+      if (error) throw error;
+    } catch (e: any) {
+      console.warn("Failed to sync pricing settings to Supabase:", e);
+      alert("Pricing settings saved locally, but database sync failed (ensure system_settings table exists): " + e.message);
+    }
+  };
+
+  const handleSaveCategoryMatrix = async () => {
+    saveMasterCategories(masterCategories);
+    setCategorySavedNotice(true);
+    setTimeout(() => setCategorySavedNotice(false), 3000);
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert({ key: 'category_matrix', value: masterCategories });
+      if (error) throw error;
+    } catch (e: any) {
+      console.warn("Failed to sync category matrix to Supabase:", e);
+      alert("Weight matrix saved locally, but database sync failed (ensure system_settings table exists): " + e.message);
+    }
+  };
+
+  const handleResetCategoryMatrix = async () => {
+    if (confirm('Reset all categories and item weights to default master matrix?')) {
+      setMasterCategories(DEFAULT_MASTER_CATEGORIES);
+      saveMasterCategories(DEFAULT_MASTER_CATEGORIES);
+      setCategorySavedNotice(true);
+      setTimeout(() => setCategorySavedNotice(false), 3000);
+      try {
+        const { error } = await supabase
+          .from('system_settings')
+          .upsert({ key: 'category_matrix', value: DEFAULT_MASTER_CATEGORIES });
+        if (error) throw error;
+      } catch (e: any) {
+        console.warn("Failed to sync category matrix to Supabase:", e);
+      }
+    }
+  };
 
   // Warehouse form
   const [whForm, setWhForm] = useState({ city: '', address: '', pincode: '', contact: '' });
@@ -183,7 +252,10 @@ export default function AdminPortal() {
     e.preventDefault();
     setWhSaving(true);
     const { data, error } = await supabase.from('warehouses').insert([whForm]).select();
-    if (!error && data) {
+    if (error) {
+      alert('Failed to add warehouse: ' + error.message);
+      console.error('Add warehouse error:', error);
+    } else if (data) {
       setWarehouses(prev => [...prev, data[0]]);
       setWhForm({ city: '', address: '', pincode: '', contact: '' });
     }
@@ -194,7 +266,12 @@ export default function AdminPortal() {
     if (!confirm('Delete this warehouse? This cannot be undone.')) return;
     setDeletingWH(id);
     const { error } = await supabase.from('warehouses').delete().eq('id', id);
-    if (!error) setWarehouses(prev => prev.filter(w => w.id !== id));
+    if (error) {
+      alert('Failed to delete warehouse: ' + error.message);
+      console.error('Delete warehouse error:', error);
+    } else {
+      setWarehouses(prev => prev.filter(w => w.id !== id));
+    }
     setDeletingWH(null);
   };
 
@@ -268,6 +345,8 @@ export default function AdminPortal() {
             {(
               [
                 { id: 'orders',     icon: 'package_2',    label: 'Orders' },
+                { id: 'pricing',    icon: 'calculate',    label: 'Pricing & Tariff' },
+                { id: 'categories', icon: 'category',     label: 'Weight Matrix' },
                 { id: 'ops_team',   icon: 'badge',        label: 'Ops Staff' },
                 { id: 'warehouses', icon: 'home_storage', label: 'Warehouses' },
                 { id: 'analytics',  icon: 'bar_chart',    label: 'Analytics' },
@@ -401,7 +480,17 @@ export default function AdminPortal() {
                         <tr className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${expandedRow === s.id ? 'bg-white/[0.01]' : ''}`}>
                           <td className="py-4 px-4 text-white">{new Date(s.created_at).toLocaleDateString('en-IN')}</td>
                           <td className="py-4 px-4">
-                            <strong className="text-white text-sm">{s.destination_city}</strong>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
+                                {formatShipmentId(s.id)}
+                              </span>
+                              {s.user_id && (
+                                <span className="font-mono text-[9px] text-on-surface-variant">
+                                  ({formatCustomerId(s.user_id)})
+                                </span>
+                              )}
+                            </div>
+                            <strong className="text-white text-sm block mt-0.5">{s.destination_city}</strong>
                             <div className="text-[11px] text-on-surface-variant truncate max-w-[240px]">{s.destination_address}</div>
                           </td>
                           <td className="py-4 px-4 text-white font-medium">{s.total_weight} kg</td>
@@ -619,7 +708,12 @@ export default function AdminPortal() {
                       <div key={wh.id} className="bg-background border border-white/5 rounded-2xl p-5 space-y-3 relative hover:border-white/10 transition-all flex flex-col justify-between">
                         <div className="space-y-2">
                           <div className="flex justify-between items-start">
-                            <h4 className="font-extrabold text-sm text-white">{wh.city} Hub</h4>
+                            <div>
+                              <h4 className="font-extrabold text-sm text-white">{wh.city} Hub</h4>
+                              <span className="font-mono text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded border border-primary/20 inline-block mt-0.5">
+                                {formatWarehouseId(wh.id)}
+                              </span>
+                            </div>
                             <button
                               onClick={() => deleteWarehouse(wh.id)}
                               disabled={deletingWH === wh.id}
@@ -1145,6 +1239,398 @@ export default function AdminPortal() {
                 )}
               </div>
 
+            </div>
+          </section>
+        )}
+
+        {/* ── PRICING & TARIFF CONFIG TAB ── */}
+        {activeTab === 'pricing' && (
+          <section className="space-y-8 animate-fade-in max-w-6xl">
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-[#8BC34A]">Pricing Engine Control</span>
+              <h1 className="text-3xl font-black text-white">Delivery Cost Rules &amp; Tariff Matrix</h1>
+              <p className="text-xs text-on-surface-variant font-light mt-1">
+                Configure Ops Expenses, Gross Margins, and view live tariff calculations across Delhivery 2026 options.
+              </p>
+            </div>
+
+            {/* Saved Notice Banner */}
+            {pricingSavedNotice && (
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2 animate-fade-in">
+                <span className="material-symbols-outlined text-lg">check_circle</span>
+                Pricing Settings Saved! System-wide estimate calculator updated instantly.
+              </div>
+            )}
+
+            {/* 1. Editable Options Panel */}
+            <div className="bg-surface rounded-3xl border border-white/10 p-6 space-y-6 shadow-sm">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">tune</span>
+                    Configurable Pricing Variables
+                  </h2>
+                  <p className="text-xs text-on-surface-variant">Adjust operational overheads and profit margins used in customer rate generation.</p>
+                </div>
+                <button
+                  onClick={handleSavePricingSettings}
+                  className="px-6 py-3 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">save</span>
+                  Save Pricing Rules
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                {/* Ops Expense Low */}
+                <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block">
+                    Ops Expense (&lt; ₹{pricingSettings.opsFeeThreshold})
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-primary">₹</span>
+                    <input
+                      type="number"
+                      value={pricingSettings.opsFeeLow}
+                      onChange={e => setPricingSettings(prev => ({ ...prev, opsFeeLow: Number(e.target.value) }))}
+                      className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <p className="text-[9px] text-on-surface-variant/60">Applied when carrier rate is below threshold.</p>
+                </div>
+
+                {/* Ops Expense High */}
+                <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block">
+                    Ops Expense (≥ ₹{pricingSettings.opsFeeThreshold})
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-primary">₹</span>
+                    <input
+                      type="number"
+                      value={pricingSettings.opsFeeHigh}
+                      onChange={e => setPricingSettings(prev => ({ ...prev, opsFeeHigh: Number(e.target.value) }))}
+                      className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <p className="text-[9px] text-on-surface-variant/60">Applied when carrier rate is above threshold.</p>
+                </div>
+
+                {/* Ops Threshold */}
+                <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block">
+                    Carrier Rate Threshold
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-primary">₹</span>
+                    <input
+                      type="number"
+                      value={pricingSettings.opsFeeThreshold}
+                      onChange={e => setPricingSettings(prev => ({ ...prev, opsFeeThreshold: Number(e.target.value) }))}
+                      className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <p className="text-[9px] text-on-surface-variant/60">Cut-off carrier cost in INR.</p>
+                </div>
+
+                {/* Gross Margin % */}
+                <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block">
+                    Gross Margin %
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={pricingSettings.grossMarginPercent}
+                      onChange={e => setPricingSettings(prev => ({ ...prev, grossMarginPercent: Number(e.target.value) }))}
+                      className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-primary"
+                    />
+                    <span className="text-sm font-bold text-primary">%</span>
+                  </div>
+                  <p className="text-[9px] text-on-surface-variant/60">Added on (Carrier Cost + Ops Expense).</p>
+                </div>
+
+                {/* GST % */}
+                <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block">
+                    GST Tax %
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={pricingSettings.gstPercent}
+                      onChange={e => setPricingSettings(prev => ({ ...prev, gstPercent: Number(e.target.value) }))}
+                      className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-primary"
+                    />
+                    <span className="text-sm font-bold text-emerald-400">%</span>
+                  </div>
+                  <p className="text-[9px] text-on-surface-variant/60">Added at last before customer rate.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Calculation Explanation Box */}
+            <div className="bg-surface rounded-3xl border border-white/10 p-6 space-y-4 shadow-sm">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-400">help</span>
+                How Calculation Table &amp; Costing Formula Works
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs font-light text-on-surface-variant">
+                <div className="bg-black/20 p-3 rounded-2xl border border-white/5 space-y-1">
+                  <span className="font-bold text-white block">Step 1: Carrier Base</span>
+                  <p className="text-[11px]">Normal uses MIN(DLV Saver, Deferred, Express). Express uses Express. Documents use Doc tariff.</p>
+                </div>
+                <div className="bg-black/20 p-3 rounded-2xl border border-white/5 space-y-1">
+                  <span className="font-bold text-white block">Step 2: Ops Expense</span>
+                  <p className="text-[11px]">Adds ₹{pricingSettings.opsFeeLow} if carrier &lt; ₹{pricingSettings.opsFeeThreshold}, or ₹{pricingSettings.opsFeeHigh} if ≥ ₹{pricingSettings.opsFeeThreshold}.</p>
+                </div>
+                <div className="bg-black/20 p-3 rounded-2xl border border-white/5 space-y-1">
+                  <span className="font-bold text-white block">Step 3: Gross Margin</span>
+                  <p className="text-[11px]">Adds {pricingSettings.grossMarginPercent}% margin to (Carrier Base + Ops Expense).</p>
+                </div>
+                <div className="bg-black/20 p-3 rounded-2xl border border-white/5 space-y-1">
+                  <span className="font-bold text-white block">Step 4: GST (18%)</span>
+                  <p className="text-[11px]">Adds {pricingSettings.gstPercent}% GST tax at last on top of Subtotal.</p>
+                </div>
+                <div className="bg-black/20 p-3 rounded-2xl border border-white/5 space-y-1">
+                  <span className="font-bold text-white block">Step 5: Customer View</span>
+                  <p className="text-[11px]">Customer sees ONLY final rate ($ CAD = Final INR / 70.4). Internal breakdowns are hidden.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Live Dynamic Tariff & Profit Matrix Table */}
+            <div className="bg-surface rounded-3xl border border-white/10 p-6 space-y-4 shadow-sm">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span className="material-symbols-outlined text-emerald-400">table_chart</span>
+                    Live Master Tariff Matrix with 18% GST (Canada / Zone L)
+                  </h2>
+                  <p className="text-xs text-on-surface-variant">Calculated dynamically using active settings including {pricingSettings.gstPercent}% GST.</p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-white/10">
+                <table className="w-full text-left text-xs bg-black/20">
+                  <thead className="bg-black/40 text-on-surface-variant text-[10px] uppercase font-bold tracking-wider border-b border-white/10">
+                    <tr>
+                      <th className="p-3">Weight</th>
+                      <th className="p-3">Normal Carrier Base</th>
+                      <th className="p-3">Express Carrier Base</th>
+                      <th className="p-3">Ops Fee</th>
+                      <th className="p-3">Cost Basis</th>
+                      <th className="p-3 text-emerald-400">Margin ({pricingSettings.grossMarginPercent}%)</th>
+                      <th className="p-3 text-purple-400">GST ({pricingSettings.gstPercent}%)</th>
+                      <th className="p-3">Normal Customer Rate</th>
+                      <th className="p-3 text-right">Express Customer Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-on-surface">
+                    {[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0].map(wt => {
+                      const nCalc = calculateLayoDeliveryCost({
+                        weightKg: wt,
+                        deliveryType: 'normal',
+                        isDocument: false,
+                        cadToInrRate: 70.4,
+                        opsFeeLow: pricingSettings.opsFeeLow,
+                        opsFeeHigh: pricingSettings.opsFeeHigh,
+                        opsFeeThreshold: pricingSettings.opsFeeThreshold,
+                        grossMarginPercent: pricingSettings.grossMarginPercent,
+                        gstPercent: pricingSettings.gstPercent,
+                      });
+
+                      const eCalc = calculateLayoDeliveryCost({
+                        weightKg: wt,
+                        deliveryType: 'express',
+                        isDocument: false,
+                        cadToInrRate: 70.4,
+                        opsFeeLow: pricingSettings.opsFeeLow,
+                        opsFeeHigh: pricingSettings.opsFeeHigh,
+                        opsFeeThreshold: pricingSettings.opsFeeThreshold,
+                        grossMarginPercent: pricingSettings.grossMarginPercent,
+                        gstPercent: pricingSettings.gstPercent,
+                      });
+
+                      return (
+                        <tr key={wt} className="hover:bg-white/5 font-medium">
+                          <td className="p-3 font-bold text-white">{wt} kg</td>
+                          <td className="p-3 font-mono">₹{nCalc.carrierBaseINR.toLocaleString()}</td>
+                          <td className="p-3 font-mono text-amber-400">₹{eCalc.carrierBaseINR.toLocaleString()}</td>
+                          <td className="p-3 font-mono">₹{nCalc.opsFeeINR}</td>
+                          <td className="p-3 font-mono">₹{nCalc.costBasisINR.toLocaleString()}</td>
+                          <td className="p-3 font-mono font-bold text-emerald-400">₹{nCalc.marginINR.toLocaleString()}</td>
+                          <td className="p-3 font-mono font-bold text-purple-400">₹{nCalc.gstINR.toLocaleString()}</td>
+                          <td className="p-3 font-bold text-white">
+                            ${nCalc.finalPriceCAD.toFixed(2)} CAD <span className="text-[10px] text-on-surface-variant font-normal">(₹{nCalc.finalPriceINR.toLocaleString()})</span>
+                          </td>
+                          <td className="p-3 font-bold text-amber-400 text-right">
+                            ${eCalc.finalPriceCAD.toFixed(2)} CAD <span className="text-[10px] text-on-surface-variant font-normal">(₹{eCalc.finalPriceINR.toLocaleString()})</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── Tab 7: Master Category & Weight Matrix Management ── */}
+        {activeTab === 'categories' && (
+          <section className="space-y-6 animate-fade-in">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface-container border border-white/10 p-6 rounded-2xl">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-primary block">
+                  Catalog Configuration
+                </span>
+                <h2 className="text-xl font-bold text-white mt-1">Master Categories &amp; Weight Matrix Manager</h2>
+                <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
+                  Manage unit weights in grams, item subtext descriptions, promo rules, and oversized warning triggers across all 9 main shipping categories.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleResetCategoryMatrix}
+                  className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all border border-white/10 cursor-pointer"
+                >
+                  Reset Defaults
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCategoryMatrix}
+                  className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-background font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-md flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-sm">save</span>
+                  Save Matrix
+                </button>
+              </div>
+            </div>
+
+            {categorySavedNotice && (
+              <div className="p-4 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold rounded-xl animate-fade-in flex items-center gap-2">
+                <span className="material-symbols-outlined text-sm">check_circle</span>
+                Category &amp; Weight Matrix saved successfully! Changes are live across customer calculators.
+              </div>
+            )}
+
+            {/* 9 Category Accordion Cards */}
+            <div className="space-y-6">
+              {masterCategories.map((group, groupIdx) => (
+                <div key={group.id} className="bg-surface-container border border-white/10 rounded-2xl p-6 space-y-4">
+                  <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="material-symbols-outlined text-2xl text-primary">{group.icon}</span>
+                      <div>
+                        <h3 className="text-base font-bold text-white">{group.name}</h3>
+                        <p className="text-[10px] text-on-surface-variant font-mono uppercase tracking-wider">
+                          {group.items.length} Subcategory Items {group.isFoodGlobal ? '· Food Customs Warning Enabled' : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Subcategory Items Table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-[10px] uppercase font-bold text-on-surface-variant tracking-wider">
+                          <th className="p-3 w-1/4">Subcategory Label</th>
+                          <th className="p-3 w-1/6">Unit Weight (Grams)</th>
+                          <th className="p-3">Subtext Description / Examples</th>
+                          <th className="p-3 text-right">Special Flags</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {group.items.map((item, itemIdx) => (
+                          <tr key={item.id} className="hover:bg-white/5">
+                            {/* Label */}
+                            <td className="p-3">
+                              <input
+                                type="text"
+                                value={item.label}
+                                onChange={(e) => {
+                                  const updated = [...masterCategories];
+                                  updated[groupIdx].items[itemIdx].label = e.target.value;
+                                  setMasterCategories(updated);
+                                }}
+                                className="w-full bg-background border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:border-primary outline-none"
+                              />
+                            </td>
+
+                            {/* Weight */}
+                            <td className="p-3">
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  value={item.weightGrams}
+                                  onChange={(e) => {
+                                    const updated = [...masterCategories];
+                                    updated[groupIdx].items[itemIdx].weightGrams = parseInt(e.target.value) || 0;
+                                    setMasterCategories(updated);
+                                  }}
+                                  className="w-24 bg-background border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-amber-400 font-mono font-bold focus:border-primary outline-none"
+                                />
+                                <span className="text-[10px] text-on-surface-variant font-mono">g ({((item.weightGrams || 0) / 1000).toFixed(2)}kg)</span>
+                              </div>
+                            </td>
+
+                            {/* Subtext */}
+                            <td className="p-3">
+                              <input
+                                type="text"
+                                value={item.subtext}
+                                onChange={(e) => {
+                                  const updated = [...masterCategories];
+                                  updated[groupIdx].items[itemIdx].subtext = e.target.value;
+                                  setMasterCategories(updated);
+                                }}
+                                className="w-full bg-background border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-on-surface-variant focus:border-primary outline-none font-light"
+                              />
+                            </td>
+
+                            {/* Flags */}
+                            <td className="p-3 text-right">
+                              <div className="flex items-center justify-end gap-3">
+                                <label className="flex items-center gap-1 cursor-pointer text-[10px] text-amber-400 font-bold">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!item.isPromo}
+                                    onChange={(e) => {
+                                      const updated = [...masterCategories];
+                                      updated[groupIdx].items[itemIdx].isPromo = e.target.checked;
+                                      setMasterCategories(updated);
+                                    }}
+                                    className="rounded border-white/20 accent-amber-400"
+                                  />
+                                  Promo (0g 1st 5)
+                                </label>
+
+                                <label className="flex items-center gap-1 cursor-pointer text-[10px] text-red-400 font-bold">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!item.isOversized}
+                                    onChange={(e) => {
+                                      const updated = [...masterCategories];
+                                      updated[groupIdx].items[itemIdx].isOversized = e.target.checked;
+                                      setMasterCategories(updated);
+                                    }}
+                                    className="rounded border-white/20 accent-red-400"
+                                  />
+                                  Oversized
+                                </label>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         )}

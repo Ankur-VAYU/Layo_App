@@ -3,20 +3,19 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
-    const { shipmentId, userId } = await request.json();
+    const { shipmentId } = await request.json();
 
     if (!shipmentId) {
       return NextResponse.json({ error: 'Missing shipmentId' }, { status: 400 });
     }
 
-    // Perform delete in Supabase
-    let query = supabase.from('shipments').delete().eq('id', shipmentId);
-    if (userId) {
-      // Optional extra safety: verify matching user
-      query = query.eq('user_id', userId);
-    }
-
-    const { error, count } = await query;
+    // Delete only by shipmentId — do NOT filter by userId
+    // (many rows have NULL user_id due to legacy inserts; filtering by userId
+    //  would cause those rows to silently not be deleted)
+    const { error } = await supabase
+      .from('shipments')
+      .delete()
+      .eq('id', shipmentId);
 
     if (error) {
       console.error('Failed to delete shipment in Supabase:', error);

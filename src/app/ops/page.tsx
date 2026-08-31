@@ -1,5 +1,6 @@
 'use client';
 
+// ── Imports ─────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -7,11 +8,15 @@ import Logo from '@/components/Logo';
 import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 
+// ── Types & Interfaces ───────────────────────────────────────────────────────
+
 interface QCPhoto {
   url: string;
   type: 'intake' | 'unboxed' | 'packed';
   timestamp: string;
 }
+
+// ── Component ────────────────────────────────────────────────────────────
 
 export default function WarehouseOpsPortal() {
   const router = useRouter();
@@ -22,7 +27,8 @@ export default function WarehouseOpsPortal() {
   const [shipments, setShipments] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'inward' | 'qc' | 'repack' | 'master_bulk' | 'canada_dispatch'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'inward' | 'qc' | 'repack' | 'master_bulk' | 'canada_dispatch' | 'hold_combine'>('all');
+  const [mobileOpsTab, setMobileOpsTab] = useState<'queue' | 'workstation'>('queue');
   const [selectedShipment, setSelectedShipment] = useState<any | null>(null);
 
   // Form states for active workstation
@@ -49,6 +55,7 @@ export default function WarehouseOpsPortal() {
     loadOpsData();
   }, []);
 
+  // ── Data Fetching ───────────────────────────────────────────────────
   const loadOpsData = async () => {
     setIsFetching(true);
     try {
@@ -86,27 +93,62 @@ export default function WarehouseOpsPortal() {
       const matchesSearch = !q || lockerMatch || userMatch || cityMatch || extOrderMatch || trackingMatch || masterBoxMatch;
       if (!matchesSearch) return false;
 
-      if (activeHub === 'india') {
-        if (activeTab === 'inward') return s.status === 'paid' || s.status === 'draft';
-        if (activeTab === 'qc') return s.status === 'inwarded' || s.status === 'arrived';
-        if (activeTab === 'repack') return s.status === 'qc_verified';
-        if (activeTab === 'master_bulk') return s.status === 'repacked' || s.status === 'bulk_consolidated';
-      } else {
-        // Canada Hub
-        if (activeTab === 'inward') return s.status === 'bulk_consolidated' || s.status === 'in_transit';
-        if (activeTab === 'canada_dispatch') return s.status === 'received_canada' || s.status === 'out_for_delivery';
-      }
+      if (activeTab === 'inward') return s.status === 'paid' || s.status === 'draft';
+      if (activeTab === 'qc') return s.status === 'inwarded' || s.status === 'arrived';
+      if (activeTab === 'repack') return s.status === 'qc_verified';
+      if (activeTab === 'master_bulk') return s.status === 'repacked' || s.status === 'bulk_consolidated';
 
       return true;
     });
-  }, [shipments, searchQuery, activeTab, activeHub]);
+  }, [shipments, searchQuery, activeTab]);
+
+  // Hold & Combine groups — group by user_id for the hold_combine tab
+  // Only show PAID shipments (not drafts) in ops
+  const holdGroups = useMemo(() => {
+    const holdShipments = shipments.filter(s =>
+      s.warehouse_action === 'hold' &&
+      s.status !== 'Draft Estimate' &&
+      s.status !== 'draft'
+    );
+    const groups: Record<string, any[]> = {};
+    holdShipments.forEach(s => {
+      const key = s.hold_group_id || s.user_id || s.id;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    });
+    return Object.entries(groups).map(([groupKey, items]) => ({
+      groupKey,
+      userId: items[0]?.user_id,
+      destinationCity: items[0]?.destination_city || 'Toronto (GTA)',
+      expectedPackages: items[0]?.expected_packages || items.length,
+      arrivedCount: items.filter(s => s.status === 'hold_arrived' || s.status === 'inwarded' || s.status === 'holding').length,
+      allArrived: items.every(s => s.status === 'hold_arrived' || s.status === 'inwarded'),
+      shipments: items,
+    }));
+  }, [shipments]);
+
+  // Operator user details for step audit logging
+  const operatorUser = useMemo(() => ({
+    id: user?.id || null,
+    email: user?.email || null,
+    role: 'ops'
+  }), [user]);
 
   // Handler: Inward scan / arrival at India Hub
+  // ── Ops Stage Handlers ─────────────────────────────────────────────────
+  /** Stage 1: Inward — scan package in at India Hub */
   const handleMarkInwarded = async (shipmentId: string) => {
     setUpdating(true);
     try {
       const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(shipmentId, 'inwarded', current?.stage_timestamps);
+      const result = await updateShipmentStage(
+        shipmentId,
+        'inwarded',
+        current?.stage_timestamps,
+        {},
+        operatorUser,
+        'Package inward scanned at India Hub'
+      );
 
       if (!result.error) {
         setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'inwarded', stage_timestamps: result.updatedTimestamps } : s));
@@ -122,13 +164,19 @@ export default function WarehouseOpsPortal() {
   };
 
   // Handler: Mark QC Verified & Item Match
+  /** Stage 2: QC Verify — package passes quality check */
   const handleMarkQCVerified = async (shipmentId: string) => {
     setUpdating(true);
     try {
       const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(shipmentId, 'qc_verified', current?.stage_timestamps, {
-        qc_photos: uploadedPhotos
-      });
+      const result = await updateShipmentStage(
+        shipmentId,
+        'qc_verified',
+        current?.stage_timestamps,
+        { qc_photos: uploadedPhotos },
+        operatorUser,
+        `QC inspection passed with ${uploadedPhotos.length} photos`
+      );
 
       if (!result.error) {
         setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'qc_verified', stage_timestamps: result.updatedTimestamps, qc_photos: uploadedPhotos } : s));
@@ -143,16 +191,49 @@ export default function WarehouseOpsPortal() {
     }
   };
 
+  // Handler: Flag parcel discrepancy
+  /** Stage 2b: QC Discrepancy — flag item mismatch or damage */
+  const handleFlagDiscrepancy = async () => {
+    if (!selectedShipment || !discrepancyNote.trim()) return;
+    setUpdating(true);
+    try {
+      const result = await updateShipmentStage(
+        selectedShipment.id,
+        'qc_discrepancy',
+        selectedShipment.stage_timestamps,
+        { discrepancy_note: discrepancyNote },
+        operatorUser,
+        `QC Discrepancy Flagged: ${discrepancyNote}`
+      );
+
+      if (!result.error) {
+        setShipments(prev => prev.map(s => s.id === selectedShipment.id ? { ...s, status: 'qc_discrepancy', discrepancy_note: discrepancyNote, stage_timestamps: result.updatedTimestamps } : s));
+        setSelectedShipment((prev: any) => ({ ...prev, status: 'qc_discrepancy', discrepancy_note: discrepancyNote, stage_timestamps: result.updatedTimestamps }));
+        setShowDiscrepancyModal(false);
+        setDiscrepancyNote('');
+      }
+    } catch (err) {
+      console.error('Failed to flag discrepancy', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   // Handler: Layo SOP Repack & Gross Scale Weight
+  /** Stage 3: Repack — repack into Layo Green Box */
   const handleCompleteRepack = async (shipmentId: string) => {
     const verifiedWeight = parseFloat(grossWeightInput) || selectedShipment?.total_weight || 1.0;
     setUpdating(true);
     try {
       const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(shipmentId, 'repacked', current?.stage_timestamps, {
-        total_weight: verifiedWeight,
-        box_dimensions: boxDimensions
-      });
+      const result = await updateShipmentStage(
+        shipmentId,
+        'repacked',
+        current?.stage_timestamps,
+        { total_weight: verifiedWeight, box_dimensions: boxDimensions },
+        operatorUser,
+        `Repacked in Layo Green Box (${verifiedWeight} kg, ${boxDimensions.length}x${boxDimensions.width}x${boxDimensions.height} cm)`
+      );
 
       if (!result.error) {
         setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'repacked', total_weight: verifiedWeight, box_dimensions: boxDimensions, stage_timestamps: result.updatedTimestamps } : s));
@@ -168,14 +249,20 @@ export default function WarehouseOpsPortal() {
   };
 
   // Handler: Assign to Master Air Cargo Box (Bulk Consolidation)
+  /** Stage 4: Bulk Consolidation — assign to master air cargo box */
   const handleAssignMasterBox = async (shipmentId: string) => {
     if (!masterBoxId) return;
     setUpdating(true);
     try {
       const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(shipmentId, 'bulk_consolidated', current?.stage_timestamps, {
-        master_box_id: masterBoxId,
-      });
+      const result = await updateShipmentStage(
+        shipmentId,
+        'bulk_consolidated',
+        current?.stage_timestamps,
+        { master_box_id: masterBoxId },
+        operatorUser,
+        `Assigned to master cargo batch ${masterBoxId}`
+      );
 
       if (!result.error) {
         setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'bulk_consolidated', master_box_id: masterBoxId, stage_timestamps: result.updatedTimestamps } : s));
@@ -190,12 +277,134 @@ export default function WarehouseOpsPortal() {
     }
   };
 
+  // Handler: Mark individual hold package as arrived at hub
+  const handleMarkHoldArrived = async (shipmentId: string) => {
+    setUpdating(true);
+    try {
+      const current = shipments.find(s => s.id === shipmentId);
+      const result = await updateShipmentStage(
+        shipmentId,
+        'hold_arrived',
+        current?.stage_timestamps,
+        {},
+        operatorUser,
+        'Hold package arrived at India Hub'
+      );
+      if (!result.error) {
+        setShipments(prev => prev.map(s =>
+          s.id === shipmentId ? { ...s, status: 'hold_arrived', stage_timestamps: result.updatedTimestamps } : s
+        ));
+      }
+    } catch (err) {
+      console.error('Failed to mark hold arrived', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Handler: Combine all packages in a group and move to repack queue
+  const handleCombineAndDispatch = async (groupShipments: any[]) => {
+    if (!confirm(`Combine ${groupShipments.length} packages into one shipment and move to Repack queue?`)) return;
+    setUpdating(true);
+    try {
+      const combinedBoxId = `HOLD-${Date.now().toString(36).toUpperCase()}`;
+      for (const s of groupShipments) {
+        await updateShipmentStage(
+          s.id,
+          'qc_verified',
+          s.stage_timestamps,
+          { master_box_id: combinedBoxId },
+          operatorUser,
+          `Combined into group box ${combinedBoxId}`
+        );
+      }
+      await loadOpsData();
+      alert(`✅ Combined! All ${groupShipments.length} packages assigned to box ${combinedBoxId} and moved to Repack queue.`);
+    } catch (err) {
+      console.error('Failed to combine packages', err);
+      alert('Failed to combine packages. Please try again.');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Handler: Airfreight Dispatch from India Hub directly to Canada customer
+  /** Stage 6: Airfreight Dispatch — India → Canada air cargo */
+  const handleAirfreightDispatch = async (shipmentId: string) => {
+    if (!canadaAWB) return;
+    setUpdating(true);
+    try {
+      const current = shipments.find(s => s.id === shipmentId);
+      const result = await updateShipmentStage(
+        shipmentId,
+        'in_transit',
+        current?.stage_timestamps,
+        {
+          canada_local_carrier: canadaCarrier,
+          canada_local_awb: canadaAWB,
+          external_tracking: `${canadaCarrier}: ${canadaAWB}`
+        },
+        operatorUser,
+        `Airfreight dispatched via ${canadaCarrier} (AWB: ${canadaAWB})`
+      );
+      if (!result.error) {
+        setShipments(prev => prev.map(s => s.id === shipmentId ? {
+          ...s, status: 'in_transit',
+          canada_local_carrier: canadaCarrier,
+          canada_local_awb: canadaAWB,
+          external_tracking: `${canadaCarrier}: ${canadaAWB}`,
+          stage_timestamps: result.updatedTimestamps
+        } : s));
+        if (selectedShipment?.id === shipmentId) {
+          setSelectedShipment((prev: any) => ({ ...prev, status: 'in_transit', canada_local_carrier: canadaCarrier, canada_local_awb: canadaAWB, stage_timestamps: result.updatedTimestamps }));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to dispatch airfreight', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Handler: Confirm delivered to Canadian customer address
+  const handleMarkDelivered = async (shipmentId: string) => {
+    setUpdating(true);
+    try {
+      const current = shipments.find(s => s.id === shipmentId);
+      const result = await updateShipmentStage(
+        shipmentId,
+        'delivered',
+        current?.stage_timestamps,
+        {},
+        operatorUser,
+        'Confirmed delivered to customer address in Canada'
+      );
+      if (!result.error) {
+        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'delivered', stage_timestamps: result.updatedTimestamps } : s));
+        if (selectedShipment?.id === shipmentId) {
+          setSelectedShipment((prev: any) => ({ ...prev, status: 'delivered', stage_timestamps: result.updatedTimestamps }));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to mark delivered', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   // Handler: Canada Hub Intake & De-consolidation
   const handleCanadaHubReceived = async (shipmentId: string) => {
     setUpdating(true);
     try {
       const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(shipmentId, 'received_canada', current?.stage_timestamps);
+      const result = await updateShipmentStage(
+        shipmentId,
+        'received_canada',
+        current?.stage_timestamps,
+        {},
+        operatorUser,
+        'Received and de-consolidated at Canada Hub'
+      );
 
       if (!result.error) {
         setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'received_canada', stage_timestamps: result.updatedTimestamps } : s));
@@ -216,11 +425,18 @@ export default function WarehouseOpsPortal() {
     setUpdating(true);
     try {
       const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(shipmentId, 'out_for_delivery', current?.stage_timestamps, {
-        canada_local_carrier: canadaCarrier,
-        canada_local_awb: canadaAWB,
-        external_tracking: `${canadaCarrier}: ${canadaAWB}`
-      });
+      const result = await updateShipmentStage(
+        shipmentId,
+        'out_for_delivery',
+        current?.stage_timestamps,
+        {
+          canada_local_carrier: canadaCarrier,
+          canada_local_awb: canadaAWB,
+          external_tracking: `${canadaCarrier}: ${canadaAWB}`
+        },
+        operatorUser,
+        `Dispatched via Canadian local courier ${canadaCarrier} (AWB: ${canadaAWB})`
+      );
 
       if (!result.error) {
         setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'out_for_delivery', canada_local_carrier: canadaCarrier, canada_local_awb: canadaAWB, external_tracking: `${canadaCarrier}: ${canadaAWB}`, stage_timestamps: result.updatedTimestamps } : s));
@@ -231,6 +447,7 @@ export default function WarehouseOpsPortal() {
     } catch (err) {
       console.error('Failed to dispatch Canadian local courier', err);
     } finally {
+
       setUpdating(false);
     }
   };
@@ -347,6 +564,12 @@ export default function WarehouseOpsPortal() {
       case 'in_transit':
       case 'shipped':
         return <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Airfreight to Canada</span>;
+      case 'holding':
+        return <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Holding at Hub</span>;
+      case 'hold_arrived':
+        return <span className="bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Package Arrived</span>;
+      case 'hold_combined':
+        return <span className="bg-green-100 text-green-800 border border-green-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Combined &amp; Ready</span>;
       case 'received_canada':
         return <span className="bg-teal-100 text-teal-800 border border-teal-200 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">Received @ Canada Hub</span>;
       case 'out_for_delivery':
@@ -358,6 +581,7 @@ export default function WarehouseOpsPortal() {
     }
   };
 
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F4F1EA] text-[#0E1F38] font-sans">
       {/* ── Top Ops Bar ── */}
@@ -371,26 +595,11 @@ export default function WarehouseOpsPortal() {
           </Link>
         </div>
 
-        {/* Hub Switcher (India Hub vs Canada Hub) */}
         <div className="flex items-center bg-[#17200D] p-1 rounded-xl border border-white/10 text-xs">
-          <button
-            onClick={() => { setActiveHub('india'); setSelectedShipment(null); }}
-            className={`px-3 py-1.5 rounded-lg font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeHub === 'india' ? 'bg-[#8BC34A] text-[#1B250F] shadow-sm' : 'text-white/60 hover:text-white'
-            }`}
-          >
+          <span className="px-3 py-1.5 rounded-lg font-black bg-[#8BC34A] text-[#1B250F] shadow-sm flex items-center gap-1.5">
             <span>🇮🇳</span>
             <span>India Hub (Delhi)</span>
-          </button>
-          <button
-            onClick={() => { setActiveHub('canada'); setSelectedShipment(null); }}
-            className={`px-3 py-1.5 rounded-lg font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeHub === 'canada' ? 'bg-[#8BC34A] text-[#1B250F] shadow-sm' : 'text-white/60 hover:text-white'
-            }`}
-          >
-            <span>🇨🇦</span>
-            <span>Canada Hub (Toronto)</span>
-          </button>
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -412,10 +621,32 @@ export default function WarehouseOpsPortal() {
       </header>
 
       {/* ── Main Ops Layout ── */}
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="max-w-7xl mx-auto p-3 sm:p-6 space-y-4 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-6">
         
+        {/* Mobile View Switcher */}
+        <div className="lg:hidden flex bg-white p-1 rounded-2xl border border-black/10 text-xs font-bold shadow-xs">
+          <button
+            onClick={() => setMobileOpsTab('queue')}
+            className={`flex-1 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              mobileOpsTab === 'queue' ? 'bg-[#1B250F] text-white shadow-sm' : 'text-[#0E1F38]/60 hover:text-[#0E1F38]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">format_list_bulleted</span>
+            Package Queue ({filteredShipments.length})
+          </button>
+          <button
+            onClick={() => setMobileOpsTab('workstation')}
+            className={`flex-1 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              mobileOpsTab === 'workstation' ? 'bg-[#1B250F] text-white shadow-sm' : 'text-[#0E1F38]/60 hover:text-[#0E1F38]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">biotech</span>
+            Workstation {selectedShipment ? `(#${selectedShipment.id.slice(0, 6).toUpperCase()})` : ''}
+          </button>
+        </div>
+
         {/* ── Left Column: Live Queue & Search ── */}
-        <div className="lg:col-span-5 space-y-4">
+        <div className={`lg:col-span-5 space-y-4 ${mobileOpsTab === 'queue' ? 'block' : 'hidden lg:block'}`}>
           
           {/* Quick Search Card */}
           <div className="bg-white p-4 rounded-2xl border border-black/5 shadow-xs space-y-3">
@@ -450,71 +681,141 @@ export default function WarehouseOpsPortal() {
               >
                 All ({filteredShipments.length})
               </button>
-              {activeHub === 'india' ? (
-                <>
-                  <button
-                    onClick={() => setActiveTab('inward')}
-                    className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
-                      activeTab === 'inward' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
-                    }`}
-                  >
-                    1. Inward Scan
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('qc')}
-                    className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
-                      activeTab === 'qc' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
-                    }`}
-                  >
-                    2. QC Match
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('repack')}
-                    className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
-                      activeTab === 'repack' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
-                    }`}
-                  >
-                    3. SOP Repack
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('master_bulk')}
-                    className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
-                      activeTab === 'master_bulk' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
-                    }`}
-                  >
-                    4. Master Cargo
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => setActiveTab('inward')}
-                    className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
-                      activeTab === 'inward' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
-                    }`}
-                  >
-                    Master Intake
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('canada_dispatch')}
-                    className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
-                      activeTab === 'canada_dispatch' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
-                    }`}
-                  >
-                    Local Dispatch
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => setActiveTab('inward')}
+                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                  activeTab === 'inward' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
+                }`}
+              >
+                1. Inward Scan
+              </button>
+              <button
+                onClick={() => setActiveTab('qc')}
+                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                  activeTab === 'qc' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
+                }`}
+              >
+                2. QC Match
+              </button>
+              <button
+                onClick={() => setActiveTab('repack')}
+                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                  activeTab === 'repack' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
+                }`}
+              >
+                3. SOP Repack
+              </button>
+              <button
+                onClick={() => setActiveTab('master_bulk')}
+                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                  activeTab === 'master_bulk' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
+                }`}
+              >
+                4. Master Cargo
+              </button>
+              <button
+                onClick={() => setActiveTab('hold_combine')}
+                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
+                  activeTab === 'hold_combine' ? 'bg-amber-700 text-white border-amber-700' : 'bg-amber-50 text-amber-800 border-amber-200'
+                }`}
+              >
+                📦 Hold &amp; Combine
+                {holdGroups.length > 0 && (
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                    activeTab === 'hold_combine' ? 'bg-white/20 text-white' : 'bg-amber-700 text-white'
+                  }`}>{holdGroups.length}</span>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Shipment Queue List */}
+          {/* Shipment Queue List OR Hold & Combine panel */}
           <div className="space-y-2.5 max-h-[calc(100vh-250px)] overflow-y-auto pr-1">
             {isFetching ? (
               <div className="p-8 text-center bg-white rounded-2xl border border-black/5">
                 <span className="material-symbols-outlined animate-spin text-2xl text-[#8BC34A]">progress_activity</span>
                 <p className="text-xs text-[#0E1F38]/60 mt-2">Loading floor queue...</p>
               </div>
+            ) : activeTab === 'hold_combine' ? (
+              /* ── Hold & Combine Grouped View ── */
+              holdGroups.length === 0 ? (
+                <div className="p-8 text-center bg-amber-50 rounded-2xl border border-amber-200 space-y-2">
+                  <span className="text-3xl">📦</span>
+                  <p className="text-xs font-bold text-amber-800">No Hold & Combine shipments</p>
+                  <p className="text-[11px] text-amber-700">Customers who select Hold & Combine will appear here.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {holdGroups.map(group => (
+                    <div key={group.groupKey} className="bg-white rounded-2xl border border-amber-200 overflow-hidden shadow-sm">
+                      {/* Group Header */}
+                      <div className="bg-amber-50 px-4 py-3 flex items-center justify-between border-b border-amber-200">
+                        <div>
+                          <p className="text-xs font-black text-amber-900">📦 Hold Group — {group.destinationCity}</p>
+                          <p className="text-[10px] text-amber-700 mt-0.5">
+                            {group.arrivedCount} of {group.expectedPackages} packages arrived
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* Progress pill */}
+                          <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
+                            group.allArrived
+                              ? 'bg-green-100 text-green-800 border border-green-300'
+                              : 'bg-amber-100 text-amber-800 border border-amber-300'
+                          }`}>
+                            {group.allArrived ? '✅ All Arrived' : `⏳ ${group.expectedPackages - group.arrivedCount} Pending`}
+                          </span>
+                          {group.allArrived && (
+                            <button
+                              onClick={() => handleCombineAndDispatch(group.shipments)}
+                              disabled={updating}
+                              className="bg-[#8BC34A] hover:bg-[#9ccc65] text-[#1B250F] text-[10px] font-black px-3 py-1.5 rounded-xl transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                            >
+                              <span className="material-symbols-outlined text-sm">merge</span>
+                              Combine &amp; Dispatch
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {/* Individual packages */}
+                      <div className="divide-y divide-black/5">
+                        {group.shipments.map((s: any) => (
+                          <div key={s.id} className="px-4 py-3 flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[10px] font-black bg-[#FAF8EE] px-2 py-0.5 rounded border border-black/5">
+                                  #{s.id.slice(0, 8).toUpperCase()}
+                                </span>
+                                {getStatusBadge(s.status)}
+                              </div>
+                              <p className="text-[11px] text-[#0E1F38]/60 mt-1">
+                                {Array.isArray(s.items) ? s.items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0) : 0} items · {s.total_weight || 1.0} kg
+                                {s.external_order_id && ` · Order: ${s.external_order_id}`}
+                              </p>
+                            </div>
+                            {s.status !== 'hold_arrived' && s.status !== 'inwarded' && (
+                              <button
+                                onClick={() => handleMarkHoldArrived(s.id)}
+                                disabled={updating}
+                                className="text-[10px] font-black bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 px-3 py-1.5 rounded-xl transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-sm">check_circle</span>
+                                Mark Arrived
+                              </button>
+                            )}
+                            {(s.status === 'hold_arrived' || s.status === 'inwarded') && (
+                              <span className="text-[10px] font-black text-green-700 flex items-center gap-1">
+                                <span className="material-symbols-outlined text-sm">done_all</span>
+                                At Hub
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : filteredShipments.length === 0 ? (
               <div className="p-8 text-center bg-white rounded-2xl border border-black/5 space-y-1">
                 <span className="material-symbols-outlined text-3xl text-[#0E1F38]/30">inventory_2</span>
@@ -535,6 +836,7 @@ export default function WarehouseOpsPortal() {
                       setUploadedPhotos(s.qc_photos || []);
                       if (s.master_box_id) setMasterBoxId(s.master_box_id);
                       if (s.canada_local_awb) setCanadaAWB(s.canada_local_awb);
+                      setMobileOpsTab('workstation');
                     }}
                     className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-3 ${
                       isSelected
@@ -573,9 +875,18 @@ export default function WarehouseOpsPortal() {
         </div>
 
         {/* ── Right Column: Interactive Hub Workstation ── */}
-        <div className="lg:col-span-7">
+        <div className={`lg:col-span-7 ${mobileOpsTab === 'workstation' ? 'block' : 'hidden lg:block'}`}>
           {selectedShipment ? (
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-black/5 shadow-sm space-y-6">
+            <div className="bg-white rounded-3xl p-4 sm:p-8 border border-black/5 shadow-sm space-y-6">
+              
+              {/* Mobile Back Button */}
+              <button
+                onClick={() => setMobileOpsTab('queue')}
+                className="lg:hidden text-xs font-bold text-[#8BC34A] bg-[#1B250F] px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer w-fit"
+              >
+                <span className="material-symbols-outlined text-sm">arrow_back</span>
+                Back to Package Queue
+              </button>
               
               {/* Header Info */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-black/5 gap-3">
@@ -829,95 +1140,96 @@ export default function WarehouseOpsPortal() {
                     )}
                   </div>
 
-                </div>
-              )}
-
-              {/* ──────────────── CANADA HUB WORKFLOW ──────────────── */}
-              {activeHub === 'canada' && (
-                <div className="space-y-5">
-                  
-                  {/* Step 1: Canada Hub Intake */}
-                  <div className="p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-3">
+                  {/* Step 5: Airfreight Dispatch — India → Canada Customer */}
+                  <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200 space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">1</span>
-                        Receive &amp; De-consolidate Master Crate
+                      <h3 className="text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px]">5</span>
+                        Airfreight Dispatch — India to Customer (Canada)
                       </h3>
-                      {['received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
-                        <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
+                      {['in_transit', 'shipped', 'delivered'].includes(selectedShipment.status) && (
+                        <span className="text-[10px] text-emerald-700 font-black flex items-center gap-1">
                           <span className="material-symbols-outlined text-xs">check_circle</span>
-                          Received @ Toronto GTA Hub
+                          Dispatched ✈
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-[#0E1F38]/70">
-                      Unbox the master pallet crate and sort individual customer Layo Green Boxes for Canadian domestic injection.
-                    </p>
-
-                    {(selectedShipment.status === 'bulk_consolidated' || selectedShipment.status === 'in_transit') && (
-                      <button
-                        onClick={() => handleCanadaHubReceived(selectedShipment.id)}
-                        disabled={updating}
-                        className="w-full py-3 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-base">flight_land</span>
-                        Receive at Layo Canada Hub (Toronto)
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Step 2: Canadian Local Delivery Dispatch */}
-                  <div className="p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">2</span>
-                        Dispatch via Canadian Local Delivery Partner
-                      </h3>
-                      {['out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
-                        <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
-                          <span className="material-symbols-outlined text-xs">check_circle</span>
-                          Dispatched Locally
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-[#0E1F38]/70">
-                      Attach Canadian domestic carrier label and dispatch directly to customer doorstep.
+                    <p className="text-xs text-emerald-900/70">
+                      Enter airfreight carrier and AWB tracking number. Package ships directly from Delhi hub to customer's Canadian address.
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">Local Delivery Partner</label>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-emerald-950/60">Airfreight Carrier</label>
                         <select
                           value={canadaCarrier}
                           onChange={e => setCanadaCarrier(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-black/10 rounded-xl text-xs font-bold text-[#0E1F38] focus:border-[#8BC34A] focus:outline-none cursor-pointer"
+                          className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-emerald-950 focus:border-emerald-500 focus:outline-none cursor-pointer"
                         >
-                          <option value="Canada Post Expedited">Canada Post Expedited Parcel</option>
-                          <option value="Purolator Ground">Purolator Ground / Express</option>
-                          <option value="UPS Canada">UPS Standard Canada</option>
-                          <option value="UniUni Swift">UniUni Doorstep Express</option>
+                          <option value="FedEx International Priority">FedEx International Priority</option>
+                          <option value="DHL Express Worldwide">DHL Express Worldwide</option>
+                          <option value="UPS Worldwide Expedited">UPS Worldwide Expedited</option>
+                          <option value="Air India Cargo">Air India Cargo</option>
+                          <option value="IndiGo Cargo">IndiGo Cargo</option>
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">Canadian Tracking Number (AWB)</label>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-emerald-950/60">Airfreight AWB Tracking No.</label>
                         <input
                           type="text"
-                          placeholder="e.g. CP-992819203CA"
+                          placeholder="e.g. FX-9918283746IN"
                           value={canadaAWB}
                           onChange={e => setCanadaAWB(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-black/10 rounded-xl text-xs font-mono font-bold text-[#0E1F38] focus:border-[#8BC34A] focus:outline-none"
+                          className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-xs font-mono font-bold text-emerald-950 focus:border-emerald-500 focus:outline-none"
                         />
                       </div>
                     </div>
 
-                    {selectedShipment.status === 'received_canada' && (
+                    {selectedShipment.status === 'bulk_consolidated' && (
                       <button
-                        onClick={() => handleCanadaLocalDispatch(selectedShipment.id)}
+                        onClick={() => handleAirfreightDispatch(selectedShipment.id)}
                         disabled={updating || !canadaAWB}
-                        className="w-full py-3 bg-[#1B250F] text-white font-black text-xs uppercase tracking-widest rounded-xl hover:bg-black transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                        className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                       >
-                        <span className="material-symbols-outlined text-base">local_shipping</span>
-                        Hand Off to {canadaCarrier}
+                        <span className="material-symbols-outlined text-base">flight_takeoff</span>
+                        Dispatch via {canadaCarrier}
+                      </button>
+                    )}
+
+                    {selectedShipment.canada_local_awb && (
+                      <div className="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-emerald-200 text-xs">
+                        <span className="material-symbols-outlined text-sm text-emerald-600">flight</span>
+                        <span className="font-bold text-emerald-900">{selectedShipment.canada_local_carrier}</span>
+                        <span className="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{selectedShipment.canada_local_awb}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Step 6: Confirm Delivered to Customer */}
+                  <div className="p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">6</span>
+                        Confirm Delivered to Customer (Canada)
+                      </h3>
+                      {selectedShipment.status === 'delivered' && (
+                        <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">check_circle</span>
+                          Delivered ✅
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-[#0E1F38]/70">
+                      Mark as delivered once customer confirms receipt or carrier shows delivery scan.
+                    </p>
+                    {(selectedShipment.status === 'in_transit' || selectedShipment.status === 'shipped') && (
+                      <button
+                        onClick={() => handleMarkDelivered(selectedShipment.id)}
+                        disabled={updating}
+                        className="w-full py-3 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-base">done_all</span>
+                        Confirm Delivered to Customer
                       </button>
                     )}
                   </div>
@@ -1085,11 +1397,9 @@ export default function WarehouseOpsPortal() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  alert('Discrepancy ticket created and attached to shipment');
-                  setShowDiscrepancyModal(false);
-                }}
-                className="flex-1 py-2.5 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 shadow-sm"
+                onClick={handleFlagDiscrepancy}
+                disabled={updating || !discrepancyNote.trim()}
+                className="flex-1 py-2.5 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 shadow-sm disabled:opacity-40"
               >
                 Submit Flag
               </button>

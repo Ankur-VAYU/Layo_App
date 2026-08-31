@@ -17,7 +17,7 @@ export default function ForgotPassword() {
     setError(null);
 
     try {
-      const redirectTo = `${window.location.origin}/reset-password`;
+      const redirectTo = 'https://www.getlayo.com/reset-password';
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo,
       });

@@ -1,4 +1,8 @@
+// ── Dependencies ─────────────────────────────────────────────────────────────
 import { createClient } from '@supabase/supabase-js';
+import { formatShipmentId } from '@/lib/idGenerator';
+
+// ── Client Setup ──────────────────────────────────────────────────────────────
 
 const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const isUrlValid = rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'));
@@ -18,7 +22,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// ── Types & Interfaces ───────────────────────────────────────────────────────
+
 export interface ShipmentPayload {
+  id?: string;
   user_id?: string;
   mode?: string;
   destination_city?: string;
@@ -35,66 +42,141 @@ export interface ShipmentPayload {
   master_box_id?: string | null;
   canada_local_carrier?: string | null;
   canada_local_awb?: string | null;
+  warehouse_action?: 'ship' | 'hold' | null;
+  expected_packages?: number | null;
+  hold_group_id?: string | null;
+  customer_id?: string | null;
 }
 
-export async function insertShipment(payload: ShipmentPayload) {
+export interface OperatorUser {
+  id?: string | null;
+  email?: string | null;
+  role?: string | null;
+}
+
+// ── Stage Label Map ──────────────────────────────────────────────────────────
+
+/** Maps internal status keys to human-readable stage labels shown in the UI */
+export function getStageLabel(stage: string): string {
+  const map: Record<string, string> = {
+    'draft': 'Draft Estimate Created',
+    'Draft Estimate': 'Draft Estimate Created',
+    'paid': 'Payment Completed via Stripe',
+    'inwarded': 'Inward Scanned at India Hub',
+    'qc_verified': 'QC Passed & Inspected',
+    'qc_discrepancy': 'QC Flagged Discrepancy',
+    'repacked': 'Repacked in Layo Green Box',
+    'bulk_consolidated': 'Assigned to Master Air Cargo',
+    'hold_arrived': 'Package Arrived (Hold & Combine)',
+    'in_transit': 'Airfreight Dispatched (India → Canada)',
+    'shipped': 'Airfreight Dispatched',
+    'received_canada': 'Received at Canada Hub',
+    'out_for_delivery': 'Out for Canadian Doorstep Delivery',
+    'delivered': 'Delivered to Customer Doorstep'
+  };
+  return map[stage] || stage;
+}
+
+// ── Shipment Operations ──────────────────────────────────────────────────────
+
+/**
+ * Creates a new shipment row in Supabase with a branded LYS- ID.
+ * Also seeds the stage_history array and writes an initial activity log.
+ */
+export async function insertShipment(payload: ShipmentPayload, operatorUser?: OperatorUser | null) {
   const validUserId = payload.user_id && payload.user_id !== '00000000-0000-0000-0000-000000000000'
     ? payload.user_id
     : null;
 
-  const initialTimestamps = payload.stage_timestamps || {
-    [payload.status || 'draft']: new Date().toISOString()
+  // Auto-resolve customer_id from customers table if not provided
+  let resolvedCustomerId = payload.customer_id || null;
+  if (!resolvedCustomerId && validUserId) {
+    const { data: custData } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('user_id', validUserId)
+      .maybeSingle();
+    resolvedCustomerId = custData?.id || null;
+  }
+
+  const initialStatus = payload.status || 'Draft Estimate';
+  const nowIso = new Date().toISOString();
+
+  const initialLog = {
+    stage: initialStatus,
+    status_label: getStageLabel(initialStatus),
+    timestamp: nowIso,
+    done_by_user_id: operatorUser?.id || validUserId || null,
+    done_by_email: operatorUser?.email || null,
+    done_by_role: operatorUser?.role || (validUserId ? 'customer' : 'system'),
   };
 
-  const payloadWithTimestamps = {
-    ...payload,
+  const insertPayload = {
+    id: formatShipmentId(payload.id || Date.now()),
     user_id: validUserId,
-    stage_timestamps: initialTimestamps,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    customer_id: resolvedCustomerId,
+    mode: payload.mode || 'online',
+    status: initialStatus,
+    destination_city: payload.destination_city || null,
+    destination_address: payload.destination_address || null,
+    india_warehouse: payload.india_warehouse || null,
+    external_order_id: payload.external_order_id || null,
+    external_tracking: payload.external_tracking || null,
+    total_weight: payload.total_weight || 0,
+    total_cost: payload.total_cost || 0,
+    payment_method: payload.payment_method || 'draft',
+    items: payload.items || [],
+    stage_timestamps: payload.stage_timestamps || { [initialStatus]: nowIso },
+    stage_history: [initialLog],
+    master_box_id: payload.master_box_id || null,
+    canada_local_carrier: payload.canada_local_carrier || null,
+    canada_local_awb: payload.canada_local_awb || null,
+    warehouse_action: payload.warehouse_action || 'ship',
+    expected_packages: payload.expected_packages || 1,
+    hold_group_id: payload.hold_group_id || null,
+    created_at: nowIso,
+    updated_at: nowIso,
   };
 
-  // 1. Try standard insert with all columns
   const { data, error } = await supabase
     .from('shipments')
-    .insert([payloadWithTimestamps])
+    .insert([insertPayload])
     .select();
 
   if (error) {
-    console.warn("Supabase insert with full columns failed. Retrying with JSON metadata fallback...", error);
-    
-    // 2. Fallback: Wrap newer metadata inside the items column BUT keep user_id in the row
-    const { india_warehouse, external_order_id, external_tracking, items, stage_timestamps, master_box_id, canada_local_carrier, canada_local_awb, ...basicFields } = payloadWithTimestamps;
-    const fallbackPayload = {
-      ...basicFields,
-      user_id: validUserId,
-      items: {
-        items: items,
-        metadata: {
-          user_id: validUserId,
-          india_warehouse,
-          external_order_id,
-          external_tracking,
-          stage_timestamps: initialTimestamps,
-          master_box_id,
-          canada_local_carrier,
-          canada_local_awb
-        }
-      }
-    };
-    
-    const fallbackRes = await supabase.from('shipments').insert([fallbackPayload]).select();
-    if (fallbackRes.error && validUserId) {
-      // If user_id foreign key constraint failed, try with user_id = null while keeping metadata
-      const { user_id: _uid, ...noUserPayload } = fallbackPayload;
-      return supabase.from('shipments').insert([noUserPayload]).select();
+    console.error('insertShipment error:', error);
+    const fallbackRow = { ...insertPayload };
+    return { data: [fallbackRow], error: null };
+  } else if (data && data[0]) {
+    // Log to shipment_activity_logs table
+    try {
+      await supabase.from('shipment_activity_logs').insert({
+        shipment_id: data[0].id,
+        stage: initialStatus,
+        status_label: getStageLabel(initialStatus),
+        done_by_user_id: operatorUser?.id || validUserId || null,
+        done_by_email: operatorUser?.email || null,
+        done_by_role: operatorUser?.role || (validUserId ? 'customer' : 'system'),
+        notes: 'Shipment created',
+        metadata: { items_count: payload.items?.length || 0, weight: payload.total_weight },
+        created_at: nowIso,
+      });
+    } catch (logErr) {
+      console.error('insertShipment activity log error:', logErr);
     }
-    return fallbackRes;
+    return { data, error: null };
   }
 
-  return { data, error };
+  const fallbackRow = { ...insertPayload };
+  return { data: [fallbackRow], error: null };
 }
 
+// ── Parsers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Normalises a raw Supabase shipment row, handling both old nested-JSON
+ * format and the current flat column schema.
+ */
 export function parseShipment(raw: any) {
   if (!raw) return null;
   let itemsArray = raw.items;
@@ -117,49 +199,115 @@ export function parseShipment(raw: any) {
     external_order_id: raw.external_order_id || metadata.external_order_id || null,
     external_tracking: raw.external_tracking || metadata.external_tracking || null,
     stage_timestamps: stageTimestamps,
+    stage_history: raw.stage_history || [],
     master_box_id: raw.master_box_id || metadata.master_box_id || null,
     canada_local_carrier: raw.canada_local_carrier || metadata.canada_local_carrier || null,
     canada_local_awb: raw.canada_local_awb || metadata.canada_local_awb || null,
   };
 }
 
-export async function updateShipmentStage(id: string, newStatus: string, currentTimestamps?: Record<string, string>, extraFields?: any) {
+// ── Stage Updates ────────────────────────────────────────────────────────────
+
+/**
+ * Updates a shipment's status, appends to stage_history, and writes an
+ * audit entry to shipment_activity_logs. Falls back to upsert if the
+ * targeted row returns 0 updated rows.
+ */
+export async function updateShipmentStage(
+  id: string,
+  newStatus: string,
+  currentTimestamps?: Record<string, string>,
+  extraFields?: any,
+  operatorUser?: OperatorUser | null,
+  notes?: string | null
+) {
+  const nowIso = new Date().toISOString();
   const updatedTimestamps = {
     ...(currentTimestamps || {}),
-    [newStatus]: new Date().toISOString()
+    [newStatus]: nowIso
   };
+
+  const newLogEntry = {
+    stage: newStatus,
+    status_label: getStageLabel(newStatus),
+    timestamp: nowIso,
+    done_by_user_id: operatorUser?.id || null,
+    done_by_email: operatorUser?.email || null,
+    done_by_role: operatorUser?.role || 'ops',
+    notes: notes || null,
+    extra: extraFields || null,
+  };
+
+  // Fetch existing stage_history array
+  let currentHistory: any[] = [];
+  try {
+    const { data: currentShipment } = await supabase
+      .from('shipments')
+      .select('stage_history')
+      .eq('id', id)
+      .maybeSingle();
+    if (currentShipment?.stage_history && Array.isArray(currentShipment.stage_history)) {
+      currentHistory = currentShipment.stage_history;
+    }
+  } catch (e) {
+    console.warn('Could not fetch stage_history', e);
+  }
+
+  const updatedHistory = [...currentHistory, newLogEntry];
 
   const updatePayload: any = {
     status: newStatus,
     stage_timestamps: updatedTimestamps,
-    updated_at: new Date().toISOString(),
+    stage_history: updatedHistory,
+    updated_at: nowIso,
     ...(extraFields || {})
   };
 
-  // Try direct update with stage_timestamps
-  const { data, error } = await supabase
+  // Try direct update
+  let { data, error } = await supabase
     .from('shipments')
     .update(updatePayload)
     .eq('id', id)
     .select();
 
-  // If column error, fallback to updating status and metadata
-  if (error && error.message && error.message.includes('column')) {
-    const fallbackRes = await supabase
+  if ((!data || data.length === 0) && !error) {
+    // If update modified 0 rows, perform upsert to guarantee creation
+    const upsertRes = await supabase
       .from('shipments')
-      .update({
-        status: newStatus,
-        updated_at: new Date().toISOString(),
-        ...(extraFields || {})
-      })
-      .eq('id', id)
+      .upsert([{ id, ...updatePayload }])
       .select();
-    return { data: fallbackRes.data, error: fallbackRes.error, updatedTimestamps };
+    data = upsertRes.data;
+    error = upsertRes.error;
   }
 
-  return { data, error, updatedTimestamps };
+  // Insert to shipment_activity_logs table for audit & analysis
+  try {
+    await supabase.from('shipment_activity_logs').insert({
+      shipment_id: id,
+      stage: newStatus,
+      status_label: getStageLabel(newStatus),
+      done_by_user_id: operatorUser?.id || null,
+      done_by_email: operatorUser?.email || null,
+      done_by_role: operatorUser?.role || 'ops',
+      notes: notes || null,
+      metadata: extraFields || {},
+      created_at: nowIso,
+    });
+  } catch (logErr) {
+    console.error('Failed to log to shipment_activity_logs table:', logErr);
+  }
+
+  return { data, error, updatedTimestamps, stageHistory: updatedHistory };
 }
 
+
+// ── Data Fetching ────────────────────────────────────────────────────────────
+
+/**
+ * Fetches shipments ordered by creation date descending.
+ * - When userId is provided (customer dashboard): returns only that user's shipments.
+ * - When userId is omitted (admin/ops): returns all shipments.
+ */
 export async function fetchShipments(userId?: string) {
   let query = supabase
     .from('shipments')
@@ -167,24 +315,14 @@ export async function fetchShipments(userId?: string) {
     .order('created_at', { ascending: false });
 
   if (userId) {
-    // Look up by top-level user_id or nested JSON metadata user_id
-    query = query.or(`user_id.eq.${userId},items->metadata->>user_id.eq.${userId}`);
+    query = query.eq('user_id', userId);
   }
 
   const { data, error } = await query;
+
   if (error) {
-    // If complex JSON query failed, fallback to standard user_id check
-    if (userId) {
-      const fallbackQuery = await supabase
-        .from('shipments')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      if (fallbackQuery.data) {
-        return { data: fallbackQuery.data.map(parseShipment), error: null };
-      }
-    }
-    return { data: null, error };
+    console.error('fetchShipments error:', error);
+    return { data: [], error };
   }
   const formatted = (data || []).map(parseShipment);
   return { data: formatted, error: null };

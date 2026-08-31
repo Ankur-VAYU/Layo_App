@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
 
+
 export default function ShippingCalculatorPage() {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
@@ -128,6 +129,8 @@ export default function ShippingCalculatorPage() {
               </div>
             </div>
           </div>
+
+
 
           <div className="border-t border-black/5 pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-[#0E1F38]/70">
             <p>Ready to calculate your parcel costs?</p>
