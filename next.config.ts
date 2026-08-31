@@ -25,7 +25,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: https: blob:",
-      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://checkout.razorpay.com",
+      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://checkout.razorpay.com https://maps.google.com https://www.google.com",
       "connect-src 'self' https://*.supabase.co https://api.stripe.com https://resend.com",
     ].join("; "),
   },
