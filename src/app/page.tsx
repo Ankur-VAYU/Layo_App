@@ -8,6 +8,7 @@ import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase } from '@/lib/supabase';
+import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 
 // Define category configuration for the dynamic Essentials stacked card
 interface CategoryConfig {
@@ -211,9 +212,18 @@ export default function Home() {
     topsQty * activeCategory.caTopsPrice + bottomsQty * activeCategory.caBottomsPrice
   );
 
-  const grossWeightKg = topsQty * activeCategory.topWeightKg + bottomsQty * activeCategory.bottomWeightKg;
+  const extrasWeightKg = Math.max(0, extrasQty - 5) * 0.05;
+  const grossWeightKg = topsQty * activeCategory.topWeightKg + bottomsQty * activeCategory.bottomWeightKg + extrasWeightKg;
   const chargeableKg = Math.max(1, Math.ceil(grossWeightKg));
-  const shippingPrice = topsQty + bottomsQty === 0 ? 0 : Math.round(25 + chargeableKg * activeCategory.shippingPerKgRate);
+
+  const costCalc = calculateLayoDeliveryCost({
+    weightKg: grossWeightKg,
+    deliveryType: 'normal',
+    isDocument: false,
+    cadToInrRate: 70.4,
+  });
+
+  const shippingPrice = topsQty + bottomsQty === 0 ? 0 : Math.round(costCalc.finalPriceCAD);
 
   const totalPrice = indianPrice + shippingPrice;
   const savings = Math.max(0, canadianPrice - totalPrice);
@@ -651,36 +661,19 @@ export default function Home() {
                           : 'opacity-85 hover:opacity-100 hover:scale-[1.02]'
                       }`}
                     >
-                      {/* Parcel Box */}
+                      {/* Parcel Box Image */}
                       <div
                         className={`relative w-full rounded-2xl overflow-hidden transition-all duration-300 shadow-md ${
                           isSelected
-                            ? 'ring-3 ring-[#8BC34A] shadow-[#8BC34A]/25 shadow-xl'
-                            : 'border border-black/20'
+                            ? 'ring-3 ring-[#8BC34A] shadow-[#8BC34A]/25 shadow-xl scale-[1.02]'
+                            : 'border border-black/15 group-hover:scale-[1.01]'
                         }`}
-                        style={{ backgroundColor: '#D25842' }}
                       >
-                        {/* Vertical Green Tape down center */}
-                        <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-3.5 sm:w-4 bg-[#8BC34A] z-0 opacity-90 shadow-xs" />
-
-                        {/* Top Icons Area */}
-                        <div className="pt-3.5 pb-2.5 flex items-center justify-center gap-3 relative z-10 text-lg sm:text-xl text-white/95 drop-shadow-xs">
-                          {cat.icons.map((ic, i) => (
-                            <span key={i} className="transform transition-transform group-hover:scale-110">
-                              {ic}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Bottom White Label Card */}
-                        <div className="bg-[#FFFDF7] rounded-xl mx-2 mb-2 p-2 sm:p-2.5 text-center relative z-10 shadow-sm border border-black/5">
-                          <p className="text-[9px] sm:text-[10px] font-black text-[#D25842] uppercase tracking-wider leading-none">
-                            {cat.ageLabel}
-                          </p>
-                          <h4 className="text-xs sm:text-sm font-black text-[#0E1F38] mt-1 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
-                            {cat.tabLabel}
-                          </h4>
-                        </div>
+                        <img
+                          src={cat.image.replace('-box.png', '-conveyor.png')}
+                          alt={cat.tabLabel}
+                          className="w-full h-auto block object-cover"
+                        />
                       </div>
 
                       {/* tap to compare subtitle */}
@@ -839,9 +832,9 @@ export default function Home() {
                   <div className="flex items-center justify-between py-1 gap-2">
                     <div className="flex items-center gap-2 px-3 py-2 bg-[#E2E8DD] text-[#3B4A2C] border border-[#C5D3BC] rounded-xl text-[10px] sm:text-[11px] font-bold tracking-tight flex-grow">
                       <span className="material-symbols-outlined text-sm leading-none">workspace_premium</span>
-                      Free light weight items (max 50 gm) - Maximum 5 items can be added
+                      Light weight items (max 50 gm) - Maximum 5 items can be added
                     </div>
-                    <span className="text-[#3B4A2C] font-black text-xs sm:text-sm uppercase tracking-wider px-2">FREE!</span>
+                    <span className="text-[#3B4A2C] font-black text-xs sm:text-sm uppercase tracking-wider px-2">MAX 50G</span>
                   </div>
 
                     {/* Total pricing */}
@@ -872,8 +865,8 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Vertical Pagination Dots */}
-                <div className="absolute right-[-24px] sm:right-[-32px] md:right-[-40px] top-[40%] flex flex-col gap-3 items-center">
+                {/* Pagination Dots (Vertical on Desktop, Horizontal on Mobile) */}
+                <div className="absolute lg:-right-10 lg:top-1/2 lg:-translate-y-1/2 bottom-[-16px] left-1/2 -translate-x-1/2 flex lg:flex-col flex-row gap-2.5 items-center z-10">
                   {CATEGORIES_CONFIG.map((_, dotIdx) => (
                     <button
                       key={dotIdx}
@@ -994,26 +987,41 @@ export default function Home() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs md:text-sm font-semibold">
                 <div className="space-y-1">
                   <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Email</span>
-                  <a href="mailto:support@layo.com" className="text-[#FF5A65] hover:underline font-bold text-sm">support@layo.com</a>
+                  <a href="mailto:layohq@gmail.com" className="text-[#FF5A65] hover:underline font-bold text-sm">layohq@gmail.com</a>
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Phone number</span>
-                  <p className="font-bold text-sm">+1 (800) 555-LAYO</p>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Phone / WhatsApp</span>
+                  <a
+                    href="https://wa.me/19058070163?text=Hi%20Layo!%20I%20have%20a%20question%20about%20shipping%20from%20India%20to%20Canada."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-[#25D366] hover:underline font-bold text-sm"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    +1 9058070163
+                  </a>
                 </div>
 
                 <div className="space-y-1">
                   <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Business hours</span>
-                  <p className="font-medium">Monday – Friday: 9 AM – 6 PM EST</p>
+                  <p className="font-medium">Mon – Sat: 10 AM – 7 PM IST</p>
                 </div>
 
                 <div className="space-y-1">
                   <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Address</span>
-                  <p className="leading-relaxed font-medium">
-                    Layo Technologies Inc.,<br />
-                    100 Bay Street, Suite 400,<br />
-                    Toronto, ON, M5J 2R8, Canada
-                  </p>
+                  <a
+                    href="https://maps.google.com/?q=25+Tindale+Court,+Hamilton,+Ontario+L8K+6C8"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="leading-relaxed font-medium block hover:text-[#FF5A65] transition-colors"
+                  >
+                    25 Tindale Court,<br />
+                    Hamilton, Ontario L8K 6C8,<br />
+                    Canada
+                  </a>
                 </div>
               </div>
             </div>

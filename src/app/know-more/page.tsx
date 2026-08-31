@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
+import { supabase } from '@/lib/supabase';
 
 // Step item structure for timeline
 interface TimelineStep {
@@ -113,13 +114,37 @@ export default function KnowMorePage() {
     }
   }, []);
 
-  const handleContactSubmit = (e: React.FormEvent) => {
+  const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contactForm.name || !contactForm.contact) return;
+
+    try {
+      // 1. Save to Database
+      const { error } = await supabase
+        .from('contact_submissions')
+        .insert([
+          {
+            name: contactForm.name,
+            contact: contactForm.contact,
+            message: contactForm.message,
+          }
+        ]);
+
+      if (error) {
+        console.error('Error saving contact submission to database:', error);
+      }
+    } catch (err) {
+      console.error('Failed to submit contact form:', err);
+    }
+
+
+
+    // 3. Update UI state
     setContactSubmitted(true);
     setTimeout(() => {
       setContactForm({ name: '', contact: '', message: '' });
-    }, 3000);
+      setContactSubmitted(false);
+    }, 5000);
   };
 
   return (
@@ -405,12 +430,25 @@ export default function KnowMorePage() {
 
             {/* Address */}
             <div className="border-t border-black/5 pt-6 space-y-4">
-              <div className="w-full h-44 bg-[#e5eee0] border border-[#cbe0c2] rounded-2xl relative overflow-hidden flex items-center justify-center">
-                <div className="absolute inset-0 bg-[radial-gradient(#a3c993_1px,transparent_1px)] [background-size:16px_16px] opacity-40" />
-                <div className="relative z-10 flex flex-col items-center text-center p-4">
-                  <span className="material-symbols-outlined text-3xl text-[#FF5A65] animate-bounce">location_on</span>
-                  <span className="text-xs font-bold text-[#0E1F38] mt-1">Layo Warehouse Hub</span>
-                  <span className="text-[10px] text-[#0E1F38]/60">Gurugram & Mumbai, India | Toronto, Canada</span>
+              <div className="w-full bg-[#e5eee0] border border-[#cbe0c2] rounded-2xl relative overflow-hidden flex flex-col p-2">
+                <div className="absolute inset-0 bg-[radial-gradient(#a3c993_1px,transparent_1px)] [background-size:16px_16px] opacity-40 pointer-events-none" />
+                
+                <div className="relative z-10 flex flex-col items-center text-center p-2 mb-2">
+                  <span className="material-symbols-outlined text-2xl text-[#FF5A65]">location_on</span>
+                  <span className="text-xs font-bold text-[#0E1F38] mt-1">Layo Delhi Warehouse</span>
+                  <span className="text-[10px] text-[#0E1F38]/60">Delhi NCR &amp; Mumbai, India | Toronto, Canada</span>
+                </div>
+                
+                <div className="relative z-10 w-full h-48 md:h-64 rounded-xl overflow-hidden shadow-sm border border-[#a3c993]/30">
+                  <iframe
+                    src="https://maps.google.com/maps?q=C-N-246,+Bamnoli+Village,+Sector+28+Dwarka,+Dwarka,+New+Delhi,+Delhi+110077&t=&z=14&ie=UTF8&iwloc=&output=embed"
+                    width="100%"
+                    height="100%"
+                    style={{ border: 0 }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
                 </div>
               </div>
             </div>

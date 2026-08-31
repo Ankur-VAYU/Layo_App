@@ -3,14 +3,14 @@
 import { useRouter } from 'next/navigation';
 import Logo from '@/components/Logo';
 
-const PHONE = '8730852481';
+const PHONE = '9058070163';
 const WHATSAPP_MSG = encodeURIComponent('Hi Layo! I have a question about shipping from India to Canada.');
 
 export default function ContactPage() {
   const router = useRouter();
 
   return (
-    <div className="bg-[#131313] min-h-screen text-white flex flex-col">
+    <div className="bg-[#131313] min-h-screen text-white flex flex-col font-sans">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#131313]/95 backdrop-blur-md border-b border-white/10 flex items-center gap-3 px-5 h-[10vh]">
         <button onClick={() => router.back()} className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-white transition-colors">
@@ -35,15 +35,15 @@ export default function ContactPage() {
         {/* Call & WhatsApp CTAs */}
         <div className="grid grid-cols-2 gap-3">
           <a
-            href={`tel:+91${PHONE}`}
+            href={`tel:+1${PHONE}`}
             className="flex flex-col items-center gap-2 bg-[#1a1a1a] border border-white/10 rounded-2xl py-5 hover:border-primary/30 hover:bg-primary/5 active:scale-95 transition-all"
           >
             <span className="material-symbols-outlined text-primary text-3xl">call</span>
             <span className="text-xs font-bold text-white">Call Us</span>
-            <span className="text-[10px] text-on-surface-variant">+91 {PHONE}</span>
+            <span className="text-[10px] text-on-surface-variant">+1 {PHONE}</span>
           </a>
           <a
-            href={`https://wa.me/91${PHONE}?text=${WHATSAPP_MSG}`}
+            href={`https://wa.me/1${PHONE}?text=${WHATSAPP_MSG}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex flex-col items-center gap-2 bg-[#1a1a1a] border border-white/10 rounded-2xl py-5 hover:border-[#25D366]/30 hover:bg-[#25D366]/5 active:scale-95 transition-all"
@@ -65,10 +65,21 @@ export default function ContactPage() {
             <span className="material-symbols-outlined text-primary text-xl leading-none flex-shrink-0 mt-0.5">phone</span>
             <div>
               <p className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-0.5">Phone</p>
-              <a href={`tel:+91${PHONE}`} className="text-sm font-bold text-white hover:text-primary transition-colors">
-                +91 {PHONE}
+              <a href={`tel:+1${PHONE}`} className="text-sm font-bold text-white hover:text-primary transition-colors">
+                +1 {PHONE}
               </a>
               <p className="text-[10px] text-on-surface-variant mt-0.5">Available Mon–Sat, 10 AM – 7 PM IST</p>
+            </div>
+          </div>
+
+          <div className="bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-4 flex items-start gap-3">
+            <span className="material-symbols-outlined text-primary text-xl leading-none flex-shrink-0 mt-0.5">mail</span>
+            <div>
+              <p className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-0.5">Email</p>
+              <a href="mailto:layohq@gmail.com" className="text-sm font-bold text-white hover:text-primary transition-colors">
+                layohq@gmail.com
+              </a>
+              <p className="text-[10px] text-on-surface-variant mt-0.5">Response typically within 2 hours</p>
             </div>
           </div>
         </section>
@@ -80,21 +91,20 @@ export default function ContactPage() {
           <div className="bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-4 flex items-start gap-3">
             <span className="material-symbols-outlined text-primary text-xl leading-none flex-shrink-0 mt-0.5">location_on</span>
             <div>
-              <p className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Gurugram Facility</p>
+              <p className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">HQ / Office Location</p>
               <p className="text-sm text-white leading-relaxed font-medium">
-                Shop No. 12, 2, Old Delhi Gurugram Rd,<br />
-                In front of Maruti Gate,<br />
-                Sector 18, Gurugram,<br />
-                Haryana 122008
+                25 Tindale Court,<br />
+                Hamilton, Ontario L8K 6C8,<br />
+                Canada
               </p>
               <a
-                href="https://maps.google.com/?q=Shop+No+12+Old+Delhi+Gurugram+Rd+Sector+18+Gurugram+Haryana+122008"
+                href="https://maps.google.com/?q=25+Tindale+Court,+Hamilton,+Ontario+L8K+6C8"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 mt-2 text-[10px] text-primary font-bold hover:underline"
               >
                 <span className="material-symbols-outlined text-xs leading-none">open_in_new</span>
-                Open in Maps
+                Open in Google Maps
               </a>
             </div>
           </div>
