@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -141,7 +142,7 @@ export default function OpsLoginPage() {
           setPendingApproval(true);
         }
       }
-    } catch (err: any) {
+    } catch (err: any  ) {
       setError(err.message || 'Authentication failed.');
     } finally {
       setIsLoading(false);

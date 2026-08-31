@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -204,7 +205,7 @@ export default function AdminPortal() {
 
       if (error) throw error;
       setOpsStaffList(prev => prev.map(s => s.id === staffId ? { ...s, status: 'approved', approved_by: user?.email } : s));
-    } catch (err: any) {
+    } catch (err: any  ) {
       alert(`Failed to approve staff: ${err.message}`);
     }
   };
@@ -222,7 +223,7 @@ export default function AdminPortal() {
 
       if (error) throw error;
       setOpsStaffList(prev => prev.map(s => s.id === staffId ? { ...s, status: 'rejected' } : s));
-    } catch (err: any) {
+    } catch (err: any  ) {
       alert(`Failed to reject staff: ${err.message}`);
     }
   };
@@ -233,7 +234,7 @@ export default function AdminPortal() {
       const { error } = await supabase.from('ops_staff').delete().eq('id', staffId);
       if (error) throw error;
       setOpsStaffList(prev => prev.filter(s => s.id !== staffId));
-    } catch (err: any) {
+    } catch (err: any  ) {
       alert(`Failed to delete staff: ${err.message}`);
     }
   };

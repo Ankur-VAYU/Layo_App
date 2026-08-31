@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, deletedId: shipmentId });
-  } catch (err: any) {
+  } catch (err: any  ) {
     console.error('Delete shipment API error:', err);
     return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
   }

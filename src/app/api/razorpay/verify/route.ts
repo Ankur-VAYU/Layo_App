@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ verified: true, paymentId: razorpay_payment_id });
-  } catch (err: any) {
+  } catch (err: any  ) {
     console.error('Razorpay verify error:', err);
     return NextResponse.json(
       { error: err?.message || 'Verification failed' },

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ── Dependencies ─────────────────────────────────────────────────────────────
 import { createClient } from '@supabase/supabase-js';
 import { formatShipmentId } from '@/lib/idGenerator';

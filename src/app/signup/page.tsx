@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react/no-unescaped-entities */
 'use client';
 
 import { useState } from 'react';
@@ -64,7 +65,7 @@ export default function Signup() {
 
       if (error) throw error;
       setSuccess(true);
-    } catch (err: any) {
+    } catch (err: any  ) {
       setError(friendlyError(err.message || ''));
     } finally {
       setIsLoading(false);

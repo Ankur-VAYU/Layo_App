@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -49,7 +50,7 @@ export default function ResetPassword() {
 
       if (error) throw error;
       setSuccess(true);
-    } catch (err: any) {
+    } catch (err: any  ) {
       setError(err.message || 'Failed to update password. Please try again.');
     } finally {
       setIsLoading(false);

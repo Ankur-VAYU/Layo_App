@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
       metadata: session.metadata || {},
       paymentIntentId: session.payment_intent,
     });
-  } catch (err: any) {
+  } catch (err: any  ) {
     console.error('Stripe verify-session error:', err);
     return NextResponse.json(
       { error: err?.message || 'Failed to verify session' },

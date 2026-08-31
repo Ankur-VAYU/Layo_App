@@ -1,0 +1,137 @@
+{
+  "src/app/admin/login/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/admin/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 5,
+    "@typescript-eslint/no-explicit-any": 10,
+    "react-hooks/set-state-in-effect": 2,
+    "react-hooks/immutability": 1
+  },
+  "src/app/api/razorpay/create-order/route.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/api/razorpay/verify/route.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/api/shipments/delete/route.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/api/stripe/create-checkout-session/route.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/api/stripe/verify-session/route.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/api/stripe/webhook/route.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/checkout/page.tsx": {
+    "@typescript-eslint/no-explicit-any": 7,
+    "@typescript-eslint/no-unused-vars": 3,
+    "react-hooks/set-state-in-effect": 1,
+    "react-hooks/immutability": 1
+  },
+  "src/app/contact/page.tsx": {
+    "react/no-unescaped-entities": 1
+  },
+  "src/app/dashboard/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 8,
+    "@typescript-eslint/no-explicit-any": 21,
+    "react-hooks/set-state-in-effect": 5,
+    "react-hooks/immutability": 2,
+    "react-hooks/exhaustive-deps": 2,
+    "@next/next/no-img-element": 1,
+    "react/no-unescaped-entities": 1
+  },
+  "src/app/eniwas/admin/allotments/bulk/page.tsx": {
+    "@typescript-eslint/no-unused-expressions": 1
+  },
+  "src/app/eniwas/admin/noc/page.tsx": {
+    "react/no-unescaped-entities": 2
+  },
+  "src/app/eniwas/user/complaints/page.tsx": {
+    "react-hooks/purity": 1
+  },
+  "src/app/eniwas/user/layout.tsx": {
+    "@typescript-eslint/no-unused-vars": 2
+  },
+  "src/app/eniwas/user/noc/page.tsx": {
+    "react-hooks/purity": 1
+  },
+  "src/app/eniwas/user/properties/page.tsx": {
+    "react-hooks/purity": 1
+  },
+  "src/app/eniwas/user/rent/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "react-hooks/purity": 1
+  },
+  "src/app/forgot-password/page.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "react/no-unescaped-entities": 1
+  },
+  "src/app/know-more/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/app/layout.tsx": {
+    "@next/next/google-font-display": 1,
+    "@next/next/no-page-custom-font": 1
+  },
+  "src/app/login/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "@typescript-eslint/no-explicit-any": 1,
+    "react/no-unescaped-entities": 1
+  },
+  "src/app/ops/login/page.tsx": {
+    "react-hooks/immutability": 1,
+    "react-hooks/exhaustive-deps": 1,
+    "@typescript-eslint/no-unused-vars": 2,
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/ops/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 5,
+    "@typescript-eslint/no-explicit-any": 18,
+    "react-hooks/immutability": 1,
+    "react-hooks/exhaustive-deps": 1,
+    "react-hooks/purity": 1,
+    "@next/next/no-img-element": 2,
+    "react/no-unescaped-entities": 1
+  },
+  "src/app/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "react/no-unescaped-entities": 3,
+    "@next/next/no-img-element": 1
+  },
+  "src/app/profile/page.tsx": {
+    "react-hooks/set-state-in-effect": 1,
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/app/reset-password/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/app/signup/page.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "@typescript-eslint/no-explicit-any": 1,
+    "react/no-unescaped-entities": 2
+  },
+  "src/components/AuthProvider.tsx": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/components/EstimatorModal.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "react-hooks/set-state-in-effect": 2,
+    "@typescript-eslint/no-unused-vars": 1,
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/lib/generateNOC.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/lib/haul-cards.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/lib/supabase.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  }
+}

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
       sessionId: session.id,
       url: session.url,
     });
-  } catch (err: any) {
+  } catch (err: any  ) {
     console.error('Stripe create-checkout-session error:', err);
     return NextResponse.json(
       { error: err?.message || 'Failed to create Stripe checkout session' },

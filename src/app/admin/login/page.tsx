@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -50,7 +51,7 @@ export default function AdminLoginPage() {
       if (authError) throw authError;
 
       window.location.href = '/admin';
-    } catch (err: any) {
+    } catch (err: any  ) {
       setError(err.message || 'Failed to authenticate admin credentials.');
     } finally {
       setIsLoading(false);

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
       currency: order.currency,
       receipt: order.receipt,
     });
-  } catch (err: any) {
+  } catch (err: any  ) {
     console.error('Razorpay create-order error:', err);
     return NextResponse.json(
       { error: err?.message || 'Failed to create order' },

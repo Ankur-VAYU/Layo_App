@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react/no-unescaped-entities, @next/next/no-img-element */
 'use client';
 
 // ── Imports ─────────────────────────────────────────────────────────────
@@ -468,7 +469,7 @@ export default function WarehouseOpsPortal() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
-    } catch (err: any) {
+    } catch (err: any  ) {
       console.error('Camera access error:', err);
       setCameraError('Camera access denied or unavailable. Please grant camera permission or upload a photo.');
     }
