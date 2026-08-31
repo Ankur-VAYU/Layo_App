@@ -26,7 +26,7 @@ export default function Login() {
 
       if (error) throw error;
       
-      router.push('/');
+      window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.message || 'Failed to sign in. Please check your credentials.');
     } finally {

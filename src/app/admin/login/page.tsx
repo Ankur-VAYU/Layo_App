@@ -22,7 +22,7 @@ export default function AdminLoginPage() {
   useEffect(() => {
     if (!loading && user) {
       if (ADMIN_EMAILS.includes(user.email || '')) {
-        router.push('/admin');
+        window.location.href = '/admin';
       }
     }
   }, [user, loading, router]);
@@ -49,7 +49,7 @@ export default function AdminLoginPage() {
 
       if (authError) throw authError;
 
-      router.push('/admin');
+      window.location.href = '/admin';
     } catch (err: any) {
       setError(err.message || 'Failed to authenticate admin credentials.');
     } finally {
