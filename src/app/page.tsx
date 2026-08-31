@@ -534,51 +534,67 @@ export default function Home() {
             {/* Left Column: Numbered Cards */}
             <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6">
               {/* Step 01 */}
-              <div className="bg-white border border-black/5 rounded-3xl p-8 flex flex-col space-y-4 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-center">
-                  <span className="text-3xl font-black text-[#FF5A65]">01</span>
-                  <span className="text-2xl">📍</span>
+              <div className="bg-white border border-black/5 rounded-[24px] md:rounded-3xl p-5 md:p-8 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center gap-2 min-w-[32px]">
+                    <span className="text-2xl md:text-3xl font-black text-[#7CB342]">01</span>
+                    <span className="text-2xl">📍</span>
+                  </div>
+                  <div className="space-y-1.5 md:space-y-4 pt-1">
+                    <h3 className="text-lg md:text-xl font-bold text-[#7CB342]">Route Your Packages</h3>
+                    <p className="text-xs md:text-sm text-[#0E1F38]/75 leading-relaxed font-medium">
+                      Whether you are shopping online or offline, or receiving a personal package, simply use your provided warehouse address as your delivery destination.
+                    </p>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-[#0E1F38]">Route Your Packages</h3>
-                <p className="text-sm text-[#0E1F38]/75 leading-relaxed font-light">
-                  Whether you are shopping online or offline, or receiving a personal package, simply use your provided warehouse address as your delivery destination.
-                </p>
               </div>
 
               {/* Step 02 */}
-              <div className="bg-white border border-black/5 rounded-3xl p-8 flex flex-col space-y-4 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-center">
-                  <span className="text-3xl font-black text-[#FF5A65]">02</span>
-                  <span className="text-2xl">🏷️</span>
+              <div className="bg-white border border-black/5 rounded-[24px] md:rounded-3xl p-5 md:p-8 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center gap-2 min-w-[32px]">
+                    <span className="text-2xl md:text-3xl font-black text-[#7CB342]">02</span>
+                    <span className="text-2xl">🏷️</span>
+                  </div>
+                  <div className="space-y-1.5 md:space-y-4 pt-1">
+                    <h3 className="text-lg md:text-xl font-bold text-[#7CB342]">Categorize & Customize</h3>
+                    <p className="text-xs md:text-sm text-[#0E1F38]/75 leading-relaxed font-medium">
+                      Ditch the guesswork by simply categorizing your items for a smart, data-driven weight estimate. Don't forget your lightweight "Extras"!
+                    </p>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-[#0E1F38]">Categorize & Customize</h3>
-                <p className="text-sm text-[#0E1F38]/75 leading-relaxed font-light">
-                  Ditch the guesswork by simply categorizing your items for a smart, data-driven weight estimate. Don&apos;t forget your lightweight &quot;Extras&quot;!
-                </p>
               </div>
 
               {/* Step 03 */}
-              <div className="bg-white border border-black/5 rounded-3xl p-8 flex flex-col space-y-4 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-center">
-                  <span className="text-3xl font-black text-[#FF5A65]">03</span>
-                  <span className="text-2xl">🔄</span>
+              <div className="bg-white border border-black/5 rounded-[24px] md:rounded-3xl p-5 md:p-8 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center gap-2 min-w-[32px]">
+                    <span className="text-2xl md:text-3xl font-black text-[#7CB342]">03</span>
+                    <span className="text-2xl">🔄</span>
+                  </div>
+                  <div className="space-y-1.5 md:space-y-4 pt-1">
+                    <h3 className="text-lg md:text-xl font-bold text-[#7CB342]">Ship, Hold & Combine</h3>
+                    <p className="text-xs md:text-sm text-[#0E1F38]/75 leading-relaxed font-medium">
+                      Ship immediately, or optionally choose to hold your items to combine them with up to 3 additional incoming packages.
+                    </p>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-[#0E1F38]">Ship, Hold & Combine</h3>
-                <p className="text-sm text-[#0E1F38]/75 leading-relaxed font-light">
-                  Ship immediately, or optionally choose to hold your items to combine them with up to 3 additional incoming packages.
-                </p>
               </div>
 
               {/* Step 04 */}
-              <div className="bg-white border border-black/5 rounded-3xl p-8 flex flex-col space-y-4 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-center">
-                  <span className="text-3xl font-black text-[#FF5A65]">04</span>
-                  <span className="text-2xl">🚚</span>
+              <div className="bg-white border border-black/5 rounded-[24px] md:rounded-3xl p-5 md:p-8 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center gap-2 min-w-[32px]">
+                    <span className="text-2xl md:text-3xl font-black text-[#7CB342]">04</span>
+                    <span className="text-2xl">🚚</span>
+                  </div>
+                  <div className="space-y-1.5 md:space-y-4 pt-1">
+                    <h3 className="text-lg md:text-xl font-bold text-[#7CB342]">Ship & Track</h3>
+                    <p className="text-xs md:text-sm text-[#0E1F38]/75 leading-relaxed font-medium">
+                      Review your finalized, cost-effective shipment, complete your payment, and track your smart haul right to your doorstep.
+                    </p>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-[#0E1F38]">Ship & Track</h3>
-                <p className="text-sm text-[#0E1F38]/75 leading-relaxed font-light">
-                  Review your finalized, cost-effective shipment, complete your payment, and track your smart haul right to your doorstep.
-                </p>
               </div>
             </div>
 
@@ -705,122 +721,139 @@ export default function Home() {
             <div className="absolute inset-0 bg-white border border-black/5 rounded-3xl shadow-md transform translate-y-2 scale-[0.99] opacity-80 pointer-events-none" />
 
             {/* Active Card Body */}
-            <div className="relative bg-white border border-black/5 rounded-3xl p-8 md:p-12 shadow-xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+            <div className="relative bg-white border border-black/5 rounded-3xl p-6 md:p-12 shadow-xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
               
               {/* Left Column: Details */}
               <div className="lg:col-span-8 flex flex-col justify-between space-y-6">
                 
                 {/* Header title */}
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <h3 className="text-2xl md:text-3xl font-black text-[#0E1F38]">
                     {activeCategory.cardTitle}
                   </h3>
-                  <p className="text-xs md:text-sm text-[#0E1F38]/70 leading-relaxed font-light">
-                    {activeCategory.description} Here’s how you can save <span className="font-bold text-[#2E7D32]">${savings} CAD</span> on this haul.
-                  </p>
+                  <div className="flex flex-row items-start gap-4">
+                    <p className="text-xs md:text-sm text-[#0E1F38]/70 leading-relaxed font-medium flex-1">
+                      {activeCategory.description} Here’s how you can save <span className="font-bold text-[#2E7D32]">${savings} CAD</span> on this haul.
+                    </p>
+                    {/* Mobile Image Container */}
+                    <div className="w-1/3 lg:hidden relative flex items-center justify-center -mt-2">
+                      <Image
+                        key={activeCategory.id + '-mobile'}
+                        src={activeCategory.image}
+                        alt={`${activeCategory.cardTitle} curated haul items`}
+                        width={200}
+                        height={200}
+                        className="w-full h-auto object-contain drop-shadow-md"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Interactive Dynamic Quantities Stepper Bar */}
-                <div className="bg-[#FAF8EE] border border-black/5 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex flex-wrap items-center gap-6">
-                    {/* Tops Stepper */}
+                <div className="bg-[#FAF8EE] border border-black/5 rounded-2xl p-4 flex flex-col gap-4">
+                  {/* Tops Stepper */}
+                  <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">👕</span>
+                      <span className="text-3xl md:text-2xl">👕</span>
                       <div className="flex flex-col">
-                        <span className="text-xs font-black text-[#0E1F38] flex items-center gap-1">
+                        <span className="text-xs md:text-sm font-black text-[#0E1F38] flex flex-col md:flex-row md:items-center gap-0 md:gap-1 leading-tight">
                           Tops / Shirts
                           <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.topsUnitRate}/pc)</span>
                         </span>
-                        <span className="text-[10px] text-[#0E1F38]/50">Canadian Retail Rate</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 bg-white rounded-full px-2 py-1 border border-black/10 shadow-xs ml-2">
-                        <button
-                          onClick={() => handleUpdateQty(activeCategory.id, 'tops', -1)}
-                          disabled={topsQty <= 0}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[#0E1F38] hover:bg-black/5 active:scale-90 transition-all disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
-                          aria-label="Decrease tops"
-                        >
-                          <span className="material-symbols-outlined text-sm leading-none">remove</span>
-                        </button>
-                        <span className="w-5 text-center font-bold text-xs text-[#0E1F38]">{topsQty}</span>
-                        <button
-                          onClick={() => handleUpdateQty(activeCategory.id, 'tops', 1)}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[#0E1F38] hover:bg-black/5 active:scale-90 transition-all cursor-pointer"
-                          aria-label="Increase tops"
-                        >
-                          <span className="material-symbols-outlined text-sm leading-none">add</span>
-                        </button>
+                        <span className="text-[10px] text-[#0E1F38]/50 font-medium">Canadian Retail Rate</span>
                       </div>
                     </div>
+                    <div className="flex items-center gap-3 bg-white rounded-full px-3 py-1.5 border border-black/10 shadow-sm flex-shrink-0">
+                      <button
+                        onClick={() => handleUpdateQty(activeCategory.id, 'tops', -1)}
+                        disabled={topsQty <= 0}
+                        className="w-6 h-6 flex items-center justify-center text-[#0E1F38] hover:bg-black/5 rounded-full active:scale-90 transition-all disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
+                        aria-label="Decrease tops"
+                      >
+                        <span className="material-symbols-outlined text-sm font-bold leading-none">remove</span>
+                      </button>
+                      <span className="w-5 text-center font-bold text-sm text-[#0E1F38]">{topsQty}</span>
+                      <button
+                        onClick={() => handleUpdateQty(activeCategory.id, 'tops', 1)}
+                        className="w-6 h-6 flex items-center justify-center text-[#0E1F38] hover:bg-black/5 rounded-full active:scale-90 transition-all cursor-pointer"
+                        aria-label="Increase tops"
+                      >
+                        <span className="material-symbols-outlined text-sm font-bold leading-none">add</span>
+                      </button>
+                    </div>
+                  </div>
 
-                    {/* Bottoms Stepper */}
+                  {/* Bottoms Stepper */}
+                  <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">👖</span>
+                      <span className="text-3xl md:text-2xl">👖</span>
                       <div className="flex flex-col">
-                        <span className="text-xs font-black text-[#0E1F38] flex items-center gap-1">
+                        <span className="text-xs md:text-sm font-black text-[#0E1F38] flex flex-col md:flex-row md:items-center gap-0 md:gap-1 leading-tight">
                           Bottoms / Pants
                           <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.bottomsUnitRate}/pc)</span>
                         </span>
-                        <span className="text-[10px] text-[#0E1F38]/50">Canadian Retail Rate</span>
+                        <span className="text-[10px] text-[#0E1F38]/50 font-medium">Canadian Retail Rate</span>
                       </div>
-                      <div className="flex items-center gap-1.5 bg-white rounded-full px-2 py-1 border border-black/10 shadow-xs ml-2">
-                        <button
-                          onClick={() => handleUpdateQty(activeCategory.id, 'bottoms', -1)}
-                          disabled={bottomsQty <= 0}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[#0E1F38] hover:bg-black/5 active:scale-90 transition-all disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
-                          aria-label="Decrease bottoms"
-                        >
-                          <span className="material-symbols-outlined text-sm leading-none">remove</span>
-                        </button>
-                        <span className="w-5 text-center font-bold text-xs text-[#0E1F38]">{bottomsQty}</span>
-                        <button
-                          onClick={() => handleUpdateQty(activeCategory.id, 'bottoms', 1)}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[#0E1F38] hover:bg-black/5 active:scale-90 transition-all cursor-pointer"
-                          aria-label="Increase bottoms"
-                        >
-                          <span className="material-symbols-outlined text-sm leading-none">add</span>
-                        </button>
-                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white rounded-full px-3 py-1.5 border border-black/10 shadow-sm flex-shrink-0">
+                      <button
+                        onClick={() => handleUpdateQty(activeCategory.id, 'bottoms', -1)}
+                        disabled={bottomsQty <= 0}
+                        className="w-6 h-6 flex items-center justify-center text-[#0E1F38] hover:bg-black/5 rounded-full active:scale-90 transition-all disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
+                        aria-label="Decrease bottoms"
+                      >
+                        <span className="material-symbols-outlined text-sm font-bold leading-none">remove</span>
+                      </button>
+                      <span className="w-5 text-center font-bold text-sm text-[#0E1F38]">{bottomsQty}</span>
+                      <button
+                        onClick={() => handleUpdateQty(activeCategory.id, 'bottoms', 1)}
+                        className="w-6 h-6 flex items-center justify-center text-[#0E1F38] hover:bg-black/5 rounded-full active:scale-90 transition-all cursor-pointer"
+                        aria-label="Increase bottoms"
+                      >
+                        <span className="material-symbols-outlined text-sm font-bold leading-none">add</span>
+                      </button>
                     </div>
                   </div>
 
                   {/* Reset to Recommended */}
                   {(topsQty !== activeCategory.defaultTops || bottomsQty !== activeCategory.defaultBottoms) && (
-                    <button
-                      onClick={() => handleResetQty(activeCategory.id)}
-                      className="px-3 py-1 bg-white border border-black/10 text-[11px] font-bold text-[#FF5A65] hover:bg-[#FF5A65]/10 rounded-full transition-all flex items-center gap-1 cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-xs">restart_alt</span>
-                      Reset
-                    </button>
+                    <div className="flex justify-end mt-1">
+                      <button
+                        onClick={() => handleResetQty(activeCategory.id)}
+                        className="px-3 py-1 bg-white border border-black/10 text-[11px] font-bold text-[#FF5A65] hover:bg-[#FF5A65]/10 rounded-full transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                      >
+                        <span className="material-symbols-outlined text-xs">restart_alt</span>
+                        Reset
+                      </button>
+                    </div>
                   )}
                 </div>
 
                 {/* Price Comparisons */}
-                <div className="space-y-3 font-semibold text-xs md:text-sm">
+                <div className="space-y-3.5 font-semibold text-xs md:text-sm">
                   {/* Canadian store price */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className="text-[#0E1F38]/60">Estimated cost at a</span>
-                      <span className="px-3 py-1.5 bg-[#FAF8EE] border border-black/5 rounded-xl font-bold text-[10px] uppercase tracking-wider text-[#0E1F38]">Canadian store</span>
+                      <span className="px-3 py-1.5 bg-[#FAF8EE] border border-black/5 rounded-[8px] font-bold text-[10px] uppercase tracking-wider text-[#0E1F38]">Canadian store</span>
                     </div>
-                    <span className="px-3.5 py-1.5 bg-[#FFD8D8] text-[#C62828] rounded-full font-bold text-xs sm:text-sm text-center inline-flex items-center justify-center shadow-xs">
+                    <span className="px-4 py-1.5 bg-[#FFD8D8] text-[#C62828] rounded-full font-bold text-xs sm:text-sm text-center inline-flex items-center justify-center">
                       ${canadianPrice}
                     </span>
                   </div>
 
                   {/* Indian bought products price */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[#0E1F38]/60">Indian bought products ({topsQty + bottomsQty} items)</span>
+                    <span className="text-[#0E1F38]/60 font-medium">Indian bought products ({topsQty + bottomsQty} items)</span>
                     <span className="text-[#0E1F38] font-black text-sm">
                       ${indianPrice}
                     </span>
                   </div>
 
                   {/* + Ship With Layo price */}
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between pb-1 border-b border-black/5">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[#0E1F38]/60">+ Ship With Layo</span>
+                      <span className="text-[#0E1F38]/60 font-medium">+ Ship With Layo</span>
                       <span className="text-[10px] text-[#0E1F38]/40 font-normal">({chargeableKg} kg volumetric)</span>
                     </div>
                     <span className="text-[#0E1F38] font-black text-sm">
@@ -828,34 +861,34 @@ export default function Home() {
                     </span>
                   </div>
 
-                  {/* Lightweight Extras FREE badge with interactive counter */}
+                  {/* Lightweight Extras FREE badge */}
                   <div className="flex items-center justify-between py-1 gap-2">
-                    <div className="flex items-center gap-2 px-3 py-2 bg-[#E2E8DD] text-[#3B4A2C] border border-[#C5D3BC] rounded-xl text-[10px] sm:text-[11px] font-bold tracking-tight flex-grow">
-                      <span className="material-symbols-outlined text-sm leading-none">workspace_premium</span>
-                      Light weight items (max 50 gm) - Maximum 5 items can be added
+                    <div className="flex items-start gap-2 px-3 py-2 bg-[#E2E8DD] text-[#3B4A2C] border border-[#C5D3BC] rounded-xl text-[10px] sm:text-[11px] font-bold flex-grow leading-tight">
+                      <span className="material-symbols-outlined text-sm leading-none mt-0.5">workspace_premium</span>
+                      <span>Light weight items (max 50 gm) <br/><span className="font-medium">- Maximum 5 items can be added</span></span>
                     </div>
-                    <span className="text-[#3B4A2C] font-black text-xs sm:text-sm uppercase tracking-wider px-2">MAX 50G</span>
+                    <span className="text-[#3B4A2C] font-black text-xs sm:text-sm uppercase tracking-wider px-2 text-center leading-tight">MAX<br/>50G</span>
                   </div>
 
-                    {/* Total pricing */}
-                    <div className="flex items-center justify-between pt-2 border-t border-black/5">
-                      <div className="px-4 py-2 bg-[#E6F4D0] border border-[#CADFAD] rounded-2xl text-[#2B3A1A] font-black text-xs md:text-sm uppercase tracking-wider">
-                        YOU SAVE ${savings} CAD!
-                      </div>
-                      <span className="px-3.5 py-1.5 bg-[#D6E9C6] text-[#2F4F2F] rounded-full font-bold text-xs sm:text-sm text-center inline-flex items-center justify-center shadow-xs">
-                        ${totalPrice}
-                      </span>
+                  {/* Total pricing */}
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="px-4 py-2 bg-[#E6F4D0] rounded-xl text-[#2B3A1A] font-black text-xs md:text-sm uppercase tracking-wider shadow-sm">
+                      YOU SAVE ${savings} CAD!
                     </div>
+                    <span className="px-4 py-1.5 bg-[#D6E9C6] text-[#2F4F2F] rounded-full font-bold text-xs sm:text-sm text-center inline-flex items-center justify-center">
+                      ${totalPrice}
+                    </span>
+                  </div>
                 </div>
 
               </div>
 
-              {/* Right Column: Dynamic Category Box with floating items (from Image 1-4) */}
-              <div className="lg:col-span-4 flex flex-col justify-center items-center relative min-h-[280px] lg:border-l lg:border-black/5 lg:pl-8">
-                {/* Dynamic Category Box Image with smooth fade-in */}
+              {/* Right Column: Dynamic Category Box (Desktop Only) */}
+              <div className="hidden lg:flex lg:col-span-4 flex-col justify-center items-center relative min-h-[280px] lg:border-l lg:border-black/5 lg:pl-8">
+                {/* Dynamic Category Box Image */}
                 <div className="w-full max-w-[280px] sm:max-w-[300px] relative flex items-center justify-center py-2 transition-all duration-300">
                   <Image
-                    key={activeCategory.id}
+                    key={activeCategory.id + '-desktop'}
                     src={activeCategory.image}
                     alt={`${activeCategory.cardTitle} curated haul items in shipping box`}
                     width={400}
@@ -865,7 +898,7 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Pagination Dots (Vertical on Desktop, Horizontal on Mobile) */}
+                {/* Pagination Dots */}
                 <div className="absolute lg:-right-10 lg:top-1/2 lg:-translate-y-1/2 bottom-[-16px] left-1/2 -translate-x-1/2 flex lg:flex-col flex-row gap-2.5 items-center z-10">
                   {CATEGORIES_CONFIG.map((_, dotIdx) => (
                     <button
@@ -880,7 +913,6 @@ export default function Home() {
                     />
                   ))}
                 </div>
-
               </div>
 
             </div>
@@ -947,41 +979,44 @@ export default function Home() {
           {/* Support Columns Grid */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 items-start">
             
-            {/* Quick Links Column (3 cols) */}
-            <div className="md:col-span-3 space-y-6">
-              <h3 className="text-lg font-bold text-[#0E1F38]">Quick Links</h3>
-              <ul className="space-y-3 font-semibold text-xs md:text-sm text-[#0E1F38]/70">
-                <li><Link href="/about" className="hover:text-[#FF5A65] transition-colors">About Layo</Link></li>
-                <li><Link href="/know-more" className="hover:text-[#FF5A65] transition-colors text-left">How It Works</Link></li>
-                <li><button onClick={() => setModalOpen(true)} className="hover:text-[#FF5A65] transition-colors text-left">Shipping Calculator</button></li>
-                <li><Link href="/tracking" className="hover:text-[#FF5A65] transition-colors">Track Shipment</Link></li>
-              </ul>
+            {/* Links and Legal Container (Mobile 2-col) */}
+            <div className="md:col-span-6 grid grid-cols-2 gap-4 md:gap-8">
+              {/* Quick Links Column */}
+              <div className="space-y-6">
+                <h3 className="text-lg font-bold text-[#0E1F38]">Quick Links</h3>
+                <ul className="space-y-3 font-semibold text-xs md:text-sm text-[#0E1F38]/70">
+                  <li><Link href="/about" className="hover:text-[#FF5A65] transition-colors">About Layo</Link></li>
+                  <li><Link href="/know-more" className="hover:text-[#FF5A65] transition-colors text-left">How It Works</Link></li>
+                  <li><button onClick={() => setModalOpen(true)} className="hover:text-[#FF5A65] transition-colors text-left">Shipping Calculator</button></li>
+                  <li><Link href="/tracking" className="hover:text-[#FF5A65] transition-colors">Track Shipment</Link></li>
+                </ul>
 
-              {/* Follow Us */}
-              <div className="space-y-3 pt-4">
-                <h4 className="text-xs font-black uppercase tracking-wider text-[#0E1F38]">Follow Us</h4>
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">F</div>
-                  <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">I</div>
-                  <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">X</div>
+                {/* Follow Us */}
+                <div className="space-y-3 pt-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-[#0E1F38]">Follow Us</h4>
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">F</div>
+                    <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">I</div>
+                    <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">X</div>
+                  </div>
                 </div>
+              </div>
+
+              {/* Legal Column */}
+              <div className="space-y-6">
+                <h3 className="text-lg font-bold text-[#0E1F38]">Legal</h3>
+                <ul className="space-y-3 font-semibold text-xs md:text-sm text-[#0E1F38]/70">
+                  <li><Link href="/privacy" className="hover:text-[#FF5A65] transition-colors">Privacy Policy</Link></li>
+                  <li><Link href="/refund-policy" className="hover:text-[#FF5A65] transition-colors">Returns & Refund Policy</Link></li>
+                  <li><Link href="/terms" className="hover:text-[#FF5A65] transition-colors">Terms & Conditions</Link></li>
+                  <li><Link href="/faq" className="hover:text-[#FF5A65] transition-colors">FAQs</Link></li>
+                  <li><Link href="/shipping-policy" className="hover:text-[#FF5A65] transition-colors">Shipping Policies</Link></li>
+                </ul>
               </div>
             </div>
 
-            {/* Legal Column (3 cols) */}
-            <div className="md:col-span-3 space-y-6">
-              <h3 className="text-lg font-bold text-[#0E1F38]">Legal</h3>
-              <ul className="space-y-3 font-semibold text-xs md:text-sm text-[#0E1F38]/70">
-                <li><Link href="/privacy" className="hover:text-[#FF5A65] transition-colors">Privacy Policy</Link></li>
-                <li><Link href="/refund-policy" className="hover:text-[#FF5A65] transition-colors">Returns & Refund Policy</Link></li>
-                <li><Link href="/terms" className="hover:text-[#FF5A65] transition-colors">Terms & Conditions</Link></li>
-                <li><Link href="/faq" className="hover:text-[#FF5A65] transition-colors">FAQs</Link></li>
-                <li><Link href="/shipping-policy" className="hover:text-[#FF5A65] transition-colors">Shipping Policies</Link></li>
-              </ul>
-            </div>
-
-            {/* Contact Us Card (6 cols) */}
-            <div className="md:col-span-6 bg-[#E7F7D3] border border-[#D5E9C0] rounded-3xl p-8 space-y-6 shadow-sm text-[#0E1F38]">
+            {/* Contact Us Card */}
+            <div className="md:col-span-6 bg-[#E7F7D3] border border-[#D5E9C0] rounded-3xl p-6 md:p-8 space-y-6 shadow-sm text-[#0E1F38]">
               <h3 className="text-xl font-bold">Contact Us</h3>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs md:text-sm font-semibold">
