@@ -996,9 +996,9 @@ export default function Home() {
                 <div className="space-y-3 pt-4">
                   <h4 className="text-xs font-black uppercase tracking-wider text-[#0E1F38]">Follow Us</h4>
                   <div className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">F</div>
-                    <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">I</div>
-                    <div className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">X</div>
+                    <a href="https://www.facebook.com/share/1CAG5D6YaT/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">F</a>
+                    <a href="https://www.instagram.com/get_layo?igsi=MTBoZ3VkZ3c1M3dl" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">I</a>
+                    <a href="https://www.linkedin.com/company/getlayo/" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-full bg-[#0E1F38] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-[#FF5A65] transition-colors">in</a>
                   </div>
                 </div>
               </div>
