@@ -8,6 +8,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
+import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 
 // ── Types & Interfaces ───────────────────────────────────────────────────────
 
@@ -94,7 +95,7 @@ export default function WarehouseOpsPortal() {
       const matchesSearch = !q || lockerMatch || userMatch || cityMatch || extOrderMatch || trackingMatch || masterBoxMatch;
       if (!matchesSearch) return false;
 
-      if (activeTab === 'inward') return s.status === 'paid' || s.status === 'draft';
+      if (activeTab === 'inward') return s.status === 'paid' || s.status === 'draft' || s.status === 'advance_paid';
       if (activeTab === 'qc') return s.status === 'inwarded' || s.status === 'arrived';
       if (activeTab === 'repack') return s.status === 'qc_verified';
       if (activeTab === 'master_bulk') return s.status === 'repacked' || s.status === 'bulk_consolidated';
@@ -224,6 +225,12 @@ export default function WarehouseOpsPortal() {
   /** Stage 3: Repack — repack into Layo Green Box */
   const handleCompleteRepack = async (shipmentId: string) => {
     const verifiedWeight = parseFloat(grossWeightInput) || selectedShipment?.total_weight || 1.0;
+    const calc = calculateLayoDeliveryCost({ weightKg: verifiedWeight, deliveryType: 'normal' });
+    const finalCostCAD = calc.finalPriceCAD;
+    const advancePaidCAD = selectedShipment?.advance_amount_cad ?? Math.round((selectedShipment?.estimated_cost_cad || (selectedShipment?.total_cost ? selectedShipment.total_cost / 70.4 : 25.0)) * 0.20 * 100) / 100;
+    const remainingBalanceCAD = Math.max(0, Math.round((finalCostCAD - advancePaidCAD) * 100) / 100);
+    const newPaymentStatus = remainingBalanceCAD > 0 ? 'awaiting_balance' : 'fully_paid';
+
     setUpdating(true);
     try {
       const current = shipments.find(s => s.id === shipmentId);
@@ -231,15 +238,42 @@ export default function WarehouseOpsPortal() {
         shipmentId,
         'repacked',
         current?.stage_timestamps,
-        { total_weight: verifiedWeight, box_dimensions: boxDimensions },
+        { 
+          total_weight: verifiedWeight, 
+          actual_weight: verifiedWeight,
+          final_cost_cad: finalCostCAD,
+          remaining_balance_cad: remainingBalanceCAD,
+          payment_status: newPaymentStatus,
+          box_dimensions: boxDimensions 
+        },
         operatorUser,
-        `Repacked in Layo Green Box (${verifiedWeight} kg, ${boxDimensions.length}x${boxDimensions.width}x${boxDimensions.height} cm)`
+        `Repacked in Layo Green Box (${verifiedWeight} kg). Final Cost: $${finalCostCAD} CAD, Remaining Balance: $${remainingBalanceCAD} CAD`
       );
 
       if (!result.error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'repacked', total_weight: verifiedWeight, box_dimensions: boxDimensions, stage_timestamps: result.updatedTimestamps } : s));
+        setShipments(prev => prev.map(s => s.id === shipmentId ? { 
+          ...s, 
+          status: 'repacked', 
+          total_weight: verifiedWeight, 
+          actual_weight: verifiedWeight,
+          final_cost_cad: finalCostCAD,
+          remaining_balance_cad: remainingBalanceCAD,
+          payment_status: newPaymentStatus,
+          box_dimensions: boxDimensions, 
+          stage_timestamps: result.updatedTimestamps 
+        } : s));
         if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'repacked', total_weight: verifiedWeight, box_dimensions: boxDimensions, stage_timestamps: result.updatedTimestamps }));
+          setSelectedShipment((prev: any) => ({ 
+            ...prev, 
+            status: 'repacked', 
+            total_weight: verifiedWeight, 
+            actual_weight: verifiedWeight,
+            final_cost_cad: finalCostCAD,
+            remaining_balance_cad: remainingBalanceCAD,
+            payment_status: newPaymentStatus,
+            box_dimensions: boxDimensions, 
+            stage_timestamps: result.updatedTimestamps 
+          }));
         }
       }
     } catch (err) {

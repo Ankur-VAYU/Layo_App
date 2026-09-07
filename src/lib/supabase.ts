@@ -47,6 +47,15 @@ export interface ShipmentPayload {
   expected_packages?: number | null;
   hold_group_id?: string | null;
   customer_id?: string | null;
+  advance_pct?: number;
+  advance_amount_cad?: number;
+  advance_paid_inr?: number;
+  estimated_weight?: number;
+  estimated_cost_cad?: number;
+  actual_weight?: number | null;
+  final_cost_cad?: number | null;
+  remaining_balance_cad?: number;
+  payment_status?: string;
 }
 
 export interface OperatorUser {
@@ -62,9 +71,12 @@ export function getStageLabel(stage: string): string {
   const map: Record<string, string> = {
     'draft': 'Draft Estimate Created',
     'Draft Estimate': 'Draft Estimate Created',
-    'paid': 'Payment Completed via Stripe',
+    'advance_paid': '20% Advance Paid • Awaiting Warehouse Arrival',
+    'awaiting_balance': 'Actual Weight Verified • Balance Payment Due',
+    'paid': 'Payment Completed',
+    'fully_paid': 'Payment Completed',
     'inwarded': 'Inward Scanned at India Hub',
-    'qc_verified': 'QC Passed & Inspected',
+    'qc_verified': 'QC Passed & Weight Verified',
     'qc_discrepancy': 'QC Flagged Discrepancy',
     'repacked': 'Repacked in Layo Green Box',
     'bulk_consolidated': 'Assigned to Master Air Cargo',
@@ -135,6 +147,15 @@ export async function insertShipment(payload: ShipmentPayload, operatorUser?: Op
     warehouse_action: payload.warehouse_action || 'ship',
     expected_packages: payload.expected_packages || 1,
     hold_group_id: payload.hold_group_id || null,
+    advance_pct: payload.advance_pct ?? 20,
+    advance_amount_cad: payload.advance_amount_cad ?? 0,
+    advance_paid_inr: payload.advance_paid_inr ?? 0,
+    estimated_weight: payload.estimated_weight ?? payload.total_weight ?? 1.0,
+    estimated_cost_cad: payload.estimated_cost_cad ?? payload.total_cost ?? 0,
+    actual_weight: payload.actual_weight ?? null,
+    final_cost_cad: payload.final_cost_cad ?? null,
+    remaining_balance_cad: payload.remaining_balance_cad ?? 0,
+    payment_status: payload.payment_status || 'pending',
     created_at: nowIso,
     updated_at: nowIso,
   };

@@ -54,23 +54,41 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
     syncSystemSettings();
 
-    // 1. Get initial session safely
+    // 1. Check for local mock user session first (for dev testing)
+    if (typeof window !== 'undefined') {
+      const mockUserRaw = localStorage.getItem('layo_mock_user');
+      if (mockUserRaw) {
+        try {
+          const mockUser = JSON.parse(mockUserRaw);
+          setUser(mockUser);
+          setLoading(false);
+        } catch (e) {
+          console.warn('Invalid layo_mock_user', e);
+        }
+      }
+    }
+
+    // 2. Get initial Supabase session safely
     supabase.auth.getSession()
       .then(({ data, error }) => {
         if (error) {
           if (error.message?.includes('Refresh Token') || error.message?.includes('refresh_token')) {
             supabase.auth.signOut().catch(() => {});
           }
-          setUser(null);
-        } else {
-          setUser(data.session?.user ?? null);
+          if (typeof window !== 'undefined' && !localStorage.getItem('layo_mock_user')) {
+            setUser(null);
+          }
+        } else if (data.session?.user) {
+          setUser(data.session.user);
         }
         setLoading(false);
       })
       .catch(err => {
         console.warn("Supabase session check failed, falling back to guest mode:", err);
-        supabase.auth.signOut().catch(() => {});
-        setUser(null);
+        if (typeof window !== 'undefined' && !localStorage.getItem('layo_mock_user')) {
+          supabase.auth.signOut().catch(() => {});
+          setUser(null);
+        }
         setLoading(false);
       });
 

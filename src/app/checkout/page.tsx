@@ -79,7 +79,7 @@ export default function Checkout() {
     // 1. Fetch live CAD to INR exchange rate
     const fetchRate = async () => {
       try {
-        const res = await fetch('https://open.er-api.com/v6/latest/CAD');
+        const res = await fetch('https://open.er-api.com/v6/latest/CAD', { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           if (data?.rates?.INR) {
@@ -87,7 +87,7 @@ export default function Checkout() {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch exchange rate', err);
+        console.warn('Using fallback exchange rate (1 CAD = 70.4 INR):', err);
       }
     };
     fetchRate();
@@ -165,6 +165,18 @@ export default function Checkout() {
   const totalWeightKg = parseFloat(orderData?.totalWeight || orderData?.weight || '1.00');
   const itemsList = orderData?.items || [];
 
+  // 20% Advance Calculation
+  const isBalancePayment = orderData?.isBalancePayment || false;
+  const existingShipmentId = orderData?.shipmentId || null;
+  const advancePct = 20;
+  const advanceCAD = isBalancePayment 
+    ? parseFloat(orderData?.remainingBalanceCAD || costCAD)
+    : Math.round(costCAD * 0.20 * 100) / 100;
+  const advanceINR = Math.round(advanceCAD * (cadToInrRate || 70.4));
+  const estimatedRemainingCAD = isBalancePayment 
+    ? 0 
+    : Math.round((costCAD - advanceCAD) * 100) / 100;
+
   const handleCopyLockerAddress = () => {
     if (!selectedWarehouse) return;
     const fullAddress = `Layo Locker (User: ${currentUser?.email || 'Valued Customer'})\n${selectedWarehouse.name}\n${selectedWarehouse.address}\n${selectedWarehouse.city}, ${selectedWarehouse.state || ''} - ${selectedWarehouse.pincode}\nPhone: ${selectedWarehouse.contact || '+91 98100 12345'}`;
@@ -193,36 +205,57 @@ export default function Checkout() {
         return;
       }
 
-      // 2. Pre-save draft shipment in Supabase
-      let shipmentId = '';
-      try {
-        const { data } = await insertShipment({
-          user_id: user.id,
-          mode: orderData?.mode || 'Selection',
-          destination_city: orderData?.destinationCity || 'Toronto (GTA)',
-          destination_address: orderData?.destinationAddress || 'Canada',
-          india_warehouse: selectedWarehouse?.name || selectedWarehouseId,
-          external_order_id: orderData?.orderNumber || null,
-          external_tracking: orderData?.externalTracking || null,
-          total_weight: totalWeightKg,
-          total_cost: totalINR,
-          items: itemsList,
-          status: 'Draft Estimate',
-          payment_method: 'stripe',
-        });
-        if (data && data[0]) {
-          shipmentId = data[0].id;
+      let shipmentId = existingShipmentId || '';
+
+      if (isBalancePayment && shipmentId) {
+        // Updating existing shipment balance status
+        await supabase
+          .from('shipments')
+          .update({
+            payment_status: 'fully_paid',
+            status: 'fully_paid',
+            remaining_balance_cad: 0,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', shipmentId);
+      } else {
+        // 2. Pre-save advance shipment in Supabase
+        try {
+          const { data } = await insertShipment({
+            user_id: user.id,
+            mode: orderData?.mode || 'Selection',
+            destination_city: orderData?.destinationCity || 'Toronto (GTA)',
+            destination_address: orderData?.destinationAddress || 'Canada',
+            india_warehouse: selectedWarehouse?.name || selectedWarehouseId,
+            external_order_id: orderData?.orderNumber || null,
+            external_tracking: orderData?.externalTracking || null,
+            total_weight: totalWeightKg,
+            total_cost: totalINR,
+            items: itemsList,
+            status: 'advance_paid',
+            payment_status: 'advance_paid',
+            advance_pct: advancePct,
+            advance_amount_cad: advanceCAD,
+            advance_paid_inr: advanceINR,
+            estimated_weight: totalWeightKg,
+            estimated_cost_cad: costCAD,
+            remaining_balance_cad: estimatedRemainingCAD,
+            payment_method: 'stripe',
+          });
+          if (data && data[0]) {
+            shipmentId = data[0].id;
+          }
+        } catch (dbErr) {
+          console.warn('Pre-save draft in Supabase:', dbErr);
         }
-      } catch (dbErr) {
-        console.warn('Pre-save draft in Supabase:', dbErr);
       }
 
-      // 3. Create Stripe Checkout Session on server
+      // 3. Create Stripe Checkout Session on server for advanceAmount or balanceAmount
       const createRes = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amountCAD: costCAD.toFixed(2),
+          amountCAD: advanceCAD.toFixed(2),
           shipmentId: shipmentId,
           userId: user.id,
           userEmail: user.email,
@@ -231,7 +264,9 @@ export default function Checkout() {
           warehouseName: selectedWarehouse?.name || selectedWarehouseId,
           totalWeightKg: totalWeightKg,
           itemCount: itemsList.length || 1,
-          itemsSummary: itemsList.map((i: any) => `${i.quantity || 1}x ${i.subcategory || i.category || 'Item'}`).join(', ') || 'Layo Locker Shipment',
+          itemsSummary: isBalancePayment 
+            ? `Final Balance Payment for Shipment #${shipmentId}` 
+            : `20% Advance Booking for ${itemsList.length || 1} item(s)`,
         }),
       });
 
@@ -561,30 +596,49 @@ export default function Checkout() {
           {/* ── Right: Sticky Order Total & Pay CTA ── */}
           <div className="lg:col-span-4 bg-white border border-black/5 rounded-3xl p-6 md:p-8 space-y-6 lg:sticky lg:top-[90px] shadow-sm">
             <h2 className="text-xl font-black text-[#0E1F38] border-b border-black/5 pb-4">
-              Order Total
+              {isBalancePayment ? 'Final Balance Payment' : 'Payment Summary'}
             </h2>
 
             <div className="space-y-3.5 text-xs">
               <div className="flex justify-between items-center">
-                <span className="text-[#0E1F38]/70">Total Billable Weight</span>
+                <span className="text-[#0E1F38]/70">Billable Weight</span>
                 <span className="text-[#0E1F38] font-bold">{totalWeightKg.toFixed(2)} kg</span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[#0E1F38]/70">Shipping Fee (CAD)</span>
-                <span className="text-[#0E1F38] font-bold">${costCAD.toFixed(2)} CAD</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[#0E1F38]/70">Live Forex Rate</span>
-                <span className="text-[#0E1F38] font-bold">1 CAD ≈ ₹{cadToInrRate.toFixed(1)}</span>
+
+              {!isBalancePayment ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#0E1F38]/70">Est. Total Shipping Fee</span>
+                    <span className="text-[#0E1F38] font-bold">${costCAD.toFixed(2)} CAD</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                    <span className="font-bold">20% Advance (Due Now)</span>
+                    <span className="font-black">${advanceCAD.toFixed(2)} CAD</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[#0E1F38]/60 bg-[#FAF8EE] px-3 py-1.5 rounded-lg">
+                    <span>Balance Due (After QC Weight)</span>
+                    <span className="font-semibold">${estimatedRemainingCAD.toFixed(2)} CAD</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between items-center text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                  <span className="font-bold">Remaining Balance Due</span>
+                  <span className="font-black">${advanceCAD.toFixed(2)} CAD</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center pt-1 text-[11px] text-[#0E1F38]/60">
+                <span>Live Forex Rate</span>
+                <span className="font-medium">1 CAD ≈ ₹{cadToInrRate.toFixed(1)}</span>
               </div>
 
               <div className="flex justify-between items-baseline border-t border-black/5 pt-4">
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#0E1F38]">Total Amount (CAD)</span>
-                  <p className="text-[10px] text-[#0E1F38]/50 mt-0.5">₹{totalINR.toLocaleString('en-IN')} INR equivalent</p>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#0E1F38]">Due Today</span>
+                  <p className="text-[10px] text-[#0E1F38]/50 mt-0.5">₹{advanceINR.toLocaleString('en-IN')} INR equivalent</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-black text-[#FF5A65]">${costCAD.toFixed(2)} CAD</p>
+                  <p className="text-3xl font-black text-[#FF5A65]">${advanceCAD.toFixed(2)} CAD</p>
                 </div>
               </div>
             </div>
@@ -597,12 +651,12 @@ export default function Checkout() {
               {isProcessing ? (
                 <>
                   <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Connecting to Stripe…
+                  Connecting to Secure Gateway…
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-lg leading-none">lock</span>
-                  Pay ${costCAD.toFixed(2)} CAD with Stripe
+                  {isBalancePayment ? `Pay Balance ($${advanceCAD.toFixed(2)} CAD)` : `Pay 20% Advance ($${advanceCAD.toFixed(2)} CAD)`}
                 </>
               )}
             </button>

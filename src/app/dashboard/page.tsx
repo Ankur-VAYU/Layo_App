@@ -256,7 +256,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchExchangeRate = async () => {
       try {
-        const res = await fetch('https://open.er-api.com/v6/latest/CAD');
+        const res = await fetch('https://open.er-api.com/v6/latest/CAD', { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           if (data && data.rates && data.rates.INR) {
@@ -264,7 +264,7 @@ export default function Dashboard() {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch exchange rate', err);
+        console.warn('Using fallback exchange rate (1 CAD = 70.4 INR):', err);
       }
     };
     fetchExchangeRate();
@@ -1310,6 +1310,24 @@ export default function Dashboard() {
 
                   const getStageInfo = (st: string) => {
                     switch (st) {
+                      case 'advance_paid':
+                        return {
+                          title: 'Step 1 of 7: 20% Advance Paid (Shipment Booked)',
+                          desc: 'Your 20% advance booking is confirmed! Please ship your items to your assigned Layo India Hub address below for weighing & QC inspection.',
+                          badge: '20% Advance Paid',
+                          color: '#3b82f6',
+                          bg: '#eff6ff',
+                          border: '#dbeafe'
+                        };
+                      case 'awaiting_balance':
+                        return {
+                          title: 'Action Required: Weight Verified • Balance Due',
+                          desc: 'Our India Hub team verified your actual package weight. Please clear your remaining balance below to dispatch your order overseas.',
+                          badge: 'Action Required: Pay Balance',
+                          color: '#d97706',
+                          bg: '#fffbeb',
+                          border: '#fef3c7'
+                        };
                       case 'paid':
                         return {
                           title: 'Step 1 of 7: Payment Confirmed (Order Active)',
@@ -1593,6 +1611,62 @@ export default function Dashboard() {
                           <p className="text-[10px] text-[#0E1F38]/80 bg-[#FAF8EE] p-2.5 rounded-xl border border-black/5 font-mono">
                             <strong>Reference Order:</strong> {s.external_order_id}
                           </p>
+                        )}
+
+                        {/* Remaining Balance Payment Banner */}
+                        {(s.payment_status === 'awaiting_balance' || (s.remaining_balance_cad > 0 && statusNormalized !== 'fully_paid' && statusNormalized !== 'delivered')) && (
+                          <div className="p-4 bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[#0E1F38] font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-amber-600 text-sm">scale</span>
+                                Actual Weight Verified at Hub
+                              </span>
+                              <span className="px-2.5 py-0.5 bg-amber-500 text-white rounded-full font-black text-[10px]">
+                                Balance Due
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs bg-white/80 p-3 rounded-xl border border-black/5 font-mono">
+                              <div>
+                                <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Est. Weight</span>
+                                <span className="font-bold text-[#0E1F38]">{s.estimated_weight || s.total_weight} kg</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Verified Weight</span>
+                                <span className="font-bold text-[#2E7D32]">{s.actual_weight || s.total_weight} kg</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-[#0E1F38]/60 block uppercase">20% Paid</span>
+                                <span className="font-bold text-[#0E1F38]">${(s.advance_amount_cad || 0).toFixed(2)} CAD</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Balance Due</span>
+                                <span className="font-black text-[#FF5A65]">${(s.remaining_balance_cad || 0).toFixed(2)} CAD</span>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                const remainingCAD = s.remaining_balance_cad || 0;
+                                localStorage.setItem('layo_pending_shipment', JSON.stringify({
+                                  shipmentId: s.id,
+                                  isBalancePayment: true,
+                                  remainingBalanceCAD: remainingCAD,
+                                  totalCostCAD: remainingCAD,
+                                  totalWeight: s.actual_weight || s.total_weight,
+                                  destinationCity: s.destination_city || 'Toronto (GTA)',
+                                  destinationAddress: s.destination_address || '',
+                                  indiaWarehouse: s.india_warehouse || 'delhi',
+                                  items: s.items || [],
+                                }));
+                                router.push('/checkout');
+                              }}
+                              className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
+                            >
+                              <span className="material-symbols-outlined text-sm">lock</span>
+                              Pay Remaining Balance (${(s.remaining_balance_cad || 0).toFixed(2)} CAD)
+                            </button>
+                          </div>
                         )}
 
                         <button
