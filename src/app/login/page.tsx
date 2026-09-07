@@ -100,14 +100,6 @@ export default function Login() {
           </button>
         </form>
 
-        <button
-          onClick={handleDemoSignIn}
-          className="w-full py-3 bg-[#0E1F38] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#1B250F] transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-        >
-          <span className="material-symbols-outlined text-sm text-[#8BC34A]">bolt</span>
-          1-Click Instant Demo Login (Local Testing)
-        </button>
-
         <div className="pt-2 border-t border-black/5 space-y-2 text-center text-xs">
           <p className="text-[#0E1F38]/60 font-medium">
             Don't have an account? 

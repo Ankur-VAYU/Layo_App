@@ -11,6 +11,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const resolveUser = (supabaseUser: User | null): User | null => {
+    if (supabaseUser) return supabaseUser;
+    if (typeof window !== 'undefined') {
+      const mockUserRaw = localStorage.getItem('layo_mock_user');
+      if (mockUserRaw) {
+        try {
+          return JSON.parse(mockUserRaw);
+        } catch (e) {
+          console.warn('Invalid layo_mock_user', e);
+        }
+      }
+    }
+    return null;
+  };
+
   useEffect(() => {
     // 0. Handle unhandled rejections (e.g. invalid refresh token or network issues)
     const handleRejection = (e: PromiseRejectionEvent) => {
@@ -24,8 +39,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       ) {
         console.warn("Muted background auth/network rejection:", e.reason);
         if (msg.includes('Refresh Token') || msg.includes('refresh_token') || msg.includes('Invalid')) {
-          supabase.auth.signOut().catch(() => {});
-          setUser(null);
+          if (typeof window !== 'undefined' && !localStorage.getItem('layo_mock_user')) {
+            supabase.auth.signOut().catch(() => {});
+            setUser(null);
+          }
         }
         e.preventDefault();
       }
@@ -54,18 +71,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
     syncSystemSettings();
 
-    // 1. Check for local mock user session first (for dev testing)
-    if (typeof window !== 'undefined') {
-      const mockUserRaw = localStorage.getItem('layo_mock_user');
-      if (mockUserRaw) {
-        try {
-          const mockUser = JSON.parse(mockUserRaw);
-          setUser(mockUser);
-          setLoading(false);
-        } catch (e) {
-          console.warn('Invalid layo_mock_user', e);
-        }
-      }
+    // 1. Initial user check
+    const initialUser = resolveUser(null);
+    if (initialUser) {
+      setUser(initialUser);
+      setLoading(false);
     }
 
     // 2. Get initial Supabase session safely
@@ -75,28 +85,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (error.message?.includes('Refresh Token') || error.message?.includes('refresh_token')) {
             supabase.auth.signOut().catch(() => {});
           }
-          if (typeof window !== 'undefined' && !localStorage.getItem('layo_mock_user')) {
-            setUser(null);
-          }
-        } else if (data.session?.user) {
-          setUser(data.session.user);
         }
+        const activeUser = resolveUser(data?.session?.user ?? null);
+        setUser(activeUser);
         setLoading(false);
       })
       .catch(err => {
-        console.warn("Supabase session check failed, falling back to guest mode:", err);
-        if (typeof window !== 'undefined' && !localStorage.getItem('layo_mock_user')) {
-          supabase.auth.signOut().catch(() => {});
-          setUser(null);
-        }
+        console.warn("Supabase session check fallback:", err);
+        const activeUser = resolveUser(null);
+        setUser(activeUser);
         setLoading(false);
       });
 
-    // 2. Listen for auth changes
+    // 3. Listen for auth changes
     let subscription: any = null;
     try {
       const { data } = supabase.auth.onAuthStateChange((event, session) => {
-        setUser(session?.user ?? null);
+        const activeUser = resolveUser(session?.user ?? null);
+        setUser(activeUser);
         setLoading(false);
 
         if (
