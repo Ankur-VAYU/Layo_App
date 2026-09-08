@@ -438,4 +438,51 @@ CREATE POLICY "Allow public insert contact_submissions" ON contact_submissions F
 CREATE POLICY "Allow admin read contact_submissions" ON contact_submissions FOR SELECT USING (true);
 
 
+-- =========================================================
+-- 13. Draft Estimates Table (Customer Saved Estimates & Lockers)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS draft_estimates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  customer_email VARCHAR,
+  mode VARCHAR DEFAULT 'Online Retailer',
+  destination_city VARCHAR DEFAULT 'Toronto (GTA)',
+  destination_address TEXT,
+  india_warehouse VARCHAR,
+  external_order_id VARCHAR,
+  total_weight NUMERIC DEFAULT 1.0,
+  total_cost NUMERIC DEFAULT 0,
+  estimated_cost_cad NUMERIC DEFAULT 0,
+  advance_pct NUMERIC DEFAULT 20,
+  advance_amount_cad NUMERIC DEFAULT 0,
+  remaining_balance_cad NUMERIC DEFAULT 0,
+  items JSONB DEFAULT '[]'::jsonb,
+  warehouse_action VARCHAR DEFAULT 'ship',
+  expected_packages INT DEFAULT 1,
+  status VARCHAR DEFAULT 'Draft Estimate',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE draft_estimates ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='draft_estimates' AND policyname='Allow read draft_estimates') THEN
+    CREATE POLICY "Allow read draft_estimates" ON draft_estimates FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='draft_estimates' AND policyname='Allow insert draft_estimates') THEN
+    CREATE POLICY "Allow insert draft_estimates" ON draft_estimates FOR INSERT WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='draft_estimates' AND policyname='Allow update draft_estimates') THEN
+    CREATE POLICY "Allow update draft_estimates" ON draft_estimates FOR UPDATE USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='draft_estimates' AND policyname='Allow delete draft_estimates') THEN
+    CREATE POLICY "Allow delete draft_estimates" ON draft_estimates FOR DELETE USING (true);
+  END IF;
+END $$;
+
+
+
 

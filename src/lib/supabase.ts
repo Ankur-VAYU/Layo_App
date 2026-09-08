@@ -383,3 +383,79 @@ export async function fetchShipments(userId?: string) {
   const formatted = (data || []).map(parseShipment);
   return { data: formatted, error: null };
 }
+
+// ── Draft Estimates ─────────────────────────────────────────────────────────
+
+export async function saveDraftEstimate(payload: any) {
+  const nowIso = new Date().toISOString();
+  const draftRow = {
+    id: payload.id || undefined,
+    user_id: payload.user_id || null,
+    customer_email: payload.customer_email || null,
+    mode: payload.mode || 'Online Retailer',
+    destination_city: payload.destination_city || 'Toronto (GTA)',
+    destination_address: payload.destination_address || '',
+    india_warehouse: payload.india_warehouse || null,
+    external_order_id: payload.external_order_id || null,
+    total_weight: payload.total_weight || 1.0,
+    total_cost: payload.total_cost || 0,
+    estimated_cost_cad: payload.estimated_cost_cad || 0,
+    advance_pct: payload.advance_pct ?? 20,
+    advance_amount_cad: payload.advance_amount_cad ?? 0,
+    remaining_balance_cad: payload.remaining_balance_cad ?? 0,
+    items: payload.items || [],
+    warehouse_action: payload.warehouse_action || 'ship',
+    expected_packages: payload.expected_packages || 1,
+    status: 'Draft Estimate',
+    created_at: payload.created_at || nowIso,
+    updated_at: nowIso,
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('draft_estimates')
+      .upsert([draftRow])
+      .select();
+    if (error) {
+      console.warn('draft_estimates upsert notice (fallback to shipments):', error.message);
+    }
+    return { data, error };
+  } catch (err: any) {
+    console.warn('draft_estimates error:', err.message);
+    return { data: null, error: err };
+  }
+}
+
+export async function fetchDraftEstimates(userId?: string) {
+  try {
+    let query = supabase
+      .from('draft_estimates')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      return { data: [], error };
+    }
+    return { data: data || [], error: null };
+  } catch (err) {
+    return { data: [], error: err };
+  }
+}
+
+export async function deleteDraftEstimate(id: string) {
+  try {
+    const { error } = await supabase
+      .from('draft_estimates')
+      .delete()
+      .eq('id', id);
+    return { error };
+  } catch (err) {
+    return { error: err };
+  }
+}
+

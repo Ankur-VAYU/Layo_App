@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession } from '@/lib/supabase';
+import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession, saveDraftEstimate, deleteDraftEstimate, fetchDraftEstimates } from '@/lib/supabase';
 import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 import { formatShipmentId, formatTransactionId, formatUserId, formatWarehouseId } from '@/lib/idGenerator';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
@@ -1017,7 +1017,8 @@ export default function Dashboard() {
   const handleDeleteDraft = async (shipmentId: string) => {
     if (!confirm('Are you sure you want to delete this shipment?')) return;
     try {
-      // 1. Delete via server endpoint to guarantee database deletion
+      // 1. Delete via server endpoint and draft_estimates table to guarantee database deletion
+      await deleteDraftEstimate(shipmentId);
       const res = await fetch('/api/shipments/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1073,6 +1074,32 @@ export default function Dashboard() {
         });
       }
 
+      const advanceCAD = Math.round(totals.totalPriceCAD * 0.20 * 100) / 100;
+      const remainingCAD = Math.round((totals.totalPriceCAD - advanceCAD) * 100) / 100;
+      const advanceINR = Math.round(totals.totalPriceINR * 0.20);
+
+      // Save to dedicated draft_estimates database table
+      await saveDraftEstimate({
+        id: editingDraftId || undefined,
+        user_id: user?.id,
+        customer_email: user?.email,
+        mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
+        destination_city: destinationCity || 'Toronto (GTA)',
+        destination_address: destinationAddress || 'Draft Address',
+        india_warehouse: selectedWarehouse || null,
+        external_order_id: orderNumber || null,
+        total_weight: totals.totalWeightKg,
+        total_cost: totals.totalPriceINR,
+        estimated_cost_cad: totals.totalPriceCAD,
+        advance_pct: 20,
+        advance_amount_cad: advanceCAD,
+        remaining_balance_cad: remainingCAD,
+        items: itemsPayload,
+        warehouse_action: warehouseAction || 'ship',
+        expected_packages: morePackages || 1,
+        status: 'Draft Estimate',
+      });
+
       if (editingDraftId) {
         await supabase
           .from('shipments')
@@ -1109,10 +1136,6 @@ export default function Dashboard() {
         );
         setEditingDraftId(null);
       } else {
-        const advanceCAD = Math.round(totals.totalPriceCAD * 0.20 * 100) / 100;
-        const remainingCAD = Math.round((totals.totalPriceCAD - advanceCAD) * 100) / 100;
-        const advanceINR = Math.round(totals.totalPriceINR * 0.20);
-
         const { data } = await insertShipment({
           user_id: user?.id,
           mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
