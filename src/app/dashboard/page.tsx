@@ -1101,6 +1101,10 @@ export default function Dashboard() {
         );
         setEditingDraftId(null);
       } else {
+        const advanceCAD = Math.round(totals.totalPriceCAD * 0.20 * 100) / 100;
+        const remainingCAD = Math.round((totals.totalPriceCAD - advanceCAD) * 100) / 100;
+        const advanceINR = Math.round(totals.totalPriceINR * 0.20);
+
         const { data } = await insertShipment({
           user_id: user?.id,
           mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
@@ -1112,6 +1116,12 @@ export default function Dashboard() {
           total_cost: totals.totalPriceINR,
           items: itemsPayload,
           status: 'Draft Estimate',
+          advance_pct: 20,
+          advance_amount_cad: advanceCAD,
+          advance_paid_inr: advanceINR,
+          estimated_weight: totals.totalWeightKg,
+          estimated_cost_cad: totals.totalPriceCAD,
+          remaining_balance_cad: remainingCAD,
           payment_method: 'draft',
           warehouse_action: warehouseAction || 'ship',
           expected_packages: morePackages || 1,
