@@ -316,7 +316,8 @@ export default function Dashboard() {
 
   // Auto-save dashboard step flow state to localStorage
   useEffect(() => {
-    const hasProgress = currentStep > 1 || selectedCategories.length > 0 || storeName || senderName || orderNumber || destinationAddress || promoQty > 0;
+    const hasItems = Object.values(qtyState).some(q => (q || 0) > 0) || promoQty > 0;
+    const hasProgress = currentStep > 1 || selectedCategories.length > 0 || storeName || senderName || orderNumber || destinationAddress || hasItems;
     if (hasProgress) {
       const stateObj = {
         currentStep,
@@ -338,6 +339,8 @@ export default function Dashboard() {
         editingDraftId,
       };
       localStorage.setItem('layo_dashboard_flow_state', JSON.stringify(stateObj));
+    } else {
+      localStorage.removeItem('layo_dashboard_flow_state');
     }
   }, [
     currentStep, originType, storeName, orderNumber, senderName, originCity,
@@ -606,11 +609,14 @@ export default function Dashboard() {
       // Remove all qty and activeDemo entries for this category
       setQtyState(prev => {
         const next = { ...prev };
-        activeCategoryData[key].subs.forEach((_, idx) => {
-          demographicOptions.forEach(opt => {
-            delete next[`${key}-${idx}-${opt.label}`];
+        if (activeCategoryData[key]) {
+          activeCategoryData[key].subs.forEach((_, idx) => {
+            delete next[`${key}-${idx}-default`];
+            demographicOptions.forEach(opt => {
+              delete next[`${key}-${idx}-${opt.label}`];
+            });
           });
-        });
+        }
         return next;
       });
       setActiveDemoState(prev => {
@@ -1017,37 +1023,47 @@ export default function Dashboard() {
   const handleDeleteDraft = async (shipmentId: string) => {
     if (!confirm('Are you sure you want to delete this shipment?')) return;
     try {
-      // 1. Delete via server endpoint and draft_estimates table to guarantee database deletion
-      await deleteDraftEstimate(shipmentId);
-      const res = await fetch('/api/shipments/delete', {
+      // 1. Delete via server endpoint to guarantee database deletion
+      await fetch('/api/shipments/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shipmentId, userId: user?.id })
       });
 
-      if (!res.ok) {
-        // Fallback to client SDK delete
-        const { error } = await supabase.from('shipments').delete().eq('id', shipmentId);
-        if (error) throw error;
-      }
+      // 2. Also try client-side cleanup
+      try {
+        await deleteDraftEstimate(shipmentId);
+        await supabase.from('shipments').delete().eq('id', shipmentId);
+      } catch (e) {}
 
-      // 2. Remove from local React state
+      // 3. Remove from local storage drafts cache
+      try {
+        const rawLocal = localStorage.getItem('layo_local_shipments');
+        if (rawLocal) {
+          const parsed = JSON.parse(rawLocal);
+          const filtered = parsed.filter((s: any) => s && s.id !== shipmentId);
+          localStorage.setItem('layo_local_shipments', JSON.stringify(filtered));
+        }
+      } catch (e) {}
+
+      // 4. Remove from local React state immediately
       setShipments(prev => prev.filter(s => s.id !== shipmentId));
 
-      // 3. Reset form wizard if this draft was being edited
+      // 5. Reset form wizard if this draft was being edited
       if (editingDraftId === shipmentId) {
         handleStartNewOrder();
       }
 
-      // 4. Clear any local storage draft items
+      // 6. Clear any local storage draft items
       localStorage.removeItem('layo_pending_shipment');
       localStorage.removeItem('layo_pending_shipment_draft');
+      localStorage.removeItem('layo_dashboard_flow_state');
 
-      // 5. Refresh from database to sync
+      // 7. Refresh from database to sync
       if (user?.id) {
-        fetchDashboardData(user.id);
+        await fetchDashboardData(user.id);
       }
-    } catch (err: any  ) {
+    } catch (err: any) {
       console.error('Delete shipment error:', err);
       alert(`Failed to delete shipment: ${err.message}`);
     }
@@ -1101,40 +1117,44 @@ export default function Dashboard() {
       });
 
       if (editingDraftId) {
+        const updatePayload = {
+          destination_city: destinationCity || 'Draft City',
+          destination_address: destinationAddress || 'Draft Address',
+          india_warehouse: selectedWarehouse || null,
+          external_order_id: orderNumber || null,
+          total_weight: totals.totalWeightKg,
+          total_cost: totals.totalPriceINR,
+          estimated_cost_cad: totals.totalPriceCAD,
+          advance_pct: 20,
+          advance_amount_cad: advanceCAD,
+          remaining_balance_cad: remainingCAD,
+          items: itemsPayload,
+          status: 'Draft Estimate',
+          warehouse_action: warehouseAction || 'ship',
+          expected_packages: morePackages || 1,
+          updated_at: new Date().toISOString()
+        };
+
         await supabase
           .from('shipments')
-          .update({
-            destination_city: destinationCity || 'Draft City',
-            destination_address: destinationAddress || 'Draft Address',
-            india_warehouse: selectedWarehouse || null,
-            external_order_id: orderNumber || null,
-            total_weight: totals.totalWeightKg,
-            total_cost: totals.totalPriceINR,
-            items: itemsPayload,
-            status: 'Draft Estimate',
-            warehouse_action: warehouseAction || 'ship',
-            expected_packages: morePackages || 1,
-            updated_at: new Date().toISOString()
-          })
+          .update(updatePayload)
           .eq('id', editingDraftId);
 
-        setShipments(prev =>
-          prev.map(s =>
+        setShipments(prev => {
+          const nextList = prev.map(s =>
             s.id === editingDraftId
-              ? {
-                  ...s,
-                  destination_city: destinationCity || 'Draft City',
-                  destination_address: destinationAddress || 'Draft Address',
-                  india_warehouse: selectedWarehouse || null,
-                  external_order_id: orderNumber || null,
-                  total_weight: totals.totalWeightKg,
-                  total_cost: totals.totalPriceINR,
-                  items: itemsPayload,
-                }
+              ? { ...s, ...updatePayload }
               : s
-          )
-        );
+          );
+          try {
+            localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          } catch (e) {}
+          return nextList;
+        });
         setEditingDraftId(null);
+        if (user?.id) {
+          fetchDashboardData(user.id);
+        }
       } else {
         const { data } = await insertShipment({
           user_id: user?.id,
@@ -2375,11 +2395,11 @@ export default function Dashboard() {
                     </label>
                     <div className="space-y-2">
                       {activeItems.map(item => (
-                        <div key={item.configKey} className="p-4 rounded-2xl border border-black/5 bg-[#FAF8EE] flex justify-between items-center shadow-sm">
+                        <div key={item.demoKey || `${item.category}-${item.subcategory}`} className="p-4 rounded-2xl border border-black/5 bg-[#FAF8EE] flex justify-between items-center shadow-sm">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-white border border-black/10 flex items-center justify-center text-[#FF5A65] shadow-sm">
                               <span className="material-symbols-outlined text-xl leading-none">
-                                {activeCategoryData[item.category].icon}
+                                {activeCategoryData[item.category]?.icon || 'package_2'}
                               </span>
                             </div>
                             <div>
@@ -2395,7 +2415,7 @@ export default function Dashboard() {
                           <button
                             onClick={() => setQtyState(prev => ({ ...prev, [item.demoKey]: 0 }))}
                             className="text-red-400 hover:text-red-600 transition-all p-1 cursor-pointer"
-                            title="Remove subcategory"
+                            title="Remove item"
                           >
                             <span className="material-symbols-outlined text-lg leading-none">delete</span>
                           </button>

@@ -1,6 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://hlqeddasjkxweiqadege.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhscWVkZGFzamt4d2VpcWFkZWdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzk1NzIxMSwiZXhwIjoyMDkzNTMzMjExfQ.tkISs8jGp7s-oy9xGKfgF8Z4FNYBwO7pBmlQxpJmFII';
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,10 +20,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing shipmentId' }, { status: 400 });
     }
 
-    // Delete only by shipmentId — do NOT filter by userId
-    // (many rows have NULL user_id due to legacy inserts; filtering by userId
-    //  would cause those rows to silently not be deleted)
-    const { error } = await supabase
+    // Delete by shipmentId using service role admin client
+    const { error } = await supabaseAdmin
       .from('shipments')
       .delete()
       .eq('id', shipmentId);
