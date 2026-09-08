@@ -67,9 +67,9 @@ export default function Signup() {
 
       if (error) throw error;
 
-      // If email confirmation is disabled or session exists, navigate directly to dashboard
+      // If email confirmation is disabled or session exists, navigate directly to home page
       if (data?.session) {
-        router.push('/dashboard');
+        router.push('/');
         return;
       }
 

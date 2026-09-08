@@ -33,9 +33,9 @@ export default function Login() {
       if (error) throw error;
 
       if (data?.session) {
-        router.push('/dashboard');
+        router.push('/');
       } else {
-        router.push('/dashboard');
+        router.push('/');
       }
     } catch (err: any) {
       setError(err.message || 'Invalid email or password. Please try again.');
@@ -50,7 +50,7 @@ export default function Login() {
       email: 'ankur.iitd.nita@gmail.com',
       user_metadata: { full_name: 'Ankur Sharma' }
     }));
-    window.location.href = '/dashboard';
+    window.location.href = '/';
   };
 
   return (
