@@ -11,22 +11,36 @@ export default function ForgotPassword() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [showUnregisteredModal, setShowUnregisteredModal] = useState(false);
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+    setShowUnregisteredModal(false);
 
     try {
       const redirectTo = 'https://www.getlayo.com/reset-password';
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo,
       });
 
-      if (error) throw error;
+      if (error) {
+        const msg = error.message?.toLowerCase() || '';
+        if (msg.includes('user not found') || msg.includes('not found') || msg.includes('no user') || msg.includes('invalid email')) {
+          setShowUnregisteredModal(true);
+          return;
+        }
+        throw error;
+      }
       setSubmitted(true);
-    } catch (err: any  ) {
-      setError(err.message || 'Failed to send password reset email. Please try again.');
+    } catch (err: any) {
+      const msg = err.message?.toLowerCase() || '';
+      if (msg.includes('user not found') || msg.includes('not found') || msg.includes('no user')) {
+        setShowUnregisteredModal(true);
+      } else {
+        setError(err.message || 'Failed to send password reset email. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -44,7 +58,7 @@ export default function ForgotPassword() {
         </div>
 
         {error && (
-          <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-xl font-bold text-center">
+          <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-xs rounded-xl font-bold text-center">
             {error}
           </div>
         )}
@@ -70,7 +84,7 @@ export default function ForgotPassword() {
                 If you have not registered with this email yet, you can create a new account in seconds.
               </p>
               <Link
-                href="/signup"
+                href={`/signup?email=${encodeURIComponent(email)}`}
                 className="inline-flex items-center gap-1 text-xs font-black text-[#FF5A65] hover:underline pt-1"
               >
                 Sign Up for a New Account →
@@ -79,7 +93,7 @@ export default function ForgotPassword() {
 
             <div className="space-y-2 pt-2">
               <Link
-                href="/signup"
+                href={`/signup?email=${encodeURIComponent(email)}`}
                 className="block w-full py-3.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all text-center shadow-md shadow-[#FF5A65]/20"
               >
                 Create an Account (Sign Up)
@@ -130,6 +144,40 @@ export default function ForgotPassword() {
           </form>
         )}
       </div>
+
+      {/* Pop-up Modal for Non-Registered Customers */}
+      {showUnregisteredModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-5 border border-black/10 shadow-2xl text-[#0E1F38] text-center animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto border border-amber-200 text-amber-600">
+              <span className="material-symbols-outlined text-2xl">person_search</span>
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-extrabold text-[#0E1F38]">No Account Found</h3>
+              <p className="text-xs text-[#0E1F38]/70 leading-relaxed">
+                We couldn't find a Layo account registered under <strong className="text-[#0E1F38] font-bold">{email}</strong>.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <Link
+                href={`/signup?email=${encodeURIComponent(email)}`}
+                className="block w-full py-3.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all text-center shadow-md shadow-[#FF5A65]/20"
+              >
+                Sign Up Now
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowUnregisteredModal(false)}
+                className="w-full py-2.5 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Try Another Email
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

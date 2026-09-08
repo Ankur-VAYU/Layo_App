@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react/no-unescaped-entities */
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
@@ -33,6 +33,13 @@ export default function Signup() {
   const [isLoading, setIsLoading]     = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [success, setSuccess]         = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const emailParam = new URLSearchParams(window.location.search).get('email');
+      if (emailParam) setEmail(emailParam);
+    }
+  }, []);
 
   const validate = (): string | null => {
     if (!fullName.trim()) return 'Please enter your full name.';
