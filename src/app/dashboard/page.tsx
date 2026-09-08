@@ -911,14 +911,22 @@ export default function Dashboard() {
   // Pay existing draft directly via Stripe (20% Advance)
   const handlePayDraftWithStripe = async (s: any) => {
     try {
-      const approxCAD = s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0;
-      const advanceCAD = s.advance_amount_cad || (approxCAD * 0.20);
+      const inrRate = cadToInrRate > 0 ? cadToInrRate : 70.4;
+      const totalINR = Number(s.total_cost) || 0;
+      let totalCAD = totalINR > 0 ? Number((totalINR / inrRate).toFixed(2)) : 25.0;
+      if (s.estimated_cost_cad && Number(s.estimated_cost_cad) > 0 && Number(s.estimated_cost_cad) < (totalINR > 100 ? totalINR / 10 : 5000)) {
+        totalCAD = Number(Number(s.estimated_cost_cad).toFixed(2));
+      } else if (s.amount_cad && Number(s.amount_cad) > 0 && Number(s.amount_cad) < (totalINR > 100 ? totalINR / 10 : 5000)) {
+        totalCAD = Number(Number(s.amount_cad).toFixed(2));
+      }
+      const advanceCAD = Number((totalCAD * 0.20).toFixed(2));
+
       const res = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amountCAD: advanceCAD.toFixed(2),
-          totalCostCAD: approxCAD.toFixed(2),
+          totalCostCAD: totalCAD.toFixed(2),
           isAdvance: true,
           shipmentId: s.id,
           userId: user?.id,
@@ -937,7 +945,7 @@ export default function Dashboard() {
       } else {
         alert(data.error || 'Unable to open Stripe checkout.');
       }
-    } catch (err: any  ) {
+    } catch (err: any) {
       alert(`Failed to start payment: ${err.message}`);
     }
   };
@@ -1449,8 +1457,8 @@ export default function Dashboard() {
                         };
                       default:
                         return {
-                          title: 'Draft Estimate (Awaiting Payment)',
-                          desc: 'Your shipment estimate is saved as a draft. Click below to pay and start your shipping journey.',
+                          title: 'Draft Estimate (Awaiting Locker Booking)',
+                          desc: 'Pay the 20% advance deposit to book your locker and receive your India warehouse forwarding address.',
                           badge: 'Draft Estimate',
                           color: '#64748b',
                           bg: '#f8fafc',
@@ -1489,34 +1497,36 @@ export default function Dashboard() {
                         </span>
                       </div>
 
-                      {/* Stepper tracker */}
-                      <div className="relative pt-2">
-                        <div className="absolute top-[13px] left-0 right-0 h-[2px] bg-black/5 -z-10"></div>
-                        <div className="flex justify-between">
-                          {STEPS.map((step, idx) => {
-                            const isPassed = !isDraft && idx <= currentIdx;
-                            const isCurrent = !isDraft && idx === currentIdx;
-                            return (
-                              <div key={step} className="flex flex-col items-center gap-1 flex-1 relative">
-                                <div
-                                  className="w-3.5 h-3.5 rounded-full transition-all border-2 border-transparent"
-                                  style={{
-                                    backgroundColor: isPassed ? STATUS_COLORS[statusNormalized] ?? '#64748b' : '#e2e8f0',
-                                    boxShadow: isCurrent ? `0 0 10px ${STATUS_COLORS[statusNormalized] ?? '#64748b'}` : 'none'
-                                  }}
-                                />
-                                <span 
-                                  className={`text-[7px] uppercase tracking-wider font-bold text-center ${
-                                    isPassed ? 'text-[#0E1F38]' : 'text-[#0E1F38]/40'
-                                  }`}
-                                >
-                                  {STEP_LABELS[idx]}
-                                </span>
-                              </div>
-                            );
-                          })}
+                      {/* Stepper tracker (Only for active / booked shipments) */}
+                      {!isDraft && (
+                        <div className="relative pt-2">
+                          <div className="absolute top-[13px] left-0 right-0 h-[2px] bg-black/5 -z-10"></div>
+                          <div className="flex justify-between">
+                            {STEPS.map((step, idx) => {
+                              const isPassed = idx <= currentIdx;
+                              const isCurrent = idx === currentIdx;
+                              return (
+                                <div key={step} className="flex flex-col items-center gap-1 flex-1 relative">
+                                  <div
+                                    className="w-3.5 h-3.5 rounded-full transition-all border-2 border-transparent"
+                                    style={{
+                                      backgroundColor: isPassed ? STATUS_COLORS[statusNormalized] ?? '#64748b' : '#e2e8f0',
+                                      boxShadow: isCurrent ? `0 0 10px ${STATUS_COLORS[statusNormalized] ?? '#64748b'}` : 'none'
+                                    }}
+                                  />
+                                  <span 
+                                    className={`text-[7px] uppercase tracking-wider font-bold text-center ${
+                                      isPassed ? 'text-[#0E1F38]' : 'text-[#0E1F38]/40'
+                                    }`}
+                                  >
+                                    {STEP_LABELS[idx]}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Current Stage Status Banner */}
                       <div
@@ -1548,25 +1558,25 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                       {/* Hold & Combine Status Banner */}
-                       {s.warehouse_action === 'hold' && (
-                         <div className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50 flex items-start gap-3 text-xs">
-                           <span className="text-xl leading-none mt-0.5">📦</span>
-                           <div className="flex-1">
-                             <p className="font-black text-amber-800 uppercase tracking-wider text-[10px]">Hold &amp; Combine Active</p>
-                             <p className="text-amber-700 mt-0.5 leading-relaxed">
-                               {s.status === 'Draft Estimate'
-                                 ? `Your estimate is saved. Pay to activate Hold & Combine — we'll wait for all ${s.expected_packages || 2} packages before dispatching.`
-                                 : s.status === 'holding'
-                                 ? `Holding at India Hub — waiting for remaining packages. Expected: ${s.expected_packages || 2} total.`
-                                 : s.status === 'hold_combined'
-                                 ? `All packages combined and ready for airfreight dispatch!`
-                                 : `Hold & Combine preference saved. Expecting ${s.expected_packages || 2} packages.`
-                               }
-                             </p>
-                           </div>
-                         </div>
-                       )}
+                      {/* Hold & Combine Status Banner */}
+                      {s.warehouse_action === 'hold' && (
+                        <div className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50 flex items-start gap-3 text-xs">
+                          <span className="text-xl leading-none mt-0.5">📦</span>
+                          <div className="flex-1">
+                            <p className="font-black text-amber-800 uppercase tracking-wider text-[10px]">Hold &amp; Combine Active</p>
+                            <p className="text-amber-700 mt-0.5 leading-relaxed">
+                              {s.status === 'Draft Estimate'
+                                ? `Your estimate is saved. Pay deposit to activate Hold & Combine — we'll wait for all ${s.expected_packages || 2} packages before dispatching.`
+                                : s.status === 'holding'
+                                ? `Holding at India Hub — waiting for remaining packages. Expected: ${s.expected_packages || 2} total.`
+                                : s.status === 'hold_combined'
+                                ? `All packages combined and ready for airfreight dispatch!`
+                                : `Hold & Combine preference saved. Expecting ${s.expected_packages || 2} packages.`
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Assigned India Hub Address (when Paid or Inwarded) */}
                       {!isDraft && (statusNormalized === 'paid' || statusNormalized === 'inwarded' || statusNormalized === 'arrived') && (
@@ -1625,137 +1635,159 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                      {/* Shipment Summary */}
-                      <div className="border-t border-black/5 pt-3 space-y-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-bold text-sm text-[#0E1F38]">✈ {s.destination_city || 'Toronto (GTA)'}</h3>
-                            <p className="text-xs text-[#0E1F38]/70 leading-tight font-light">{s.destination_address || 'Delivery Address on File'}</p>
-                          </div>
-                          <div className="text-right text-xs">
-                            <p className="font-mono text-[#0E1F38] font-bold">{s.total_weight || 1.0} kg</p>
+                      {/* Shipment Pricing & Action Controls */}
+                      {(() => {
+                        const inrRate = cadToInrRate > 0 ? cadToInrRate : 70.4;
+                        const totalINR = Number(s.total_cost) || 0;
+                        let totalCAD = totalINR > 0 ? Number((totalINR / inrRate).toFixed(2)) : 25.0;
+                        if (s.estimated_cost_cad && Number(s.estimated_cost_cad) > 0 && Number(s.estimated_cost_cad) < (totalINR > 100 ? totalINR / 10 : 5000)) {
+                          totalCAD = Number(Number(s.estimated_cost_cad).toFixed(2));
+                        } else if (s.amount_cad && Number(s.amount_cad) > 0 && Number(s.amount_cad) < (totalINR > 100 ? totalINR / 10 : 5000)) {
+                          totalCAD = Number(Number(s.amount_cad).toFixed(2));
+                        }
+                        const advanceCAD = Number((totalCAD * 0.20).toFixed(2));
+                        const remainingCAD = Number((totalCAD - advanceCAD).toFixed(2));
+
+                        return (
+                          <div className="border-t border-black/5 pt-3 space-y-3">
+                            {/* Route & Pricing Summary Card */}
+                            <div className="bg-[#FAF8EE] p-4 rounded-2xl border border-black/5 space-y-3">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <span className="text-[10px] font-bold text-[#0E1F38]/50 uppercase tracking-wider">Destination</span>
+                                  <h3 className="font-black text-sm text-[#0E1F38] mt-0.5">✈ {s.destination_city || 'Toronto (GTA)'}</h3>
+                                  <p className="text-[11px] text-[#0E1F38]/60 font-medium">{s.total_weight || 1.0} kg estimated weight</p>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[10px] font-bold text-[#0E1F38]/50 uppercase tracking-wider">Estimated Total</span>
+                                  <p className="font-black text-base text-[#0E1F38] mt-0.5">${totalCAD.toFixed(2)} CAD</p>
+                                  <span className="text-[10px] text-[#0E1F38]/50 font-mono block">≈ ₹{totalINR > 0 ? totalINR.toLocaleString() : Math.round(totalCAD * inrRate).toLocaleString()} INR</span>
+                                </div>
+                              </div>
+
+                              {isDraft && (
+                                <div className="pt-2 border-t border-black/5 grid grid-cols-2 gap-2 text-xs">
+                                  <div className="bg-white/80 p-2.5 rounded-xl border border-black/5">
+                                    <span className="text-[10px] font-bold text-[#FF5A65] uppercase tracking-wider block">Due Today (20%)</span>
+                                    <span className="font-black text-sm text-[#FF5A65]">${advanceCAD.toFixed(2)} CAD</span>
+                                  </div>
+                                  <div className="bg-white/80 p-2.5 rounded-xl border border-black/5">
+                                    <span className="text-[10px] font-bold text-[#0E1F38]/50 uppercase tracking-wider block">Due After Weighing (80%)</span>
+                                    <span className="font-bold text-sm text-[#0E1F38]">${remainingCAD.toFixed(2)} CAD</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {s.external_order_id && (
+                              <p className="text-[10px] text-[#0E1F38]/80 bg-[#FAF8EE] p-2.5 rounded-xl border border-black/5 font-mono">
+                                <strong>Reference Order:</strong> {s.external_order_id}
+                              </p>
+                            )}
+
+                            {/* Remaining Balance Payment Banner */}
+                            {(s.payment_status === 'awaiting_balance' || (s.remaining_balance_cad > 0 && statusNormalized !== 'fully_paid' && statusNormalized !== 'delivered')) && (
+                              <div className="p-4 bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[#0E1F38] font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-amber-600 text-sm">scale</span>
+                                    Actual Weight Verified at Hub
+                                  </span>
+                                  <span className="px-2.5 py-0.5 bg-amber-500 text-white rounded-full font-black text-[10px]">
+                                    Balance Due
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-xs bg-white/80 p-3 rounded-xl border border-black/5 font-mono">
+                                  <div>
+                                    <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Est. Weight</span>
+                                    <span className="font-bold text-[#0E1F38]">{s.estimated_weight || s.total_weight} kg</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Verified Weight</span>
+                                    <span className="font-bold text-[#2E7D32]">{s.actual_weight || s.total_weight} kg</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-[#0E1F38]/60 block uppercase">20% Paid</span>
+                                    <span className="font-bold text-[#0E1F38]">${(s.advance_amount_cad || 0).toFixed(2)} CAD</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Balance Due</span>
+                                    <span className="font-black text-[#FF5A65]">${(s.remaining_balance_cad || 0).toFixed(2)} CAD</span>
+                                  </div>
+                                </div>
+
+                                <button
+                                  onClick={() => {
+                                    const remaining = s.remaining_balance_cad || 0;
+                                    localStorage.setItem('layo_pending_shipment', JSON.stringify({
+                                      shipmentId: s.id,
+                                      isBalancePayment: true,
+                                      remainingBalanceCAD: remaining,
+                                      totalCostCAD: remaining,
+                                      totalWeight: s.actual_weight || s.total_weight,
+                                      destinationCity: s.destination_city || 'Toronto (GTA)',
+                                      destinationAddress: s.destination_address || '',
+                                      indiaWarehouse: s.india_warehouse || 'delhi',
+                                      items: s.items || [],
+                                    }));
+                                    router.push('/checkout');
+                                  }}
+                                  className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
+                                >
+                                  <span className="material-symbols-outlined text-sm">lock</span>
+                                  Pay Remaining Balance (${(s.remaining_balance_cad || 0).toFixed(2)} CAD)
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Draft Controls */}
                             {isDraft ? (
-                              <div className="mt-1">
-                                <span className="text-[10px] text-[#0E1F38]/60 font-bold uppercase tracking-wider block">Due Today (20% Advance)</span>
-                                <p className="text-[#FF5A65] font-black text-sm">
-                                  ${((s.advance_amount_cad || ((s.estimated_cost_cad || (s.amount_cad || (s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0))) * 0.20))).toFixed(2)} CAD
-                                </p>
-                                <p className="text-[10px] text-[#0E1F38]/60 font-medium">
-                                  Est. Total: ${(s.estimated_cost_cad || (s.amount_cad || (s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0))).toFixed(2)} CAD (₹{(s.total_cost || 0).toLocaleString()})
-                                </p>
+                              <div className="space-y-2 pt-1">
+                                <button
+                                  onClick={() => handlePayDraftWithStripe(s)}
+                                  className="w-full py-3.5 bg-[#FF5A65] text-white font-bold text-sm rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[#FF5A65]/20"
+                                >
+                                  <span className="material-symbols-outlined text-base">lock</span>
+                                  <span>Pay 20% Deposit (${advanceCAD.toFixed(2)} CAD) &amp; Book Shipment</span>
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setSelectedOrderDetails(s)}
+                                    className="flex-1 py-2 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <span className="material-symbols-outlined text-sm">info</span>
+                                    Order Details
+                                  </button>
+                                  <button
+                                    onClick={() => handleEditDraft(s)}
+                                    className="flex-1 py-2 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <span className="material-symbols-outlined text-sm">edit_square</span>
+                                    Edit Items
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteDraft(s.id)}
+                                    className="p-2 bg-black/5 hover:bg-red-50 text-black/60 hover:text-red-600 font-bold rounded-xl border border-black/5 transition-all flex items-center justify-center cursor-pointer"
+                                    title="Delete Draft"
+                                  >
+                                    <span className="material-symbols-outlined text-sm">delete</span>
+                                  </button>
+                                </div>
                               </div>
                             ) : (
-                              <>
-                                <p className="text-[#FF5A65] font-black text-sm">
-                                  ${(s.amount_cad || Number(((s.total_cost || 0) / (cadToInrRate || 70.4)).toFixed(2))).toFixed(2)} CAD
-                                </p>
-                                <p className="text-[10px] text-[#0E1F38]/60 font-bold font-mono">
-                                  (₹{(s.total_cost || 0).toLocaleString()})
-                                </p>
-                              </>
+                              <button
+                                onClick={() => setSelectedOrderDetails(s)}
+                                className="w-full py-2.5 bg-[#FAF8EE] hover:bg-[#1B250F] text-[#0E1F38] hover:text-white border border-black/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                              >
+                                <span className="material-symbols-outlined text-sm">info</span>
+                                View Order &amp; Item Details
+                              </button>
                             )}
                           </div>
-                        </div>
-
-                        {s.external_order_id && (
-                          <p className="text-[10px] text-[#0E1F38]/80 bg-[#FAF8EE] p-2.5 rounded-xl border border-black/5 font-mono">
-                            <strong>Reference Order:</strong> {s.external_order_id}
-                          </p>
-                        )}
-
-                        {/* Remaining Balance Payment Banner */}
-                        {(s.payment_status === 'awaiting_balance' || (s.remaining_balance_cad > 0 && statusNormalized !== 'fully_paid' && statusNormalized !== 'delivered')) && (
-                          <div className="p-4 bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[#0E1F38] font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                <span className="material-symbols-outlined text-amber-600 text-sm">scale</span>
-                                Actual Weight Verified at Hub
-                              </span>
-                              <span className="px-2.5 py-0.5 bg-amber-500 text-white rounded-full font-black text-[10px]">
-                                Balance Due
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 text-xs bg-white/80 p-3 rounded-xl border border-black/5 font-mono">
-                              <div>
-                                <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Est. Weight</span>
-                                <span className="font-bold text-[#0E1F38]">{s.estimated_weight || s.total_weight} kg</span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Verified Weight</span>
-                                <span className="font-bold text-[#2E7D32]">{s.actual_weight || s.total_weight} kg</span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-[#0E1F38]/60 block uppercase">20% Paid</span>
-                                <span className="font-bold text-[#0E1F38]">${(s.advance_amount_cad || 0).toFixed(2)} CAD</span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Balance Due</span>
-                                <span className="font-black text-[#FF5A65]">${(s.remaining_balance_cad || 0).toFixed(2)} CAD</span>
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => {
-                                const remainingCAD = s.remaining_balance_cad || 0;
-                                localStorage.setItem('layo_pending_shipment', JSON.stringify({
-                                  shipmentId: s.id,
-                                  isBalancePayment: true,
-                                  remainingBalanceCAD: remainingCAD,
-                                  totalCostCAD: remainingCAD,
-                                  totalWeight: s.actual_weight || s.total_weight,
-                                  destinationCity: s.destination_city || 'Toronto (GTA)',
-                                  destinationAddress: s.destination_address || '',
-                                  indiaWarehouse: s.india_warehouse || 'delhi',
-                                  items: s.items || [],
-                                }));
-                                router.push('/checkout');
-                              }}
-                              className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
-                            >
-                              <span className="material-symbols-outlined text-sm">lock</span>
-                              Pay Remaining Balance (${(s.remaining_balance_cad || 0).toFixed(2)} CAD)
-                            </button>
-                          </div>
-                        )}
-
-                        <button
-                          onClick={() => setSelectedOrderDetails(s)}
-                          className="w-full py-2.5 bg-[#FAF8EE] hover:bg-[#1B250F] text-[#0E1F38] hover:text-white border border-black/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                        >
-                          <span className="material-symbols-outlined text-sm">info</span>
-                          View Order &amp; Item Details
-                        </button>
-
-                        {/* Draft Controls */}
-                        {isDraft && (
-                          <div className="space-y-2 pt-3 border-t border-black/5">
-                            <button
-                              onClick={() => handlePayDraftWithStripe(s)}
-                              className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
-                            >
-                              <span className="material-symbols-outlined text-sm">lock</span>
-                              Pay 20% Advance (${((s.advance_amount_cad || ((s.estimated_cost_cad || (s.amount_cad || (s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0))) * 0.20))).toFixed(2)} CAD) &amp; Book Shipment
-                            </button>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleEditDraft(s)}
-                                className="flex-1 py-2 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-sm">edit_square</span>
-                                Edit Items
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDraft(s.id)}
-                                className="p-2 bg-black/5 hover:bg-red-50 text-black/60 hover:text-red-600 font-bold rounded-xl border border-black/5 transition-all flex items-center justify-center cursor-pointer"
-                                title="Delete Draft"
-                              >
-                                <span className="material-symbols-outlined text-sm">delete</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
