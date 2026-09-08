@@ -534,7 +534,7 @@ export default function Home() {
               Start Shipping with Layo
             </Link>
             <a
-              href="https://wa.me/919321852629?text=Hi%20Layo%2C%20I%20would%20like%20to%20use%20the%20Buy%20for%20Me%20service."
+              href="https://wa.me/19058070163?text=Hi%20Layo%2C%20I%20would%20like%20to%20use%20the%20Buy%20for%20Me%20service."
               target="_blank"
               rel="noopener noreferrer"
               className="inline-block px-8 py-3.5 bg-[#FF5A65]/10 text-[#FF5A65] border-2 border-[#FF5A65] hover:bg-[#FF5A65]/20 font-bold text-base md:text-lg rounded-full transition-all cursor-pointer text-center shadow-sm"
