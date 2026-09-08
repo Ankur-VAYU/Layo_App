@@ -19,9 +19,28 @@ export default function ForgotPassword() {
     setError(null);
     setShowUnregisteredModal(false);
 
+    const targetEmail = email.trim();
+
     try {
+      // 1. Verify if user exists in Supabase Auth via secure server endpoint
+      const checkRes = await fetch('/api/auth/check-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail }),
+      });
+
+      if (checkRes.ok) {
+        const checkData = await checkRes.json();
+        if (checkData.exists === false) {
+          setShowUnregisteredModal(true);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // 2. If user exists, trigger standard Supabase password reset email
       const redirectTo = 'https://www.getlayo.com/reset-password';
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
         redirectTo,
       });
 
