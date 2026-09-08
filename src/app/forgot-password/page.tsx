@@ -50,19 +50,47 @@ export default function ForgotPassword() {
         )}
 
         {submitted ? (
-          <div className="space-y-6 text-center">
-            <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs leading-relaxed font-medium">
-              We have sent password reset instructions to <strong className="text-[#0E1F38]">{email}</strong> if an account exists.
+          <div className="space-y-5 text-center">
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 text-xs leading-relaxed text-left space-y-2">
+              <div className="flex items-center gap-2 font-bold text-emerald-950">
+                <span className="material-symbols-outlined text-emerald-600 text-base">mail</span>
+                <span>Password Reset Email Sent</span>
+              </div>
+              <p className="text-emerald-800">
+                If an account exists for <strong className="text-emerald-950">{email}</strong>, we have sent instructions to reset your password.
+              </p>
+              <p className="text-[11px] text-emerald-700">
+                Please check your inbox, spam, or promotions folder.
+              </p>
             </div>
-            <p className="text-xs text-[#0E1F38]/60">
-              Check your inbox and spam folder.
-            </p>
-            <Link
-              href="/login"
-              className="block w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all text-center"
-            >
-              Back to Sign In
-            </Link>
+
+            <div className="p-4 bg-[#FAF8EE] border border-black/5 rounded-2xl text-left space-y-2">
+              <p className="text-xs font-bold text-[#0E1F38]">Not receiving any email?</p>
+              <p className="text-[11px] text-[#0E1F38]/70 leading-relaxed">
+                If you have not registered with this email yet, you can create a new account in seconds.
+              </p>
+              <Link
+                href="/signup"
+                className="inline-flex items-center gap-1 text-xs font-black text-[#FF5A65] hover:underline pt-1"
+              >
+                Sign Up for a New Account →
+              </Link>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <Link
+                href="/signup"
+                className="block w-full py-3.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all text-center shadow-md shadow-[#FF5A65]/20"
+              >
+                Create an Account (Sign Up)
+              </Link>
+              <Link
+                href="/login"
+                className="block w-full py-3 bg-black/5 text-[#0E1F38] font-bold text-xs rounded-xl hover:bg-black/10 transition-all text-center"
+              >
+                Back to Sign In
+              </Link>
+            </div>
           </div>
         ) : (
           <form className="space-y-4" onSubmit={handleReset}>
@@ -91,9 +119,12 @@ export default function ForgotPassword() {
               ) : 'Send Reset Link'}
             </button>
 
-            <div className="pt-2 text-center">
-              <Link href="/login" className="text-xs text-[#0E1F38]/60 hover:text-[#0E1F38] transition-colors">
+            <div className="pt-3 border-t border-black/5 flex justify-between items-center text-xs">
+              <Link href="/login" className="text-[#0E1F38]/60 hover:text-[#0E1F38] transition-colors">
                 ← Back to Sign In
+              </Link>
+              <Link href="/signup" className="font-bold text-[#FF5A65] hover:underline">
+                Don't have an account? Sign Up
               </Link>
             </div>
           </form>
