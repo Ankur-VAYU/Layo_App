@@ -185,10 +185,38 @@ ADD COLUMN IF NOT EXISTS india_pincode VARCHAR,
 ADD COLUMN IF NOT EXISTS india_phone VARCHAR,
 ADD COLUMN IF NOT EXISTS kyc_verified BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS notes TEXT,
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Automatic trigger: sync auth.users into public.customers on sign-up
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.customers (user_id, email, full_name, phone, created_at, updated_at)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+    NEW.raw_user_meta_data->>'phone',
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (email) DO UPDATE
+  SET 
+    user_id = EXCLUDED.user_id,
+    full_name = COALESCE(EXCLUDED.full_name, public.customers.full_name),
+    phone = COALESCE(EXCLUDED.phone, public.customers.phone),
+    updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT OR UPDATE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- =========================================================
 -- 6. Employee Profiles Table (Ops Staff & Admins only)
+
 -- =========================================================
 CREATE TABLE IF NOT EXISTS employee_profiles (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

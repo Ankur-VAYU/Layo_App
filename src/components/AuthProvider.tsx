@@ -101,6 +101,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let subscription: any = null;
     try {
       const { data } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_OUT') {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('layo_mock_user');
+            localStorage.removeItem('layo_ops_user');
+            localStorage.removeItem('layo_admin_user');
+          }
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
         const activeUser = resolveUser(session?.user ?? null);
         setUser(activeUser);
         setLoading(false);

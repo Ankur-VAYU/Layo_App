@@ -41,6 +41,15 @@ export async function POST(request: NextRequest) {
     // Amount in cents for CAD
     const unitAmountCents = Math.round(numAmount * 100);
 
+    const isAdvance = body.isAdvance ?? true;
+    const productName = isAdvance
+      ? `20% Advance Deposit — Layo Locker Booking (${typeof totalWeightKg === 'number' ? totalWeightKg.toFixed(2) : totalWeightKg} kg)`
+      : `Remaining Balance — Layo Locker Dispatch (${typeof totalWeightKg === 'number' ? totalWeightKg.toFixed(2) : totalWeightKg} kg)`;
+
+    const productDescription = isAdvance
+      ? `20% advance deposit ($${numAmount.toFixed(2)} CAD) charged today. Destination: ${destinationCity} | Hub: ${warehouseName}. Remaining balance billed after scale inspection at hub.`
+      : `Final balance payment ($${numAmount.toFixed(2)} CAD) for overseas air cargo dispatch. Destination: ${destinationCity}.`;
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
@@ -50,8 +59,8 @@ export async function POST(request: NextRequest) {
           price_data: {
             currency: 'cad',
             product_data: {
-              name: `Layo Locker Dispatch (${totalWeightKg.toFixed(2)} kg)`,
-              description: `Destination: ${destinationCity} | Warehouse: ${warehouseName} | ${itemCount} item(s)`,
+              name: productName,
+              description: productDescription,
             },
             unit_amount: unitAmountCents,
           },

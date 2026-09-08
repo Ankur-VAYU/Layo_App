@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
-import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
+import { supabase, fetchShipments, updateShipmentStage, clearUserSession } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { loadHaulCards, saveHaulCards, fetchHaulCardsFromDb, saveHaulCardToDb, HaulCard, DEFAULT_HAUL_CARDS } from '@/lib/haul-cards';
 import { getPricingSettings, savePricingSettings, calculateLayoDeliveryCost, LayoPricingSettings, getDelhiveryRate } from '@/lib/delhiveryRates';
@@ -394,7 +394,7 @@ export default function AdminPortal() {
           </Link>
           <button 
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider text-error/80 hover:text-error hover:bg-error/5 transition-all"
-            onClick={() => supabase.auth.signOut()}
+            onClick={async () => { await clearUserSession(); router.push('/admin/login'); }}
           >
             <span className="material-symbols-outlined text-lg">logout</span>
             Sign Out

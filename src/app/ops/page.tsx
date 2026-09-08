@@ -6,7 +6,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
-import { supabase, fetchShipments, updateShipmentStage } from '@/lib/supabase';
+import { supabase, fetchShipments, updateShipmentStage, clearUserSession } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 
@@ -77,7 +77,7 @@ export default function WarehouseOpsPortal() {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await clearUserSession();
     router.push('/ops/login');
   };
 

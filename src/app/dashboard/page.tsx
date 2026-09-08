@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage } from '@/lib/supabase';
+import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession } from '@/lib/supabase';
 import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 import { formatShipmentId, formatTransactionId, formatUserId, formatWarehouseId } from '@/lib/idGenerator';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
@@ -171,6 +171,12 @@ const stepPills = [
 export default function Dashboard() {
   const router = useRouter();
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
 
   const [deliveryType, setDeliveryType] = useState<'normal' | 'express'>('normal');
 
@@ -779,12 +785,6 @@ export default function Dashboard() {
 
   // Checkout & Direct Booking Logic via Stripe
   const handleProceedToCheckout = async () => {
-    if (originType === 'online' && !orderNumber.trim()) {
-      setShowOrderNumberError(true);
-      setCurrentStep(1);
-      return;
-    }
-
     if (activeItems.length === 0 || !selectedWarehouse || !destinationAddress) {
       return;
     }
@@ -812,6 +812,11 @@ export default function Dashboard() {
     try {
       let targetShipmentId = editingDraftId;
 
+      const totalCostCAD = totals.totalPriceCAD > 0 ? totals.totalPriceCAD : 25.0;
+      const advanceCAD = Math.round(totalCostCAD * 0.20 * 100) / 100;
+      const advanceINR = Math.round(totals.totalPriceINR * 0.20);
+      const remainingCAD = Math.round((totalCostCAD - advanceCAD) * 100) / 100;
+
       if (editingDraftId) {
         // Upgrade / sync existing draft
         await supabase
@@ -825,7 +830,14 @@ export default function Dashboard() {
             total_cost: totals.totalPriceINR,
             items: itemsPayload,
             payment_method: 'stripe',
-            status: 'Draft Estimate',
+            status: 'advance_pending',
+            payment_status: 'advance_pending',
+            advance_pct: 20,
+            advance_amount_cad: advanceCAD,
+            advance_paid_inr: advanceINR,
+            estimated_weight: totals.totalWeightKg,
+            estimated_cost_cad: totalCostCAD,
+            remaining_balance_cad: remainingCAD,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingDraftId);
@@ -841,7 +853,14 @@ export default function Dashboard() {
           total_weight: totals.totalWeightKg,
           total_cost: totals.totalPriceINR,
           items: itemsPayload,
-          status: 'Draft Estimate',
+          status: 'advance_pending',
+          payment_status: 'advance_pending',
+          advance_pct: 20,
+          advance_amount_cad: advanceCAD,
+          advance_paid_inr: advanceINR,
+          estimated_weight: totals.totalWeightKg,
+          estimated_cost_cad: totalCostCAD,
+          remaining_balance_cad: remainingCAD,
           payment_method: 'stripe',
           warehouse_action: warehouseAction || 'ship',
           expected_packages: morePackages || 1,
@@ -851,13 +870,14 @@ export default function Dashboard() {
         }
       }
 
-      // Initialize Stripe Checkout Session
-      const amountCAD = totals.totalPriceCAD > 0 ? totals.totalPriceCAD : 25.0;
+      // Initialize Stripe Checkout Session with 20% Advance Amount
       const res = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amountCAD: amountCAD.toFixed(2),
+          amountCAD: advanceCAD.toFixed(2),
+          totalCostCAD: totalCostCAD.toFixed(2),
+          isAdvance: true,
           shipmentId: targetShipmentId,
           userId: user?.id,
           userEmail: user?.email,
@@ -888,15 +908,18 @@ export default function Dashboard() {
     }
   };
 
-  // Pay existing draft directly via Stripe
+  // Pay existing draft directly via Stripe (20% Advance)
   const handlePayDraftWithStripe = async (s: any) => {
     try {
       const approxCAD = s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0;
+      const advanceCAD = s.advance_amount_cad || (approxCAD * 0.20);
       const res = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amountCAD: approxCAD.toFixed(2),
+          amountCAD: advanceCAD.toFixed(2),
+          totalCostCAD: approxCAD.toFixed(2),
+          isAdvance: true,
           shipmentId: s.id,
           userId: user?.id,
           userEmail: user?.email,
@@ -1180,7 +1203,10 @@ export default function Dashboard() {
             <Link href="/admin" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-xs sm:text-sm font-semibold">Admin</Link>
           )}
           <button 
-            onClick={() => supabase.auth.signOut()} 
+            onClick={async () => {
+              await clearUserSession();
+              router.push('/login');
+            }} 
             className="text-[#FF5A65] hover:bg-[#FF5A65] hover:text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider border border-[#FF5A65]/30 bg-white px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all shadow-sm cursor-pointer"
           >
             Sign Out
@@ -2369,8 +2395,26 @@ export default function Dashboard() {
                     )}
                   </div>
 
+                  {/* 20% Advance Explanation Banner */}
+                  <div className="bg-[#E8F5E9] border border-[#A5D6A7] rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+                    <span className="material-symbols-outlined text-[#2E7D32] text-xl mt-0.5 leading-none">payments</span>
+                    <div className="space-y-1 text-left">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-[#1B5E20] uppercase tracking-wider">
+                          20% Advance Booking Model Active
+                        </span>
+                        <span className="bg-[#2E7D32] text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
+                          Pay Only 20% Today
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#2E7D32] leading-relaxed font-normal">
+                        You pay <strong>20% advance (${(totals.totalPriceCAD * 0.20).toFixed(2)} CAD)</strong> today to book locker space &amp; generate pickup documents. The remaining balance (80%) is billed after scale verification at the India hub.
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Submission and drafts */}
-                  <div className="flex gap-4 pt-4 border-t border-black/5">
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
                     <button
                       onClick={() => setShowDraftModal(true)}
                       disabled={isProcessingPayment}
@@ -2391,7 +2435,7 @@ export default function Dashboard() {
                       ) : (
                         <>
                           <span className="material-symbols-outlined text-sm">lock</span>
-                          <span>Pay ${totals.totalPriceCAD > 0 ? totals.totalPriceCAD.toFixed(2) : '25.00'} CAD &amp; Book</span>
+                          <span>Pay 20% Advance (${totals.totalPriceCAD > 0 ? (totals.totalPriceCAD * 0.20).toFixed(2) : '5.00'} CAD) &amp; Book</span>
                         </>
                       )}
                     </button>
@@ -2478,23 +2522,38 @@ export default function Dashboard() {
 
                   <div className="h-px bg-black/5 my-2"></div>
 
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-sm text-[#0E1F38] font-bold">Estimated Unified Fee</span>
-                    <div className="text-right">
-                      {activeItems.length === 0 ? (
-                        <p className="text-[#0E1F38]/60 text-sm font-semibold">Add items to see quote</p>
-                      ) : (
-                        <>
-                          <p className="text-2xl font-black text-[#FF5A65] font-mono">
-                            ${totals.totalPriceCAD.toFixed(2)}
-                            <span className="text-xs font-normal text-[#0E1F38]/60 ml-1 font-sans">CAD</span>
-                          </p>
-                          <span className="text-[10px] text-[#0E1F38]/60 font-bold font-mono block">
-                            ≈ ₹{totals.totalPriceINR.toLocaleString()} INR
-                          </span>
-                        </>
-                      )}
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-baseline text-xs">
+                      <span className="text-[#0E1F38]/70 font-semibold">Total Estimated Fee (100%)</span>
+                      <span className="font-bold text-[#0E1F38] font-mono text-sm">
+                        ${totals.totalPriceCAD.toFixed(2)} CAD
+                      </span>
                     </div>
+
+                    {/* Highlighted 20% Advance Box */}
+                    <div className="bg-[#FF5A65]/10 border border-[#FF5A65]/30 p-3.5 rounded-2xl space-y-1 text-left">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-black text-[#FF5A65] uppercase tracking-wider">Due Today (20% Advance)</span>
+                        <span className="text-2xl font-black text-[#FF5A65] font-mono">
+                          ${(totals.totalPriceCAD * 0.20).toFixed(2)}
+                          <span className="text-xs font-bold text-[#0E1F38]/70 ml-1 font-sans">CAD</span>
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] text-[#0E1F38]/70 pt-0.5">
+                        <span className="font-medium text-[#2E7D32]">⚡ Pay now to reserve locker</span>
+                        <span className="font-bold font-mono">≈ ₹{Math.round(totals.totalPriceINR * 0.20).toLocaleString()} INR</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-[11px] bg-[#FAF8EE] p-2.5 rounded-xl border border-black/5">
+                      <span className="text-[#0E1F38]/70 font-medium">Remaining Balance (80%)</span>
+                      <span className="font-bold font-mono text-[#0E1F38]">
+                        ${(totals.totalPriceCAD * 0.80).toFixed(2)} CAD
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-[#0E1F38]/50 text-center font-light">
+                      Remaining 80% balance will be billed after package weighing at hub.
+                    </p>
                   </div>
                 </div>
 

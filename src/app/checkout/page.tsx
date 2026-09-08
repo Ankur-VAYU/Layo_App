@@ -5,26 +5,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
-import { supabase, insertShipment } from '@/lib/supabase';
+import { supabase, insertShipment, getCurrentUser } from '@/lib/supabase';
 
-// ── Razorpay global type ──────────────────────────────────────────
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
 
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined') return resolve(false);
-    if (window.Razorpay) return resolve(true);
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
 
 const DEFAULT_WAREHOUSES = [
   {
@@ -62,14 +45,14 @@ const DEFAULT_WAREHOUSES = [
 export default function Checkout() {
   const router = useRouter();
   const [isProcessing, setIsProcessing]   = useState(false);
-  const [isSuccess, setIsSuccess]         = useState(false);         // Razorpay success state
+  const [isSuccess, setIsSuccess]         = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [orderData, setOrderData]         = useState<any>(null);
   const [warehouses, setWarehouses]       = useState<any[]>(DEFAULT_WAREHOUSES);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('delhi');
   const [copiedAddress, setCopiedAddress] = useState(false);
-  const [completedPaymentId, setCompletedPaymentId] = useState<string | null>(null); // Razorpay payment ID
-  const [completedOrderRef, setCompletedOrderRef]   = useState<string | null>(null); // Razorpay order ref
+  const [completedPaymentId, setCompletedPaymentId] = useState<string | null>(null);
+  const [completedOrderRef, setCompletedOrderRef]   = useState<string | null>(null);
   const [currentUser, setCurrentUser]     = useState<any>(null);
 
   // Exchange rate & pricing
@@ -92,10 +75,10 @@ export default function Checkout() {
     };
     fetchRate();
 
-    // 2. Fetch authenticated user
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) {
-        setCurrentUser(data.user);
+    // 2. Fetch authenticated user safely
+    getCurrentUser().then(user => {
+      if (user) {
+        setCurrentUser(user);
       }
     });
 
@@ -143,7 +126,6 @@ export default function Checkout() {
       });
     }
 
-    loadRazorpayScript();
   }, []);
 
   // Sync selected warehouse with orderData
@@ -192,7 +174,7 @@ export default function Checkout() {
 
     try {
       // 1. Get logged-in user
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getCurrentUser();
       if (!user) {
         // Save current progress and direct to login
         localStorage.setItem('layo_pending_shipment', JSON.stringify({
@@ -564,23 +546,23 @@ export default function Checkout() {
 
               <div className="bg-[#FAF8EE] border-2 border-[#FF5A65] rounded-2xl p-4 flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-[#FF5A65]/10 flex items-center justify-center text-[#FF5A65]">
-                  <span className="material-symbols-outlined text-xl">payments</span>
+                  <span className="material-symbols-outlined text-xl">lock</span>
                 </div>
                 <div>
-                  <p className="text-[#0E1F38] font-bold text-sm">Pay via Razorpay Secure Gateway</p>
+                  <p className="text-[#0E1F38] font-bold text-sm">Pay via Stripe Secure Checkout</p>
                   <p className="text-[#0E1F38]/60 text-[11px] mt-0.5">
-                    UPI (Google Pay, PhonePe, Paytm) · Cards (Visa, Mastercard, RuPay) · Net Banking · Wallets
+                    Credit / Debit Cards (Visa, Mastercard, Amex) · Apple Pay · Google Pay
                   </p>
                 </div>
                 <div className="ml-auto hidden sm:flex gap-1.5 text-[10px] font-bold text-[#0E1F38]/60">
-                  <span className="px-2 py-1 bg-white rounded-md border border-black/5 shadow-xs">UPI</span>
                   <span className="px-2 py-1 bg-white rounded-md border border-black/5 shadow-xs">VISA</span>
                   <span className="px-2 py-1 bg-white rounded-md border border-black/5 shadow-xs">MC</span>
+                  <span className="px-2 py-1 bg-white rounded-md border border-black/5 shadow-xs">AMEX</span>
                 </div>
               </div>
 
               <p className="text-[11px] text-[#0E1F38]/60 leading-relaxed font-light">
-                Clicking <strong>&ldquo;Pay &amp; Book Shipment&rdquo;</strong> initiates Razorpay&apos;s encrypted 256-bit payment gateway. Your financial credentials are never saved on Layo.
+                Clicking <strong>&ldquo;Pay &amp; Book Shipment&rdquo;</strong> opens Stripe&apos;s encrypted 256-bit secure checkout. Your card details are never stored on Layo servers.
               </p>
             </div>
 
@@ -668,7 +650,7 @@ export default function Checkout() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-emerald-600 text-sm">lock</span>
-                <span>Protected by Stripe Secure 256-bit Encryption</span>
+                <span>Powered by Stripe — PCI-DSS Level 1 Certified</span>
               </div>
             </div>
           </div>

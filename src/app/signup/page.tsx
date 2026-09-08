@@ -50,22 +50,32 @@ export default function Signup() {
     setIsLoading(true);
     setError(null);
 
+    const userEmail = email.trim();
+
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
+      const { data, error } = await supabase.auth.signUp({
+        email: userEmail,
         password,
         options: {
-          emailRedirectTo: 'https://www.getlayo.com/login',
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/login` : 'https://www.getlayo.com/login',
           data: {
-            full_name: fullName,
-            phone: phone || undefined,
+            full_name: fullName.trim(),
+            phone: phone.trim() || undefined,
           },
         },
       });
 
       if (error) throw error;
+
+      // If email confirmation is disabled or session exists, navigate directly to dashboard
+      if (data?.session) {
+        router.push('/dashboard');
+        return;
+      }
+
+      // Otherwise show verification instructions
       setSuccess(true);
-    } catch (err: any  ) {
+    } catch (err: any) {
       setError(friendlyError(err.message || ''));
     } finally {
       setIsLoading(false);

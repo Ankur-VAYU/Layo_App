@@ -23,6 +23,40 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+export async function getCurrentUser() {
+  if (typeof window !== 'undefined') {
+    const mockRaw = localStorage.getItem('layo_mock_user');
+    if (mockRaw) {
+      try {
+        return JSON.parse(mockRaw);
+      } catch (e) {
+        console.warn('Failed to parse mock user', e);
+      }
+    }
+  }
+  try {
+    const { data } = await supabase.auth.getUser();
+    if (data?.user) return data.user;
+  } catch (e) {
+    console.warn('supabase.auth.getUser error:', e);
+  }
+  return null;
+}
+
+export async function clearUserSession() {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('layo_mock_user');
+    localStorage.removeItem('layo_ops_user');
+    localStorage.removeItem('layo_admin_user');
+    sessionStorage.clear();
+  }
+  try {
+    await supabase.auth.signOut();
+  } catch (e) {
+    console.warn('supabase.auth.signOut error:', e);
+  }
+}
+
 // ── Types & Interfaces ───────────────────────────────────────────────────────
 
 export interface ShipmentPayload {

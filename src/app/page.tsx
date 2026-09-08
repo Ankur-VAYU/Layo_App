@@ -8,7 +8,7 @@ import Image from 'next/image';
 import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase } from '@/lib/supabase';
+import { supabase, clearUserSession } from '@/lib/supabase';
 import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 
 // Define category configuration for the dynamic Essentials stacked card
@@ -458,7 +458,7 @@ export default function Home() {
         <div className="px-3 pb-6 border-t border-black/5 pt-4">
           {user ? (
             <button
-              onClick={() => { supabase.auth.signOut(); setSidebarOpen(false); }}
+              onClick={async () => { await clearUserSession(); setSidebarOpen(false); router.push('/login'); }}
               className="flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-500/10 transition-all w-full text-sm font-semibold cursor-pointer"
             >
               <span className="material-symbols-outlined text-lg leading-none">logout</span>
@@ -490,14 +490,22 @@ export default function Home() {
             Ship your favourite Indian buys straight to your door abroad. Packed together, priced fair & delivered fast.
           </p>
 
-          {/* Start Button */}
-          <div className="pt-4">
+          {/* Action Buttons */}
+          <div className="pt-4 flex flex-col items-center gap-4">
             <Link
               href="/dashboard"
               className="inline-block px-10 py-5 bg-[#FF5A65] text-white font-bold text-base md:text-lg rounded-full hover:bg-[#E24550] transition-colors shadow-lg shadow-[#FF5A65]/15 cursor-pointer text-center"
             >
               Start Shipping with Layo
             </Link>
+            <a
+              href="https://wa.me/919321852629?text=Hi%20Layo%2C%20I%20would%20like%20to%20use%20the%20Buy%20for%20Me%20service."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block px-8 py-3.5 bg-[#FF5A65]/10 text-[#FF5A65] border-2 border-[#FF5A65] hover:bg-[#FF5A65]/20 font-bold text-base md:text-lg rounded-full transition-all cursor-pointer text-center shadow-sm"
+            >
+              Buy for Me
+            </a>
           </div>
         </div>
 

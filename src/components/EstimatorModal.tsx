@@ -680,17 +680,35 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
               </div>
 
               {/* Final Rate Display (Customer View) */}
-              <div className="bg-[#FAF8EE] border border-black/5 rounded-xl p-3.5 flex justify-between items-center">
-                <div>
-                  <p className="text-[10px] text-[#0E1F38]/60 uppercase font-bold tracking-wider">Final Estimate ({deliveryType.toUpperCase()})</p>
-                  <p className="text-2xl font-black text-[#FF5A65] font-mono">
-                    ${deliveryResult.finalPriceCAD.toFixed(2)} <span className="text-xs font-bold text-[#0E1F38]/70">CAD</span>
-                  </p>
+              <div className="bg-[#FAF8EE] border border-black/5 rounded-xl p-3.5 space-y-2">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] text-[#0E1F38]/60 uppercase font-bold tracking-wider">Est. Unified Fee (100%)</p>
+                    <p className="text-base font-bold text-[#0E1F38] font-mono">
+                      ${deliveryResult.finalPriceCAD.toFixed(2)} <span className="text-xs font-normal text-[#0E1F38]/60">CAD</span>
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-bold text-[#0E1F38]/80">
+                      ≈ ₹{deliveryResult.finalPriceINR.toLocaleString('en-IN')} INR
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs font-mono font-bold text-[#0E1F38]/80">
-                    ≈ ₹{deliveryResult.finalPriceINR.toLocaleString('en-IN')} INR
-                  </span>
+
+                {/* Highlighted 20% Advance box */}
+                <div className="bg-[#FF5A65]/10 border border-[#FF5A65]/30 p-3 rounded-xl flex justify-between items-center text-left">
+                  <div>
+                    <span className="text-[10px] font-black text-[#FF5A65] uppercase tracking-wider block">Due Today (20% Advance)</span>
+                    <span className="text-xl font-black text-[#FF5A65] font-mono">
+                      ${(deliveryResult.finalPriceCAD * 0.20).toFixed(2)} CAD
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-[#0E1F38]/70 font-mono block">
+                      Remaining (80%): ${(deliveryResult.finalPriceCAD * 0.80).toFixed(2)} CAD
+                    </span>
+                    <span className="text-[9px] text-[#2E7D32] font-semibold block">⚡ Pay balance after hub weighing</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -706,7 +724,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
             disabled={totalItemCount === 0}
             className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
-            Proceed to Book Shipment
+            Proceed to Book (20% Advance: ${(deliveryResult.finalPriceCAD * 0.20).toFixed(2)} CAD)
           </button>
         </div>
       </div>

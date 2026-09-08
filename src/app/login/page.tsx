@@ -16,25 +16,32 @@ export default function Login() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.trim()) { setError('Please enter your email address.'); return; }
+    if (!password) { setError('Please enter your password.'); return; }
+
     setIsLoading(true);
     setError(null);
 
-    const userEmail = email.trim() || 'ankur.iitd.nita@gmail.com';
+    const userEmail = email.trim();
 
-    // Store local user session immediately for fast navigation
-    localStorage.setItem('layo_mock_user', JSON.stringify({
-      id: '00000000-0000-0000-0000-000000000001',
-      email: userEmail,
-      user_metadata: { full_name: userEmail.split('@')[0] }
-    }));
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password,
+      });
 
-    // Trigger Supabase auth in background non-blockingly
-    supabase.auth.signInWithPassword({
-      email: userEmail,
-      password,
-    }).catch(err => console.warn('Supabase auth background note:', err));
+      if (error) throw error;
 
-    window.location.href = '/dashboard';
+      if (data?.session) {
+        router.push('/dashboard');
+      } else {
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Invalid email or password. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDemoSignIn = () => {

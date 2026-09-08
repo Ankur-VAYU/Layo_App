@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase } from '@/lib/supabase';
+import { supabase, clearUserSession } from '@/lib/supabase';
 
 interface Address {
   id: string;
@@ -274,7 +274,7 @@ export default function ProfilePage() {
 
         {/* Sign out */}
         <button
-          onClick={() => { supabase.auth.signOut(); router.push('/'); }}
+          onClick={async () => { await clearUserSession(); router.push('/login'); }}
           className="w-full py-3 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-red-500/5 transition-all flex items-center justify-center gap-2"
         >
           <span className="material-symbols-outlined text-sm">logout</span>
