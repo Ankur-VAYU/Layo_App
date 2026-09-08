@@ -1624,12 +1624,26 @@ export default function Dashboard() {
                           </div>
                           <div className="text-right text-xs">
                             <p className="font-mono text-[#0E1F38] font-bold">{s.total_weight || 1.0} kg</p>
-                            <p className="text-[#FF5A65] font-black text-sm">
-                              ${(s.amount_cad || Number(((s.total_cost || 0) / (cadToInrRate || 70.4)).toFixed(2))).toFixed(2)} CAD
-                            </p>
-                            <p className="text-[10px] text-[#0E1F38]/60 font-bold font-mono">
-                              (₹{(s.total_cost || 0).toLocaleString()})
-                            </p>
+                            {isDraft ? (
+                              <div className="mt-1">
+                                <span className="text-[10px] text-[#0E1F38]/60 font-bold uppercase tracking-wider block">Due Today (20% Advance)</span>
+                                <p className="text-[#FF5A65] font-black text-sm">
+                                  ${((s.advance_amount_cad || ((s.estimated_cost_cad || (s.amount_cad || (s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0))) * 0.20))).toFixed(2)} CAD
+                                </p>
+                                <p className="text-[10px] text-[#0E1F38]/60 font-medium">
+                                  Est. Total: ${(s.estimated_cost_cad || (s.amount_cad || (s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0))).toFixed(2)} CAD (₹{(s.total_cost || 0).toLocaleString()})
+                                </p>
+                              </div>
+                            ) : (
+                              <>
+                                <p className="text-[#FF5A65] font-black text-sm">
+                                  ${(s.amount_cad || Number(((s.total_cost || 0) / (cadToInrRate || 70.4)).toFixed(2))).toFixed(2)} CAD
+                                </p>
+                                <p className="text-[10px] text-[#0E1F38]/60 font-bold font-mono">
+                                  (₹{(s.total_cost || 0).toLocaleString()})
+                                </p>
+                              </>
+                            )}
                           </div>
                         </div>
 
@@ -1711,7 +1725,7 @@ export default function Dashboard() {
                               className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
                             >
                               <span className="material-symbols-outlined text-sm">lock</span>
-                              Pay ${s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate).toFixed(2) : '25.00'} CAD via Stripe &amp; Dispatch
+                              Pay 20% Advance (${((s.advance_amount_cad || ((s.estimated_cost_cad || (s.amount_cad || (s.total_cost && cadToInrRate > 0 ? (s.total_cost / cadToInrRate) : 25.0))) * 0.20))).toFixed(2)} CAD) &amp; Book Shipment
                             </button>
                             <div className="flex items-center gap-2">
                               <button
@@ -2636,19 +2650,33 @@ export default function Dashboard() {
             {/* Financial & Weight Overview Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Customer Rate ($ CAD)</span>
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">
+                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate') ? 'Due Today (20% Advance)' : 'Customer Rate ($ CAD)'}
+                </span>
                 <p className="text-lg font-black text-[#FF5A65] font-mono">
-                  ${(selectedOrderDetails.amount_cad || Number(((selectedOrderDetails.total_cost || 0) / (cadToInrRate || 70.4)).toFixed(2))).toFixed(2)}
+                  ${(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate')
+                    ? (selectedOrderDetails.advance_amount_cad || ((selectedOrderDetails.estimated_cost_cad || selectedOrderDetails.amount_cad || (selectedOrderDetails.total_cost && cadToInrRate > 0 ? (selectedOrderDetails.total_cost / cadToInrRate) : 25.0)) * 0.20)).toFixed(2)
+                    : (selectedOrderDetails.amount_cad || Number(((selectedOrderDetails.total_cost || 0) / (cadToInrRate || 70.4)).toFixed(2))).toFixed(2)
+                  }
                 </p>
-                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">CAD Price</span>
+                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">
+                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate') ? '20% Booking Deposit' : 'CAD Price'}
+                </span>
               </div>
 
               <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">INR Equivalent (₹)</span>
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">
+                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate') ? 'Total Estimated Cost' : 'INR Equivalent (₹)'}
+                </span>
                 <p className="text-lg font-black text-[#0E1F38] font-mono">
-                  ₹{(selectedOrderDetails.total_cost || 0).toLocaleString()}
+                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate')
+                    ? `$${(selectedOrderDetails.estimated_cost_cad || selectedOrderDetails.amount_cad || (selectedOrderDetails.total_cost && cadToInrRate > 0 ? (selectedOrderDetails.total_cost / cadToInrRate) : 25.0)).toFixed(2)} CAD`
+                    : `₹${(selectedOrderDetails.total_cost || 0).toLocaleString()}`
+                  }
                 </p>
-                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">1 CAD ≈ 70.4 INR</span>
+                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">
+                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate') ? `₹${(selectedOrderDetails.total_cost || 0).toLocaleString()}` : '1 CAD ≈ 70.4 INR'}
+                </span>
               </div>
 
               <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
