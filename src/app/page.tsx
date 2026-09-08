@@ -649,7 +649,7 @@ export default function Home() {
                   src="/how-layo-works-box.png"
                   alt="How Layo Works - Combine Orders, Safe In Your Locker, Hold Orders Up To 30 Days"
                   width={1024}
-                  height={621}
+                  height={751}
                   className="w-full h-auto object-contain drop-shadow-md rounded-3xl transition-transform hover:scale-[1.02] duration-300"
                   priority
                 />
