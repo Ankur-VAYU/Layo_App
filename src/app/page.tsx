@@ -229,6 +229,41 @@ export default function Home() {
   const totalPrice = indianPrice + shippingPrice;
   const savings = Math.max(0, canadianPrice - totalPrice);
 
+  // Category Navigation (Left / Right arrows & Touch Swipe)
+  const handlePrevCategory = () => {
+    setActiveCatIndex((prev) => (prev - 1 + CATEGORIES_CONFIG.length) % CATEGORIES_CONFIG.length);
+  };
+
+  const handleNextCategory = () => {
+    setActiveCatIndex((prev) => (prev + 1) % CATEGORIES_CONFIG.length);
+  };
+
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchEndX, setTouchEndX] = useState<number | null>(null);
+
+  const minSwipeDistance = 40;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEndX(null);
+    setTouchStartX(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEndX(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStartX || !touchEndX) return;
+    const distance = touchStartX - touchEndX;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    if (isLeftSwipe) {
+      handleNextCategory();
+    } else if (isRightSwipe) {
+      handlePrevCategory();
+    }
+  };
+
   // Ref scroll anchors
   const heroRef = useRef<HTMLDivElement>(null);
   const howItWorksRef = useRef<HTMLDivElement>(null);
@@ -721,8 +756,82 @@ export default function Home() {
             <div className="w-full h-2.5 mt-2 border-t border-[#34461F]/60 animate-conveyor-treads opacity-70" />
           </div>
 
+          {/* Top Category Arrow Switcher Bar */}
+          <div className="flex items-center justify-between gap-2 sm:gap-4 w-full">
+            <button
+              onClick={handlePrevCategory}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white hover:bg-[#FF5A65] text-[#0E1F38] hover:text-white border border-black/10 shadow-md flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer flex-shrink-0 group"
+              aria-label="Scroll left to previous category"
+              title="Previous Category"
+            >
+              <span className="material-symbols-outlined text-2xl font-black transition-transform group-hover:-translate-x-0.5">
+                arrow_back
+              </span>
+            </button>
+
+            <div className="flex items-center gap-1.5 sm:gap-2.5 overflow-x-auto no-scrollbar py-1 px-1 flex-1 justify-center">
+              {CATEGORIES_CONFIG.map((cat, idx) => {
+                const isSelected = activeCatIndex === idx;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setActiveCatIndex(idx)}
+                    className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-[#0E1F38] text-white shadow-md scale-105 ring-2 ring-[#0E1F38]/20'
+                        : 'bg-white/80 hover:bg-white text-[#0E1F38]/70 hover:text-[#0E1F38] border border-black/5 hover:border-black/10'
+                    }`}
+                  >
+                    <span>{cat.icons[0]}</span>
+                    <span>{cat.tabLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={handleNextCategory}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white hover:bg-[#FF5A65] text-[#0E1F38] hover:text-white border border-black/10 shadow-md flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer flex-shrink-0 group"
+              aria-label="Scroll right to next category"
+              title="Next Category"
+            >
+              <span className="material-symbols-outlined text-2xl font-black transition-transform group-hover:translate-x-0.5">
+                arrow_forward
+              </span>
+            </button>
+          </div>
+
           {/* Physical stacked cards container layout */}
-          <div className="relative w-full aspect-auto min-h-[480px]">
+          <div
+            className="relative w-full aspect-auto min-h-[480px] select-none"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
+            {/* Left Arrow Navigation Button (Side) */}
+            <button
+              onClick={handlePrevCategory}
+              className="absolute -left-3 sm:-left-5 lg:-left-7 top-1/2 -translate-y-1/2 z-30 w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-white/95 hover:bg-white text-[#0E1F38] hover:text-[#FF5A65] border border-black/10 shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer backdrop-blur-md group"
+              aria-label="Previous Category"
+              title="Previous Category"
+            >
+              <span className="material-symbols-outlined text-2xl md:text-3xl font-bold transition-transform group-hover:-translate-x-0.5">
+                chevron_left
+              </span>
+            </button>
+
+            {/* Right Arrow Navigation Button (Side) */}
+            <button
+              onClick={handleNextCategory}
+              className="absolute -right-3 sm:-right-5 lg:-right-7 top-1/2 -translate-y-1/2 z-30 w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-white/95 hover:bg-white text-[#0E1F38] hover:text-[#FF5A65] border border-black/10 shadow-xl flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer backdrop-blur-md group"
+              aria-label="Next Category"
+              title="Next Category"
+            >
+              <span className="material-symbols-outlined text-2xl md:text-3xl font-bold transition-transform group-hover:translate-x-0.5">
+                chevron_right
+              </span>
+            </button>
+
             {/* Overlapping back sheet 2 */}
             <div className="absolute inset-0 bg-white border border-black/5 rounded-3xl shadow-sm transform translate-y-4 scale-[0.98] opacity-50 pointer-events-none" />
             
@@ -730,7 +839,7 @@ export default function Home() {
             <div className="absolute inset-0 bg-white border border-black/5 rounded-3xl shadow-md transform translate-y-2 scale-[0.99] opacity-80 pointer-events-none" />
 
             {/* Active Card Body */}
-            <div className="relative bg-white border border-black/5 rounded-3xl p-6 md:p-12 shadow-xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+            <div className="relative bg-white border border-black/5 rounded-3xl p-6 md:p-12 shadow-xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch transition-all duration-300">
               
               {/* Left Column: Details */}
               <div className="lg:col-span-8 flex flex-col justify-between space-y-6">
@@ -740,6 +849,7 @@ export default function Home() {
                   <h3 className="text-2xl md:text-3xl font-black text-[#0E1F38]">
                     {activeCategory.cardTitle}
                   </h3>
+
                   <div className="flex flex-row items-start gap-4">
                     <p className="text-xs md:text-sm text-[#0E1F38]/70 leading-relaxed font-medium flex-1">
                       {activeCategory.description} Here’s how you can save <span className="font-bold text-[#2E7D32]">${savings} CAD</span> on this haul.
@@ -769,7 +879,6 @@ export default function Home() {
                           Tops / Shirts
                           <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.topsUnitRate}/pc)</span>
                         </span>
-                        <span className="text-[10px] text-[#0E1F38]/50 font-medium">$CAD/pc.</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 bg-white rounded-full px-3 py-1.5 border border-black/10 shadow-sm flex-shrink-0">
@@ -801,7 +910,6 @@ export default function Home() {
                           Bottoms / Pants
                           <span className="text-[10px] font-normal text-[#0E1F38]/60">(from ${activeCategory.bottomsUnitRate}/pc)</span>
                         </span>
-                        <span className="text-[10px] text-[#0E1F38]/50 font-medium">$CAD/pc.</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 bg-white rounded-full px-3 py-1.5 border border-black/10 shadow-sm flex-shrink-0">
