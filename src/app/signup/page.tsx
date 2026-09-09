@@ -32,6 +32,7 @@ export default function Signup() {
   const [showPw, setShowPw]           = useState(false);
   const [isLoading, setIsLoading]     = useState(false);
   const [error, setError]             = useState<string | null>(null);
+  const [showExistingModal, setShowExistingModal] = useState(false);
   const [success, setSuccess]         = useState(false);
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function Signup() {
 
     setIsLoading(true);
     setError(null);
+    setShowExistingModal(false);
 
     const userEmail = email.trim();
 
@@ -74,6 +76,13 @@ export default function Signup() {
 
       if (error) throw error;
 
+      // Supabase returns empty identities array when user enumeration protection is enabled and user already exists
+      if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setError('An account with this email already exists. Try signing in instead.');
+        setShowExistingModal(true);
+        return;
+      }
+
       // If email confirmation is disabled or session exists, navigate directly to home page
       if (data?.session) {
         router.push('/');
@@ -83,7 +92,12 @@ export default function Signup() {
       // Otherwise show verification instructions
       setSuccess(true);
     } catch (err: any) {
-      setError(friendlyError(err.message || ''));
+      const errMsg = err.message || '';
+      const isAlreadyExists = errMsg.includes('already registered') || errMsg.includes('already been registered') || errMsg.includes('unique') || errMsg.includes('already exists');
+      if (isAlreadyExists) {
+        setShowExistingModal(true);
+      }
+      setError(friendlyError(errMsg));
     } finally {
       setIsLoading(false);
     }
@@ -130,6 +144,38 @@ export default function Signup() {
   // ── Sign-up Form ───────────────────────────────────────────────
   return (
     <main className="flex items-center justify-center min-h-[90vh] px-4 relative font-sans bg-[#F9F7F1]">
+      {/* Existing Account Pop-up Modal */}
+      {showExistingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white border border-black/10 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-5 text-center relative animate-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center mx-auto">
+              <span className="material-symbols-outlined text-3xl">account_circle</span>
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-extrabold text-xl text-[#0E1F38]">Account Already Exists</h3>
+              <p className="text-xs text-[#0E1F38]/70 leading-relaxed">
+                An account registered with <span className="font-semibold text-[#0E1F38]">{email}</span> already exists. Please sign in to access your account.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 pt-2">
+              <Link
+                href={`/login?email=${encodeURIComponent(email)}`}
+                className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 active:scale-[0.98] transition-all block text-center shadow-sm"
+              >
+                Sign In Now
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowExistingModal(false)}
+                className="w-full py-2.5 bg-gray-100 text-[#0E1F38]/70 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-gray-200 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-black/10 rounded-3xl w-full max-w-md p-8 shadow-sm relative space-y-6">
         <div className="flex flex-col items-center text-center space-y-3">
           <Logo showTagline={false} darkText={true} />
