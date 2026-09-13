@@ -794,7 +794,8 @@ export default function Dashboard() {
   // Active Hold Groups memoization
   const activeHoldGroups = useMemo(() => {
     const activeHoldShips = shipments.filter(s =>
-      s.warehouse_action === 'hold' &&
+      s &&
+      (s.warehouse_action === 'hold' || s.status === 'holding' || (s.hold_group_id && String(s.hold_group_id).startsWith('HOLD-'))) &&
       s.status !== 'cancelled' &&
       s.status !== 'delivered' &&
       s.status !== 'shipped'
@@ -810,6 +811,15 @@ export default function Dashboard() {
     });
     return Array.from(map.values());
   }, [shipments]);
+
+  // Auto-select hold action and active hold group when entering Step 5 if active hold groups exist
+  useEffect(() => {
+    if (currentStep === 5 && activeHoldGroups.length > 0 && warehouseAction === null) {
+      setWarehouseAction('hold');
+      setHoldOptionMode('existing');
+      setSelectedHoldGroupId(activeHoldGroups[0].group_id);
+    }
+  }, [currentStep, activeHoldGroups, warehouseAction]);
 
   // Checkout & Direct Booking Logic via Stripe
   const handleProceedToCheckout = async () => {
@@ -982,33 +992,38 @@ export default function Dashboard() {
 
       const targetStatus = warehouseAction === 'hold' ? 'holding' : 'paid';
       let targetShipmentId = editingDraftId;
+      let newOrUpdatedShipment: any = null;
 
       if (editingDraftId) {
+        const updatePayload = {
+          destination_city: destinationCity || 'Toronto (GTA)',
+          destination_address: destinationAddress || '',
+          india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
+          external_order_id: orderNumber || null,
+          total_weight: totals.totalWeightKg,
+          total_cost: totals.totalPriceINR,
+          items: itemsPayload,
+          payment_method: 'demo_simulated',
+          status: targetStatus,
+          payment_status: 'advance_paid',
+          advance_pct: 20,
+          advance_amount_cad: advanceCAD,
+          advance_paid_inr: advanceINR,
+          estimated_weight: totals.totalWeightKg,
+          estimated_cost_cad: totalCostCAD,
+          remaining_balance_cad: remainingCAD,
+          warehouse_action: warehouseAction || 'ship',
+          expected_packages: morePackages || 1,
+          hold_group_id: resolvedHoldGroupId,
+          updated_at: new Date().toISOString()
+        };
+
         await supabase
           .from('shipments')
-          .update({
-            destination_city: destinationCity || 'Toronto (GTA)',
-            destination_address: destinationAddress || '',
-            india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
-            external_order_id: orderNumber || null,
-            total_weight: totals.totalWeightKg,
-            total_cost: totals.totalPriceINR,
-            items: itemsPayload,
-            payment_method: 'demo_simulated',
-            status: targetStatus,
-            payment_status: 'advance_paid',
-            advance_pct: 20,
-            advance_amount_cad: advanceCAD,
-            advance_paid_inr: advanceINR,
-            estimated_weight: totals.totalWeightKg,
-            estimated_cost_cad: totalCostCAD,
-            remaining_balance_cad: remainingCAD,
-            warehouse_action: warehouseAction || 'ship',
-            expected_packages: morePackages || 1,
-            hold_group_id: resolvedHoldGroupId,
-            updated_at: new Date().toISOString()
-          })
+          .update(updatePayload)
           .eq('id', editingDraftId);
+
+        newOrUpdatedShipment = { id: editingDraftId, user_id: user?.id, ...updatePayload };
       } else {
         const { data } = await insertShipment({
           user_id: user?.id,
@@ -1033,9 +1048,21 @@ export default function Dashboard() {
           expected_packages: morePackages || 1,
           hold_group_id: resolvedHoldGroupId,
         }, { id: user?.id, email: user?.email, role: 'customer' });
+
         if (data && data[0]) {
           targetShipmentId = data[0].id;
+          newOrUpdatedShipment = parseShipment(data[0]);
         }
+      }
+
+      if (newOrUpdatedShipment) {
+        setShipments(prev => {
+          const nextList = [newOrUpdatedShipment, ...prev.filter(x => x.id !== newOrUpdatedShipment.id)];
+          try {
+            localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          } catch (e) {}
+          return nextList;
+        });
       }
 
       setPaymentBanner({
@@ -1047,9 +1074,7 @@ export default function Dashboard() {
         localStorage.removeItem('layo_dashboard_flow_state');
       }
       handleStartNewOrder();
-      if (user?.id) {
-        await fetchDashboardData(user.id);
-      }
+      fetchDashboardData(user?.id);
     } catch (err) {
       console.error('Demo payment simulation failed:', err);
     } finally {
@@ -2536,6 +2561,26 @@ export default function Dashboard() {
                       Back
                     </button>
                   </div>
+
+                  {/* Active Hold Group Notice Banner */}
+                  {activeHoldGroups.length > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+                      <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5 leading-none">inventory_2</span>
+                      <div className="space-y-1 text-left">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-blue-900 uppercase tracking-wider">
+                            Active Hold Group Found ({activeHoldGroups[0].group_id})
+                          </span>
+                          <span className="bg-blue-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
+                            {activeHoldGroups[0].shipments.length} Package(s) Linked
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-blue-800 leading-relaxed font-normal">
+                          You have an active package hold at our hub! Select <strong>📦 Hold &amp; Combine</strong> below to link this package into group <strong>{activeHoldGroups[0].group_id}</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Shipment Item Breakdown */}
                   <div className="space-y-3">
