@@ -118,15 +118,22 @@ export default function WarehouseOpsPortal() {
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
     });
-    return Object.entries(groups).map(([groupKey, items]) => ({
-      groupKey,
-      userId: items[0]?.user_id,
-      destinationCity: items[0]?.destination_city || 'Toronto (GTA)',
-      expectedPackages: items[0]?.expected_packages || items.length,
-      arrivedCount: items.filter(s => s.status === 'hold_arrived' || s.status === 'inwarded' || s.status === 'holding').length,
-      allArrived: items.every(s => s.status === 'hold_arrived' || s.status === 'inwarded'),
-      shipments: items,
-    }));
+    return Object.entries(groups).map(([groupKey, items]) => {
+      const primary = items.find(s => s.expected_packages !== undefined && s.expected_packages !== null && s.expected_packages > 0) || items[0];
+      const expectedTotal = Math.max(items.length, 1 + (primary?.expected_packages ?? 1));
+      const arrivedCount = items.filter(s => s.status === 'hold_arrived' || s.status === 'inwarded' || s.status === 'qc_verified').length;
+      const allArrived = arrivedCount >= expectedTotal;
+
+      return {
+        groupKey,
+        userId: items[0]?.user_id,
+        destinationCity: items[0]?.destination_city || 'Toronto (GTA)',
+        expectedPackages: expectedTotal,
+        arrivedCount,
+        allArrived,
+        shipments: items,
+      };
+    });
   }, [shipments]);
 
   // Operator user details for step audit logging
