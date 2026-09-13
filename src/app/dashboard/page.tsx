@@ -524,7 +524,7 @@ export default function Dashboard() {
                 status: 'completed',
                 customer_email: data.customerEmail || user?.email || null,
                 customer_name: user?.email || null,
-                description: `Layo shipment payment — Locker #${targetId.slice(0, 8).toUpperCase()}`,
+                description: `Layo shipment payment — Locker #${formatShipmentId(targetId)}`,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               });
@@ -926,7 +926,7 @@ export default function Dashboard() {
 
     const map = new Map<string, { group_id: string; shipments: any[] }>();
     activeHoldShips.forEach(s => {
-      const groupId = s.hold_group_id || `HOLD-${s.external_order_id || (s.id ? s.id.slice(0, 8).toUpperCase() : 'SHIPMENT')}`;
+      const groupId = s.hold_group_id || `HOLD-${s.external_order_id || formatShipmentId(s.id)}`;
       if (!map.has(groupId)) {
         map.set(groupId, { group_id: groupId, shipments: [] });
       }
@@ -2901,7 +2901,7 @@ export default function Dashboard() {
                                           </span>
                                         </div>
                                         <p className="text-[10px] text-gray-500 mt-0.5">
-                                          1st Order: #{primaryShipment.external_order_id || (primaryShipment.id ? primaryShipment.id.slice(0, 8) : 'SHIPMENT')} ({primaryShipment.india_warehouse || 'Hub'})
+                                          1st Order: #{primaryShipment.external_order_id || formatShipmentId(primaryShipment.id)} ({primaryShipment.india_warehouse || 'Hub'})
                                         </p>
                                       </div>
                                     </div>
@@ -3316,7 +3316,7 @@ export default function Dashboard() {
                 <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">🇮🇳 India Hub Location</span>
                 <p className="font-bold text-[#0E1F38]">{selectedOrderDetails.india_warehouse || 'Delhi NCR Hub'}</p>
                 <p className="text-[11px] text-[#0E1F38]/70 font-light leading-relaxed">
-                  Layo Locker (Locker #{selectedOrderDetails.id ? selectedOrderDetails.id.slice(0, 8).toUpperCase() : ''})<br />
+                  Layo Locker (Locker #{formatShipmentId(selectedOrderDetails.id)})<br />
                   C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi, Delhi - 110077
                 </p>
               </div>

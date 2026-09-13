@@ -9,6 +9,7 @@ import Logo from '@/components/Logo';
 import { supabase, fetchShipments, updateShipmentStage, clearUserSession } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
+import { formatShipmentId } from '@/lib/idGenerator';
 
 // ── Types & Interfaces ───────────────────────────────────────────────────────
 
@@ -762,7 +763,7 @@ export default function WarehouseOpsPortal() {
             }`}
           >
             <span className="material-symbols-outlined text-base">biotech</span>
-            Workstation {selectedShipment ? `(#${selectedShipment.id.slice(0, 6).toUpperCase()})` : ''}
+            Workstation {selectedShipment ? `(#${formatShipmentId(selectedShipment.id)})` : ''}
           </button>
         </div>
 
@@ -905,7 +906,7 @@ export default function WarehouseOpsPortal() {
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className="font-mono text-[10px] font-black bg-[#FAF8EE] px-2 py-0.5 rounded border border-black/5 text-[#0E1F38]">
-                                  Package {pIdx + 1}: #{s.external_order_id || (s.id ? s.id.slice(0, 8).toUpperCase() : 'SHIPMENT')}
+                                  Package {pIdx + 1}: #{s.external_order_id || formatShipmentId(s.id)}
                                 </span>
                                 {getStatusBadge(s.status)}
                               </div>
@@ -969,7 +970,7 @@ export default function WarehouseOpsPortal() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-xs font-black bg-[#FAF8EE] px-2 py-0.5 rounded border border-black/5 text-[#0E1F38]">
-                            #{s.id ? s.id.slice(0, 8).toUpperCase() : 'PARCEL'}
+                            #{formatShipmentId(s.id)}
                           </span>
                           {s.master_box_id && (
                             <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[9px] font-black font-mono">
@@ -1014,7 +1015,7 @@ export default function WarehouseOpsPortal() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-black text-sm text-[#0E1F38]">
-                      Locker #{selectedShipment.id.slice(0, 8).toUpperCase()}
+                      Locker #{formatShipmentId(selectedShipment.id)}
                     </span>
                     {getStatusBadge(selectedShipment.status)}
                   </div>

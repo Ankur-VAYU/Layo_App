@@ -75,16 +75,36 @@ export function formatUserId(seed?: number | string): string {
   return `LYU-${base + num - 1}`;
 }
 
-/** 5. Shipment ID — format: LYS-10000000001 */
+/** 5. Shipment ID — format: LYS-XXXXX */
 export function formatShipmentId(seed?: number | string): string {
-  if (typeof seed === 'string' && seed.startsWith('LYS-')) return seed;
-  const base = 10000000001;
-  const num = typeof seed === 'number'
-    ? seed
-    : typeof seed === 'string'
-    ? (hashToNumber(seed) % 899999999) + 1
-    : 1;
-  return `LYS-${base + num - 1}`;
+  if (!seed) return 'LYS-10001';
+
+  if (typeof seed === 'string') {
+    const trimmed = seed.trim();
+    if (trimmed.startsWith('LYS-')) return trimmed;
+    if (trimmed.startsWith('HOLD-')) return trimmed;
+    if (trimmed.startsWith('MASTER-')) return trimmed;
+    
+    // If numeric string timestamp (e.g. 1726249281028)
+    if (/^\d+$/.test(trimmed)) {
+      const lastDigits = trimmed.slice(-5);
+      return `LYS-${lastDigits}`;
+    }
+    
+    // Hash UUIDs or arbitrary text seeds
+    const num = (hashToNumber(trimmed) % 89999) + 10000;
+    return `LYS-${num}`;
+  }
+
+  if (typeof seed === 'number') {
+    const numStr = seed.toString();
+    if (numStr.length >= 4) {
+      return `LYS-${numStr.slice(-5)}`;
+    }
+    return `LYS-${10000 + (seed % 89999)}`;
+  }
+
+  return 'LYS-10001';
 }
 
 /** 6. Transaction ID — format: LYT100000001 */
