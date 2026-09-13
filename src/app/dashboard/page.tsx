@@ -258,6 +258,117 @@ export default function Dashboard() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentBanner, setPaymentBanner] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
 
+  // Saved Addresses State & Helpers
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string>('');
+  const [showManageAddressesModal, setShowManageAddressesModal] = useState<boolean>(false);
+  const [newAddrLabel, setNewAddrLabel] = useState<string>('');
+  const [newAddrLine1, setNewAddrLine1] = useState<string>('');
+  const [newAddrCity, setNewAddrCity] = useState<string>('Toronto (GTA)');
+
+  const loadSavedAddresses = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      let addrs: any[] = [];
+      const rawProfile = localStorage.getItem('layo_profile');
+      if (rawProfile) {
+        const parsed = JSON.parse(rawProfile);
+        if (Array.isArray(parsed.addresses)) addrs = parsed.addresses;
+      }
+      if (addrs.length === 0) {
+        const rawSaved = localStorage.getItem('layo_saved_addresses');
+        if (rawSaved) {
+          const parsed = JSON.parse(rawSaved);
+          if (Array.isArray(parsed)) addrs = parsed;
+        }
+      }
+      setSavedAddresses(addrs);
+    } catch (err) {
+      console.error('Failed to load saved addresses:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadSavedAddresses();
+  }, []);
+
+  const autoSaveAddress = (city: string, fullAddress: string) => {
+    if (!fullAddress || !fullAddress.trim()) return;
+    const trimmedAddr = fullAddress.trim();
+    const trimmedCity = city ? city.trim() : 'Toronto (GTA)';
+
+    try {
+      const rawProfile = localStorage.getItem('layo_profile');
+      let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
+      if (!profileData.addresses) profileData.addresses = [];
+
+      const exists = profileData.addresses.some(
+        (a: any) =>
+          (a.line1 && a.line1.toLowerCase().trim() === trimmedAddr.toLowerCase()) ||
+          (a.fullAddress && a.fullAddress.toLowerCase().trim() === trimmedAddr.toLowerCase())
+      );
+
+      if (!exists) {
+        const newAddr = {
+          id: 'addr_' + Date.now(),
+          label: `Address ${profileData.addresses.length + 1}`,
+          line1: trimmedAddr,
+          city: trimmedCity,
+          country: 'Canada',
+          isDefault: profileData.addresses.length === 0,
+        };
+        profileData.addresses.push(newAddr);
+        localStorage.setItem('layo_profile', JSON.stringify(profileData));
+        localStorage.setItem('layo_saved_addresses', JSON.stringify(profileData.addresses));
+        setSavedAddresses(profileData.addresses);
+      }
+    } catch (err) {
+      console.error('Failed to auto-save address:', err);
+    }
+  };
+
+  const handleAddNewSavedAddress = () => {
+    if (!newAddrLine1 || !newAddrLine1.trim()) return;
+    try {
+      const rawProfile = localStorage.getItem('layo_profile');
+      let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
+      if (!profileData.addresses) profileData.addresses = [];
+
+      const newAddr = {
+        id: 'addr_' + Date.now(),
+        label: newAddrLabel.trim() || `Address ${profileData.addresses.length + 1}`,
+        line1: newAddrLine1.trim(),
+        city: newAddrCity || 'Toronto (GTA)',
+        country: 'Canada',
+        isDefault: profileData.addresses.length === 0,
+      };
+
+      profileData.addresses.push(newAddr);
+      localStorage.setItem('layo_profile', JSON.stringify(profileData));
+      localStorage.setItem('layo_saved_addresses', JSON.stringify(profileData.addresses));
+      setSavedAddresses(profileData.addresses);
+      setNewAddrLabel('');
+      setNewAddrLine1('');
+    } catch (err) {
+      console.error('Failed to add saved address:', err);
+    }
+  };
+
+  const handleDeleteSavedAddress = (id: string) => {
+    try {
+      const rawProfile = localStorage.getItem('layo_profile');
+      let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
+      if (profileData.addresses) {
+        profileData.addresses = profileData.addresses.filter((a: any) => a.id !== id);
+        localStorage.setItem('layo_profile', JSON.stringify(profileData));
+        localStorage.setItem('layo_saved_addresses', JSON.stringify(profileData.addresses));
+        setSavedAddresses(profileData.addresses);
+      }
+    } catch (err) {
+      console.error('Failed to delete saved address:', err);
+    }
+  };
+
   // Financial and math helpers
   const [cadToInrRate, setCadToInrRate] = useState(70.4);
 
@@ -865,6 +976,7 @@ export default function Dashboard() {
     }
 
     setIsProcessingPayment(true);
+    autoSaveAddress(destinationCity, destinationAddress);
 
     const itemsPayload = activeItems.map(i => ({
       category: i.category,
@@ -998,6 +1110,7 @@ export default function Dashboard() {
     }
 
     setIsProcessingPayment(true);
+    autoSaveAddress(destinationCity, destinationAddress);
 
     const itemsPayload = activeItems.map(i => ({
       category: i.category,
@@ -1294,6 +1407,8 @@ export default function Dashboard() {
           weight: 0,
         });
       }
+
+      autoSaveAddress(destinationCity, destinationAddress);
 
       const advanceCAD = Math.round(totals.totalPriceCAD * 0.20 * 100) / 100;
       const remainingCAD = Math.round((totals.totalPriceCAD - advanceCAD) * 100) / 100;
@@ -2261,14 +2376,67 @@ export default function Dashboard() {
                       </h3>
                       <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Provide drop-off address coordinates inside Canada.</p>
                     </div>
-                    <button onClick={() => setCurrentStep(1)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
-                      Back
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowManageAddressesModal(true)}
+                        className="text-xs text-[#2E7D32] font-bold hover:underline flex items-center gap-1 cursor-pointer bg-[#2E7D32]/10 px-2.5 py-1 rounded-lg border border-[#2E7D32]/20 transition-all"
+                      >
+                        📍 My Addresses ({savedAddresses.length})
+                      </button>
+                      <button onClick={() => setCurrentStep(1)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
+                        Back
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
+                    {/* Saved Addresses Dropdown Selector */}
+                    {savedAddresses.length > 0 && (
+                      <div className="bg-[#FF5A65]/5 border border-[#FF5A65]/20 p-3.5 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] uppercase font-bold text-[#FF5A65] tracking-wider flex items-center gap-1">
+                            <span>📍 Select Saved Address</span>
+                          </label>
+                          <span className="text-[9px] font-semibold text-[#0E1F38]/60">
+                            {savedAddresses.length} address{savedAddresses.length > 1 ? 'es' : ''} saved
+                          </span>
+                        </div>
+                        <select
+                          value={selectedSavedAddressId}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setSelectedSavedAddressId(val);
+                            if (val === 'new') {
+                              setDestinationAddress('');
+                            } else {
+                              const found = savedAddresses.find(a => a.id === val);
+                              if (found) {
+                                if (found.city) setDestinationCity(found.city);
+                                const fullText = found.line1 + (found.line2 ? `, ${found.line2}` : '') + (found.postal ? ` ${found.postal}` : '');
+                                setDestinationAddress(fullText || found.line1);
+                              }
+                            }
+                          }}
+                          className="w-full bg-white border border-[#FF5A65]/30 rounded-xl px-4 py-3 text-xs text-[#0E1F38] font-bold focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
+                        >
+                          <option value="">-- Select from My Addresses --</option>
+                          {savedAddresses.map(addr => {
+                            const labelText = addr.label ? `[${addr.label}] ` : '';
+                            const detailText = addr.line1 + (addr.city ? `, ${addr.city}` : '');
+                            return (
+                              <option key={addr.id} value={addr.id}>
+                                {labelText}{detailText} {addr.isDefault ? '★ (Default)' : ''}
+                              </option>
+                            );
+                          })}
+                          <option value="new">+ Enter A New Address</option>
+                        </select>
+                      </div>
+                    )}
+
                     <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Destination City</label>
+                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Destination Region / City</label>
                       <select
                         value={destinationCity}
                         onChange={e => setDestinationCity(e.target.value)}
@@ -2282,12 +2450,22 @@ export default function Dashboard() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Full Delivery Street Address</label>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Full Delivery Street Address</label>
+                        {destinationAddress && (
+                          <span className="text-[9px] text-[#2E7D32] font-semibold flex items-center gap-0.5">
+                            ✓ Auto-saves to My Addresses
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
                         placeholder="Suite #, Street name, City, Postal Code"
                         value={destinationAddress}
-                        onChange={e => setDestinationAddress(e.target.value)}
+                        onChange={e => {
+                          setDestinationAddress(e.target.value);
+                          setSelectedSavedAddressId('');
+                        }}
                         className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3.5 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
                       />
                     </div>
@@ -3165,6 +3343,105 @@ export default function Dashboard() {
               >
                 Close Order Details
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Manage My Addresses Popup Modal ── */}
+      {showManageAddressesModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#FAF8EE] border border-black/10 rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl space-y-6 animate-fade-in relative text-[#0E1F38] my-8">
+            <div className="flex justify-between items-start border-b border-black/10 pb-4">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#FF5A65] block">
+                  Saved Delivery Locations
+                </span>
+                <h2 className="text-xl font-black text-[#0E1F38] flex items-center gap-2 mt-0.5">
+                  📍 My Addresses
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowManageAddressesModal(false)}
+                className="w-8 h-8 rounded-full bg-white border border-black/10 flex items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38] transition-all cursor-pointer font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Add New Address Form inside Modal */}
+            <div className="bg-white border border-black/10 rounded-2xl p-4 space-y-3 shadow-xs">
+              <span className="text-[10px] uppercase font-bold text-[#0E1F38]/60 block">+ Add New Address</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input
+                  type="text"
+                  placeholder="Label (e.g. Home)"
+                  value={newAddrLabel}
+                  onChange={e => setNewAddrLabel(e.target.value)}
+                  className="bg-[#FAF8EE] border border-black/10 rounded-xl px-3 py-2 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:outline-none"
+                />
+                <select
+                  value={newAddrCity}
+                  onChange={e => setNewAddrCity(e.target.value)}
+                  className="bg-[#FAF8EE] border border-black/10 rounded-xl px-3 py-2 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:outline-none"
+                >
+                  {canadaCities.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleAddNewSavedAddress}
+                  disabled={!newAddrLine1.trim()}
+                  className="bg-[#FF5A65] text-white font-bold text-xs rounded-xl py-2 hover:bg-[#e24550] disabled:opacity-40 transition-all cursor-pointer"
+                >
+                  Save Address
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Full Street Address (Suite #, Street name, City, Postal code)"
+                value={newAddrLine1}
+                onChange={e => setNewAddrLine1(e.target.value)}
+                className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-3 py-2 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:outline-none"
+              />
+            </div>
+
+            {/* List of Saved Addresses */}
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {savedAddresses.length === 0 ? (
+                <p className="text-xs text-[#0E1F38]/50 italic text-center py-4">No saved addresses yet. Addresses used in orders auto-save here.</p>
+              ) : (
+                savedAddresses.map(addr => (
+                  <div key={addr.id} className="bg-white border border-black/10 rounded-2xl p-3.5 flex justify-between items-center gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-[#0E1F38]">{addr.label || 'Saved Address'}</span>
+                        {addr.isDefault && <span className="text-[8px] bg-[#8BC34A] text-[#1B250F] font-black px-1.5 py-0.5 rounded">Default</span>}
+                      </div>
+                      <p className="text-xs text-[#0E1F38]/70 mt-0.5">{addr.line1}{addr.city ? `, ${addr.city}` : ''}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setDestinationCity(addr.city || 'Toronto (GTA)');
+                          setDestinationAddress(addr.line1);
+                          setSelectedSavedAddressId(addr.id);
+                          setShowManageAddressesModal(false);
+                        }}
+                        className="px-2.5 py-1 bg-[#1B250F] text-white text-[10px] font-bold rounded-lg hover:bg-black transition-all cursor-pointer"
+                      >
+                        Use
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSavedAddress(addr.id)}
+                        className="px-2 py-1 text-red-500 hover:text-red-700 text-[10px] font-bold cursor-pointer"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

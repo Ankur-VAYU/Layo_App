@@ -36,13 +36,20 @@ function loadProfile(email: string): ProfileData {
   if (typeof window === 'undefined') return { fullName: '', phone: '', alternatePhone: '', gender: '', email, addresses: [] };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { fullName: '', phone: '', alternatePhone: '', gender: '', email, addresses: [] };
-    return JSON.parse(raw);
+    const parsed = raw ? JSON.parse(raw) : { fullName: '', phone: '', alternatePhone: '', gender: '', email, addresses: [] };
+    if ((!parsed.addresses || parsed.addresses.length === 0) && typeof window !== 'undefined') {
+      const saved = localStorage.getItem('layo_saved_addresses');
+      if (saved) parsed.addresses = JSON.parse(saved);
+    }
+    return parsed;
   } catch { return { fullName: '', phone: '', alternatePhone: '', gender: '', email, addresses: [] }; }
 }
 
 function saveProfile(p: ProfileData) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+  if (p.addresses) {
+    localStorage.setItem('layo_saved_addresses', JSON.stringify(p.addresses));
+  }
 }
 
 export default function ProfilePage() {
