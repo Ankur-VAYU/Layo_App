@@ -69,10 +69,74 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user) {
-      const p = loadProfile(user.email ?? '');
-      if (!p.fullName) p.fullName = user.user_metadata?.full_name ?? '';
-      if (!p.email) p.email = user.email ?? '';
-      setProfile(p);
+      const fetchAllAddresses = async () => {
+        let profileAddrs: any[] = [];
+        let savedAddrs: any[] = [];
+        let localShipments: any[] = [];
+        let dbShipments: any[] = [];
+
+        try {
+          const rawProfile = localStorage.getItem(STORAGE_KEY);
+          if (rawProfile) {
+            const parsed = JSON.parse(rawProfile);
+            if (Array.isArray(parsed.addresses)) profileAddrs = parsed.addresses;
+          }
+        } catch (e) {}
+
+        try {
+          const rawSaved = localStorage.getItem('layo_saved_addresses');
+          if (rawSaved) savedAddrs = JSON.parse(rawSaved);
+        } catch (e) {}
+
+        try {
+          const rawLocal = localStorage.getItem('layo_local_shipments');
+          if (rawLocal) localShipments = JSON.parse(rawLocal);
+        } catch (e) {}
+
+        try {
+          const { data } = await supabase
+            .from('shipments')
+            .select('destination_address, destination_city')
+            .eq('user_id', user.id);
+          if (data) dbShipments = data;
+        } catch (e) {}
+
+        const map = new Map<string, Address>();
+        const add = (id: string, label: string, line1: string, city: string, province = 'ON', postal = '', country = 'Canada', isDefault = false) => {
+          if (!line1 || !line1.trim()) return;
+          const cleanLine1 = line1.trim();
+          const cleanCity = city ? city.trim() : 'Toronto (GTA)';
+          const key = `${cleanLine1.toLowerCase()}|${cleanCity.toLowerCase()}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              id: id || 'addr_' + Math.random().toString(36).substr(2, 9),
+              label: label || `Address ${map.size + 1}`,
+              line1: cleanLine1,
+              line2: '',
+              city: cleanCity,
+              province: province || 'ON',
+              postal: postal || '',
+              country: country || 'Canada',
+              isDefault: isDefault || map.size === 0,
+            });
+          }
+        };
+
+        profileAddrs.forEach(a => add(a.id, a.label, a.line1, a.city, a.province, a.postal, a.country, a.isDefault));
+        savedAddrs.forEach(a => add(a.id, a.label, a.line1 || a.fullAddress, a.city, a.province, a.postal, a.country, a.isDefault));
+        localShipments.forEach(s => { if (s.destination_address) add('', '', s.destination_address, s.destination_city || 'Toronto (GTA)'); });
+        dbShipments.forEach(s => { if (s.destination_address) add('', '', s.destination_address, s.destination_city || 'Toronto (GTA)'); });
+
+        const allAddresses = Array.from(map.values());
+        const p = loadProfile(user.email ?? '');
+        p.addresses = allAddresses;
+        if (!p.fullName) p.fullName = user.user_metadata?.full_name ?? '';
+        if (!p.email) p.email = user.email ?? '';
+        setProfile(p);
+        saveProfile(p);
+      };
+
+      fetchAllAddresses();
     }
   }, [user]);
 
@@ -98,14 +162,14 @@ export default function ProfilePage() {
   };
 
   const saveAddress = () => {
-    if (!addressDraft.line1 || !addressDraft.city || !addressDraft.postal) return;
+    if (!addressDraft.line1 || !addressDraft.city) return;
     const addr: Address = {
-      id: editAddressId ?? Date.now().toString(),
+      id: editAddressId ?? 'addr_' + Date.now(),
       label: addressDraft.label || 'Home',
       line1: addressDraft.line1 ?? '',
       line2: addressDraft.line2,
       city: addressDraft.city ?? '',
-      province: addressDraft.province ?? '',
+      province: addressDraft.province ?? 'ON',
       postal: addressDraft.postal ?? '',
       country: addressDraft.country || 'Canada',
       isDefault: addressDraft.isDefault ?? profile.addresses.length === 0,
@@ -335,7 +399,7 @@ export default function ProfilePage() {
 
             <button
               onClick={saveAddress}
-              disabled={!addressDraft.line1 || !addressDraft.city || !addressDraft.postal}
+              disabled={!addressDraft.line1 || !addressDraft.city}
               className="w-full py-3 bg-primary text-background font-bold text-xs uppercase tracking-widest rounded-xl hover:brightness-110 transition-all disabled:opacity-40"
             >
               Save Address
