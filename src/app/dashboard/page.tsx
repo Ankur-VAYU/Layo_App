@@ -245,6 +245,8 @@ export default function Dashboard() {
   // Step 5: Action Options
   const [warehouseAction, setWarehouseAction] = useState<'ship' | 'hold' | null>(null);
   const [morePackages, setMorePackages] = useState<number | null>(null);
+  const [selectedHoldGroupId, setSelectedHoldGroupId] = useState<string | null>(null);
+  const [holdOptionMode, setHoldOptionMode] = useState<'existing' | 'new'>('existing');
 
   // Modals & Errors
   const [showDraftModal, setShowDraftModal] = useState(false);
@@ -789,6 +791,26 @@ export default function Dashboard() {
     return list;
   }, [activeItems]);
 
+  // Active Hold Groups memoization
+  const activeHoldGroups = useMemo(() => {
+    const activeHoldShips = shipments.filter(s =>
+      s.warehouse_action === 'hold' &&
+      s.status !== 'cancelled' &&
+      s.status !== 'delivered' &&
+      s.status !== 'shipped'
+    );
+
+    const map = new Map<string, { group_id: string; shipments: any[] }>();
+    activeHoldShips.forEach(s => {
+      const groupId = s.hold_group_id || `HOLD-${s.external_order_id || (s.id ? s.id.slice(0, 8).toUpperCase() : 'SHIPMENT')}`;
+      if (!map.has(groupId)) {
+        map.set(groupId, { group_id: groupId, shipments: [] });
+      }
+      map.get(groupId)!.shipments.push(s);
+    });
+    return Array.from(map.values());
+  }, [shipments]);
+
   // Checkout & Direct Booking Logic via Stripe
   const handleProceedToCheckout = async () => {
     if (activeItems.length === 0 || !selectedWarehouse || !destinationAddress) {
@@ -823,6 +845,10 @@ export default function Dashboard() {
       const advanceINR = Math.round(totals.totalPriceINR * 0.20);
       const remainingCAD = Math.round((totalCostCAD - advanceCAD) * 100) / 100;
 
+      const resolvedHoldGroupId = warehouseAction === 'hold'
+        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? selectedHoldGroupId : `HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`)
+        : null;
+
       if (editingDraftId) {
         // Upgrade / sync existing draft
         await supabase
@@ -844,6 +870,9 @@ export default function Dashboard() {
             estimated_weight: totals.totalWeightKg,
             estimated_cost_cad: totalCostCAD,
             remaining_balance_cad: remainingCAD,
+            warehouse_action: warehouseAction || 'ship',
+            expected_packages: morePackages || 1,
+            hold_group_id: resolvedHoldGroupId,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingDraftId);
@@ -870,6 +899,7 @@ export default function Dashboard() {
           payment_method: 'stripe',
           warehouse_action: warehouseAction || 'ship',
           expected_packages: morePackages || 1,
+          hold_group_id: resolvedHoldGroupId,
         }, { id: user?.id, email: user?.email, role: 'customer' });
         if (data && data[0]) {
           targetShipmentId = data[0].id;
@@ -910,6 +940,119 @@ export default function Dashboard() {
     } catch (err: any  ) {
       console.error('Failed to complete Stripe booking initialization:', err);
       alert(`Payment Gateway Error: ${err.message || 'Could not connect to Stripe. Please try again.'}`);
+      setIsProcessingPayment(false);
+    }
+  };
+
+  // Demo / Test Payment simulation (Bypasses Stripe for testing)
+  const handleSimulatedPayment = async () => {
+    if (activeItems.length === 0 || !selectedWarehouse || !destinationAddress) {
+      return;
+    }
+
+    setIsProcessingPayment(true);
+
+    const itemsPayload = activeItems.map(i => ({
+      category: i.category,
+      subcategory: i.subcategory,
+      quantity: i.qty,
+      demographic: i.demo,
+      weight: i.weightGrams / 1000,
+    }));
+
+    if (promoQty > 0) {
+      itemsPayload.push({
+        category: 'promo',
+        subcategory: 'Free light weight items (max 50 gm)',
+        quantity: promoQty,
+        demographic: null,
+        weight: 0,
+      });
+    }
+
+    try {
+      const totalCostCAD = totals.totalPriceCAD > 0 ? totals.totalPriceCAD : 25.0;
+      const advanceCAD = Math.round(totalCostCAD * 0.20 * 100) / 100;
+      const advanceINR = Math.round(totals.totalPriceINR * 0.20);
+      const remainingCAD = Math.round((totalCostCAD - advanceCAD) * 100) / 100;
+
+      const resolvedHoldGroupId = warehouseAction === 'hold'
+        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? selectedHoldGroupId : `HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`)
+        : null;
+
+      const targetStatus = warehouseAction === 'hold' ? 'holding' : 'paid';
+      let targetShipmentId = editingDraftId;
+
+      if (editingDraftId) {
+        await supabase
+          .from('shipments')
+          .update({
+            destination_city: destinationCity || 'Toronto (GTA)',
+            destination_address: destinationAddress || '',
+            india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
+            external_order_id: orderNumber || null,
+            total_weight: totals.totalWeightKg,
+            total_cost: totals.totalPriceINR,
+            items: itemsPayload,
+            payment_method: 'demo_simulated',
+            status: targetStatus,
+            payment_status: 'advance_paid',
+            advance_pct: 20,
+            advance_amount_cad: advanceCAD,
+            advance_paid_inr: advanceINR,
+            estimated_weight: totals.totalWeightKg,
+            estimated_cost_cad: totalCostCAD,
+            remaining_balance_cad: remainingCAD,
+            warehouse_action: warehouseAction || 'ship',
+            expected_packages: morePackages || 1,
+            hold_group_id: resolvedHoldGroupId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingDraftId);
+      } else {
+        const { data } = await insertShipment({
+          user_id: user?.id,
+          mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
+          destination_city: destinationCity || 'Toronto (GTA)',
+          destination_address: destinationAddress || 'Canada',
+          india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
+          external_order_id: orderNumber || null,
+          total_weight: totals.totalWeightKg,
+          total_cost: totals.totalPriceINR,
+          items: itemsPayload,
+          status: targetStatus,
+          payment_status: 'advance_paid',
+          advance_pct: 20,
+          advance_amount_cad: advanceCAD,
+          advance_paid_inr: advanceINR,
+          estimated_weight: totals.totalWeightKg,
+          estimated_cost_cad: totalCostCAD,
+          remaining_balance_cad: remainingCAD,
+          payment_method: 'demo_simulated',
+          warehouse_action: warehouseAction || 'ship',
+          expected_packages: morePackages || 1,
+          hold_group_id: resolvedHoldGroupId,
+        }, { id: user?.id, email: user?.email, role: 'customer' });
+        if (data && data[0]) {
+          targetShipmentId = data[0].id;
+        }
+      }
+
+      setPaymentBanner({
+        type: 'success',
+        message: `🧪 Demo Payment Complete! Order status updated to "${targetStatus}". You can now test Order #2.`
+      });
+
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('layo_dashboard_flow_state');
+      }
+      handleStartNewOrder();
+      if (user?.id) {
+        await fetchDashboardData(user.id);
+      }
+    } catch (err) {
+      console.error('Demo payment simulation failed:', err);
+    } finally {
       setIsProcessingPayment(false);
     }
   };
@@ -1093,6 +1236,9 @@ export default function Dashboard() {
       const advanceCAD = Math.round(totals.totalPriceCAD * 0.20 * 100) / 100;
       const remainingCAD = Math.round((totals.totalPriceCAD - advanceCAD) * 100) / 100;
       const advanceINR = Math.round(totals.totalPriceINR * 0.20);
+      const resolvedHoldGroupId = warehouseAction === 'hold'
+        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? selectedHoldGroupId : `HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`)
+        : null;
 
       // Save to dedicated draft_estimates database table
       await saveDraftEstimate({
@@ -1113,6 +1259,7 @@ export default function Dashboard() {
         items: itemsPayload,
         warehouse_action: warehouseAction || 'ship',
         expected_packages: morePackages || 1,
+        hold_group_id: resolvedHoldGroupId,
         status: 'Draft Estimate',
       });
 
@@ -1132,6 +1279,7 @@ export default function Dashboard() {
           status: 'Draft Estimate',
           warehouse_action: warehouseAction || 'ship',
           expected_packages: morePackages || 1,
+          hold_group_id: resolvedHoldGroupId,
           updated_at: new Date().toISOString()
         };
 
@@ -1176,6 +1324,7 @@ export default function Dashboard() {
           payment_method: 'draft',
           warehouse_action: warehouseAction || 'ship',
           expected_packages: morePackages || 1,
+          hold_group_id: resolvedHoldGroupId,
         }, { id: user?.id, email: user?.email, role: 'customer' });
         if (data && data[0]) {
           const parsed = parseShipment(data[0]);
@@ -2454,7 +2603,13 @@ export default function Dashboard() {
                       <button
                         onClick={() => {
                           setWarehouseAction('hold');
-                          setMorePackages(1);
+                          if (activeHoldGroups.length > 0) {
+                            setHoldOptionMode('existing');
+                            setSelectedHoldGroupId(activeHoldGroups[0].group_id);
+                          } else {
+                            setHoldOptionMode('new');
+                            setMorePackages(1);
+                          }
                         }}
                         className={`p-3.5 rounded-xl border text-left font-bold text-xs transition-all cursor-pointer shadow-sm ${
                           warehouseAction === 'hold'
@@ -2469,27 +2624,109 @@ export default function Dashboard() {
                       </button>
                     </div>
 
-                    {/* How many packages expected input */}
+                    {/* How many packages expected / Hold Group selection */}
                     {warehouseAction === 'hold' && (
-                      <div className="pt-3 border-t border-black/5 space-y-2 animate-fade-in">
-                        <label className="text-[10px] text-[#0E1F38] font-bold uppercase tracking-wider block">
-                          How many more packages are you expecting?
-                        </label>
-                        <div className="flex gap-2">
-                          {[1, 2, 3].map(num => (
-                            <button
-                              key={num}
-                              onClick={() => setMorePackages(num)}
-                              className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                                morePackages === num
-                                  ? 'bg-[#FF5A65] text-white border-[#FF5A65] shadow-sm'
-                                  : 'bg-white border-black/10 text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
-                              }`}
-                            >
-                              {num} package(s)
-                            </button>
-                          ))}
-                        </div>
+                      <div className="pt-3 border-t border-black/5 space-y-4 animate-fade-in">
+                        {activeHoldGroups.length > 0 && (
+                          <div className="space-y-2">
+                            <label className="text-[10px] text-[#0E1F38] font-bold uppercase tracking-wider block">
+                              Select Active Hold &amp; Combine Group:
+                            </label>
+                            <div className="space-y-2">
+                              {activeHoldGroups.map((grp) => {
+                                const isSelected = selectedHoldGroupId === grp.group_id && holdOptionMode === 'existing';
+                                const primaryShipment = grp.shipments[0];
+                                const pkgCount = grp.shipments.length;
+                                return (
+                                  <div
+                                    key={grp.group_id}
+                                    onClick={() => {
+                                      setSelectedHoldGroupId(grp.group_id);
+                                      setHoldOptionMode('existing');
+                                    }}
+                                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                                      isSelected
+                                        ? 'border-[#FF5A65] bg-[#FF5A65]/5 ring-2 ring-[#FF5A65]/20'
+                                        : 'border-black/10 bg-white hover:border-black/20'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                        isSelected ? 'border-[#FF5A65] bg-[#FF5A65]' : 'border-gray-300'
+                                      }`}>
+                                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-bold text-[#0E1F38] flex items-center gap-2">
+                                          <span>Group: {grp.group_id}</span>
+                                          <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-medium">
+                                            {pkgCount} package{pkgCount > 1 ? 's' : ''} linked
+                                          </span>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">
+                                          1st Order: #{primaryShipment.external_order_id || (primaryShipment.id ? primaryShipment.id.slice(0, 8) : 'SHIPMENT')} ({primaryShipment.india_warehouse || 'Hub'})
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <span className="material-symbols-outlined text-gray-400 text-sm">link</span>
+                                  </div>
+                                );
+                              })}
+
+                              <div
+                                onClick={() => {
+                                  setHoldOptionMode('new');
+                                  setSelectedHoldGroupId(null);
+                                  if (!morePackages) setMorePackages(1);
+                                }}
+                                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                                  holdOptionMode === 'new'
+                                    ? 'border-[#FF5A65] bg-[#FF5A65]/5 ring-2 ring-[#FF5A65]/20'
+                                    : 'border-black/10 bg-white hover:border-black/20'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                    holdOptionMode === 'new' ? 'border-[#FF5A65] bg-[#FF5A65]' : 'border-gray-300'
+                                  }`}>
+                                    {holdOptionMode === 'new' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-bold text-[#0E1F38]">
+                                      + Start a New Separate Hold Group
+                                    </div>
+                                    <p className="text-[10px] text-gray-500 mt-0.5">
+                                      Create a separate hold box independent of existing active packages
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {(activeHoldGroups.length === 0 || holdOptionMode === 'new') && (
+                          <div className="space-y-2">
+                            <label className="text-[10px] text-[#0E1F38] font-bold uppercase tracking-wider block">
+                              How many more packages are you expecting for this hold group?
+                            </label>
+                            <div className="flex gap-2">
+                              {[1, 2, 3].map(num => (
+                                <button
+                                  key={num}
+                                  onClick={() => setMorePackages(num)}
+                                  className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                                    morePackages === num
+                                      ? 'bg-[#FF5A65] text-white border-[#FF5A65] shadow-sm'
+                                      : 'bg-white border-black/10 text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
+                                  }`}
+                                >
+                                  {num} package(s)
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2513,30 +2750,42 @@ export default function Dashboard() {
                   </div>
 
                   {/* Submission and drafts */}
-                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <div className="flex flex-col gap-3 pt-2">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={() => setShowDraftModal(true)}
+                        disabled={isProcessingPayment}
+                        className="flex-1 py-4 border border-black/20 text-[#0E1F38] font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-black/5 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        Save to Drafts
+                      </button>
+                      <button
+                        onClick={handleProceedToCheckout}
+                        disabled={activeItems.length === 0 || !selectedWarehouse || !destinationAddress || isProcessingPayment}
+                        className="flex-1 py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {isProcessingPayment ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Redirecting to Stripe…</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-sm">lock</span>
+                            <span>Pay 20% Advance (${totals.totalPriceCAD > 0 ? (totals.totalPriceCAD * 0.20).toFixed(2) : '5.00'} CAD) &amp; Book</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Demo / Testing payment button */}
                     <button
-                      onClick={() => setShowDraftModal(true)}
-                      disabled={isProcessingPayment}
-                      className="flex-1 py-4 border border-black/20 text-[#0E1F38] font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-black/5 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      Save to Drafts
-                    </button>
-                    <button
-                      onClick={handleProceedToCheckout}
+                      onClick={handleSimulatedPayment}
                       disabled={activeItems.length === 0 || !selectedWarehouse || !destinationAddress || isProcessingPayment}
-                      className="flex-1 py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
+                      className="w-full py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-amber-500/20 active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      {isProcessingPayment ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          <span>Redirecting to Stripe…</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="material-symbols-outlined text-sm">lock</span>
-                          <span>Pay 20% Advance (${totals.totalPriceCAD > 0 ? (totals.totalPriceCAD * 0.20).toFixed(2) : '5.00'} CAD) &amp; Book</span>
-                        </>
-                      )}
+                      <span className="material-symbols-outlined text-xs text-amber-700">science</span>
+                      <span>🧪 Demo Mode: Simulate 20% Advance (Bypass Stripe for Testing)</span>
                     </button>
                   </div>
                 </section>

@@ -38,11 +38,22 @@ export async function POST(request: NextRequest) {
       try {
         const nowIso = new Date().toISOString();
         
-        // 1. Update shipment status and stage timestamps
+        // 1. Fetch shipment details to check warehouse action
+        const { data: currentShipment } = await supabase
+          .from('shipments')
+          .select('warehouse_action, hold_group_id')
+          .eq('id', shipmentId)
+          .maybeSingle();
+
+        const isHoldShipment = currentShipment?.warehouse_action === 'hold';
+        const targetStatus = isHoldShipment ? 'holding' : 'paid';
+
+        // Update shipment status and stage timestamps
         await supabase
           .from('shipments')
           .update({
-            status: 'paid',
+            status: targetStatus,
+            payment_status: 'advance_paid',
             payment_method: 'stripe',
             updated_at: nowIso,
           })
