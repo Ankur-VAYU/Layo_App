@@ -585,20 +585,32 @@ export default function Dashboard() {
     }
   };
 
-  // Reset wizard cleanly when starting a new order
+  // Reset wizard cleanly when starting a new order or discarding
   const handleStartNewOrder = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('layo_dashboard_flow_state');
+      localStorage.removeItem('layo_pending_shipment');
+      localStorage.removeItem('layo_pending_shipment_draft');
     }
     setEditingDraftId(null);
+    setOriginType('online');
+    setStoreName('');
+    setOrderNumber('');
+    setSenderName('');
+    setOriginCity('');
+    setSelectedWarehouse('');
+    setDestinationCity('');
+    setDestinationAddress('');
     setSelectedCategories([]);
     setQtyState({});
     setActiveDemoState({});
     setPromoQty(0);
-    setOrderNumber('');
-    setDestinationAddress('');
-    setStoreName('');
-    setSenderName('');
+    setWarehouseAction(null);
+    setMorePackages(null);
+    setSelectedHoldGroupId(null);
+    setHoldOptionMode('existing');
+    setShowOrderNumberError(false);
+    setDeliveryType('normal');
     setCurrentStep(1);
     setActiveTab('new');
   };
@@ -2999,9 +3011,8 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => {
-                  localStorage.removeItem('layo_pending_shipment');
+                  handleStartNewOrder();
                   setShowDraftModal(false);
-                  router.push('/');
                 }}
                 className="flex-1 py-3.5 border border-red-200 text-red-600 hover:bg-red-50 font-bold text-xs uppercase tracking-widest rounded-2xl transition-all cursor-pointer"
               >
