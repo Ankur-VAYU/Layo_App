@@ -699,14 +699,95 @@ export default function Dashboard() {
     });
   } catch (e) { console.error('groupedPendingDues error:', e); return []; } }, [shipments]);
 
-  // 4. My Shipments (Active booked shipments undergoing locker processing, airfreight, delivery, or completed)
+  // 4. My Shipments (Strictly only shipments whose all final payment has been done and nothing is dues)
   const myShipmentsList = useMemo(() => {
-    return shipments.filter(s => {
-      if (!s) return false;
-      const st = String(s.status || '').toLowerCase();
-      if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
-      return true;
-    });
+    try {
+      // 1. Only include shipments whose all final payment has been done and 0 dues remain
+      const settled = shipments.filter(s => {
+        if (!s) return false;
+        const st = String(s.status || '').toLowerCase();
+        const paySt = String(s.payment_status || '').toLowerCase();
+        const remaining = Number(s.remaining_balance_cad ?? 0);
+
+        // Filter out drafts, draft estimates, and cancelled
+        if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
+
+        // Any remaining balance means final payment is NOT done (belongs in Payment Dues tab)
+        if (remaining > 0) return false;
+        if (paySt === 'awaiting_balance' || paySt === 'advance_pending' || paySt === 'pending') return false;
+
+        // Fully settled payments
+        if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') {
+          return true;
+        }
+
+        // Post-repack stages with verified 0 balance and completed payment
+        if (['repacked', 'bulk_consolidated', 'in_transit', 'shipped', 'received_canada', 'out_for_delivery', 'delivered'].includes(st)) {
+          return remaining <= 0 && paySt !== 'awaiting_balance';
+        }
+
+        return false;
+      });
+
+      // 2. Group hold groups together so consolidated shipments share 1 unified tracking card
+      const map = new Map<string, any[]>();
+      settled.forEach(s => {
+        const isHold = s.warehouse_action === 'hold' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
+        const holdKey = isHold ? getHoldGroupKey(s) : null;
+        const key = holdKey || s.id;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(s);
+      });
+
+      return Array.from(map.entries()).map(([groupKey, items]) => {
+        const primary = items[0];
+        const isHoldGroup = groupKey.startsWith('HOLD-') || items.length > 1;
+
+        if (!isHoldGroup) {
+          return {
+            ...primary,
+            isHoldGroup: false,
+            groupKey,
+            itemsCount: items.length,
+            allPackages: items,
+          };
+        }
+
+        const combinedActualWeight = items.reduce((max, it) => Math.max(max, Number(it.actual_weight || 0)), 0)
+          || items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0);
+
+        const combinedCost = items.reduce((max, it) => Math.max(max, Number(it.final_cost_cad || 0)), 0)
+          || items.reduce((sum, it) => sum + Number(it.total_cost ? it.total_cost / 70.4 : 25.0), 0);
+
+        const allItems = items.flatMap(it => Array.isArray(it.items) ? it.items : []);
+        const allPhotos = items.flatMap(it => Array.isArray(it.qc_photos) ? it.qc_photos : []);
+        const boxDimensions = items.find(it => it.box_dimensions)?.box_dimensions;
+
+        return {
+          ...primary,
+          id: groupKey,
+          isHoldGroup: true,
+          groupKey,
+          itemsCount: items.length,
+          allPackages: items,
+          actual_weight: combinedActualWeight,
+          total_weight: combinedActualWeight,
+          final_cost_cad: combinedCost,
+          amount_cad: combinedCost,
+          remaining_balance_cad: 0,
+          payment_status: 'completed',
+          items: allItems,
+          qc_photos: allPhotos,
+          box_dimensions: boxDimensions,
+          status: items.some(it => ['in_transit', 'shipped', 'received_canada', 'out_for_delivery', 'delivered'].includes(it.status))
+            ? (items.find(it => ['in_transit', 'shipped', 'received_canada', 'out_for_delivery', 'delivered'].includes(it.status))?.status || primary.status)
+            : primary.status,
+        };
+      });
+    } catch (e) {
+      console.error('myShipmentsList error:', e);
+      return [];
+    }
   }, [shipments]);
 
   const handlePayRemainingBalance = async (shipment: any) => {
@@ -2199,6 +2280,26 @@ export default function Dashboard() {
                           </div>
                         </div>
 
+                        {Array.isArray(s.items) && s.items.length > 0 && (
+                          <div className="bg-[#FAF8EE] p-3 rounded-2xl border border-black/5 space-y-1.5 text-xs">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60 block">
+                              📦 Declared Items ({s.items.reduce((sum: number, it: any) => sum + (it.quantity || 1), 0)} items):
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {s.items.slice(0, 3).map((it: any, iIdx: number) => (
+                                <span key={iIdx} className="px-2 py-0.5 bg-white border border-black/5 rounded-lg text-[11px] font-medium text-[#0E1F38]">
+                                  {it.quantity || 1}x {it.subcategory || it.name || it.category}
+                                </span>
+                              ))}
+                              {s.items.length > 3 && (
+                                <span className="px-2 py-0.5 bg-slate-200/80 rounded-lg text-[10px] font-black text-slate-700">
+                                  +{s.items.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex justify-between items-center text-xs">
                           <div>
                             <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Due Today (20% Advance)</span>
@@ -2247,10 +2348,37 @@ export default function Dashboard() {
                           <span>Pay 20% Deposit (${advanceCAD.toFixed(2)} CAD) &amp; Book</span>
                         </button>
 
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOrderDetails(s)}
+                            className="flex-1 py-2.5 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                          >
+                            <span className="material-symbols-outlined text-sm">visibility</span>
+                            <span>View Estimate Details</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditDraft(s)}
+                            className="py-2.5 px-3 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                            title="Edit Draft Items"
+                          >
+                            <span className="material-symbols-outlined text-sm">edit_square</span>
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDraft(s.id)}
+                            className="py-2.5 px-3 bg-black/5 hover:bg-red-50 text-black/60 hover:text-red-600 font-bold rounded-xl border border-black/5 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
+                            title="Delete Draft"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
                 </div>
             )}
           </div>
@@ -2330,15 +2458,48 @@ export default function Dashboard() {
                         <div className="bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100 space-y-1.5 text-xs">
                           <span className="text-[10px] font-black text-indigo-800 uppercase tracking-wider block">Linked Packages in this Group:</span>
                           {grp.shipments.map((s, sIdx) => (
-                            <div key={s.id || sIdx} className="flex justify-between items-center text-[11px] bg-white p-2 rounded-xl border border-black/5">
-                              <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(s.id)}</span>
-                              <span className="text-[#0E1F38]/70 font-medium">{s.external_order_id ? `Ref: #${s.external_order_id}` : `Package ${sIdx + 1}`}</span>
+                            <div key={s.id || sIdx} className="flex justify-between items-center text-[11px] bg-white p-2.5 rounded-xl border border-black/5">
+                              <div>
+                                <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(s.id)}</span>
+                                <span className="text-[#0E1F38]/70 font-medium ml-2">{s.external_order_id ? `Ref: #${s.external_order_id}` : `Package ${sIdx + 1}`}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOrderDetails(s)}
+                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                              >
+                                <span className="material-symbols-outlined text-xs">visibility</span>
+                                <span>Details</span>
+                              </button>
                             </div>
                           ))}
                         </div>
                       </div>
 
                       <div className="pt-2 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const composite = {
+                              ...(grp.primaryShipment || grp.shipments[0] || {}),
+                              id: grp.group_id,
+                              isHoldGroup: true,
+                              status: 'holding',
+                              hold_group_id: grp.group_id,
+                              items: grp.shipments.flatMap((s: any) => s.items || []),
+                              total_weight: grp.shipments.reduce((sum: number, s: any) => sum + Number(s.total_weight || 1.0), 0),
+                              total_cost: grp.shipments.reduce((sum: number, s: any) => sum + Number(s.total_cost || 0), 0),
+                              advance_amount_cad: grp.shipments.reduce((sum: number, s: any) => sum + Number(s.advance_amount_cad || 0), 0),
+                              shipments: grp.shipments,
+                            };
+                            setSelectedOrderDetails(composite);
+                          }}
+                          className="w-full py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 font-bold text-xs rounded-xl border border-indigo-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <span className="material-symbols-outlined text-sm">inventory_2</span>
+                          <span>View Hold Group &amp; Declared Items Details</span>
+                        </button>
+
                         <button
                           onClick={() => {
                             setSelectedHoldGroupId(grp.group_id);
@@ -2356,7 +2517,7 @@ export default function Dashboard() {
                             setActiveTab('new');
                             setCurrentStep(1);
                           }}
-                          className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                          className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <span className="material-symbols-outlined text-sm">add</span>
                           <span>+ Add Another Package to this Hold Group</span>
@@ -2498,6 +2659,40 @@ export default function Dashboard() {
                             <span className="text-xl text-[#FF5A65]">${(Number(grp.combinedRemainingBalance) || 0).toFixed(2)} CAD</span>
                           </div>
                         </div>
+
+                        {/* View Details button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const primary = grp.primary;
+                            const allItems = grp.isHoldGroup
+                              ? grp.items.flatMap((it: any) => Array.isArray(it.items) ? it.items : [])
+                              : (primary?.items || []);
+                            const allPhotos = grp.items.flatMap((it: any) => Array.isArray(it.qc_photos) ? it.qc_photos : []);
+                            const detailsItem = {
+                              ...(primary || {}),
+                              id: grp.isHoldGroup ? grp.groupKey : primary?.id,
+                              isHoldGroup: grp.isHoldGroup,
+                              status: grp.isRepackDone ? 'repacked' : (primary?.status || 'inwarded'),
+                              payment_status: 'awaiting_balance',
+                              actual_weight: grp.combinedActualWeight,
+                              total_weight: grp.combinedActualWeight,
+                              box_dimensions: grp.boxDimensions,
+                              final_cost_cad: grp.combinedFinalCost,
+                              amount_cad: grp.combinedFinalCost,
+                              advance_amount_cad: grp.combinedAdvancePaid,
+                              remaining_balance_cad: grp.combinedRemainingBalance,
+                              items: allItems,
+                              shipments: grp.items,
+                              qc_photos: allPhotos,
+                            };
+                            setSelectedOrderDetails(detailsItem);
+                          }}
+                          className="w-full py-2.5 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs rounded-xl border border-black/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <span className="material-symbols-outlined text-sm">receipt_long</span>
+                          <span>View Statement &amp; Shipment Details</span>
+                        </button>
                       </div>
 
                       {/* Pay Action Button */}
@@ -2649,12 +2844,12 @@ export default function Dashboard() {
                         };
                       case 'repacked':
                         return {
-                          title: 'Step 4 of 7: Layo SOP Repacked',
-                          desc: 'Merchant waste boxes removed, folded, and sealed in standard Layo Green Box. Gross scale weight verified.',
-                          badge: 'Layo SOP Repacked',
-                          color: '#d97706',
-                          bg: '#fffbeb',
-                          border: '#fef3c7'
+                          title: 'Final Payment Confirmed • Queued for Airfreight',
+                          desc: 'All final balance payments completed and gross scale weight verified! Your package is queued for Master Cargo crate staging and direct flight to Canada.',
+                          badge: 'Paid in Full · Ready for Flight',
+                          color: '#059669',
+                          bg: '#ecfdf5',
+                          border: '#d1fae5'
                         };
                       case 'bulk_consolidated':
                         return {
@@ -2736,8 +2931,13 @@ export default function Dashboard() {
                             {stageInfo.badge}
                           </span>
                           <span className="font-mono text-xs font-bold text-[#0E1F38]/60 bg-[#FAF8EE] px-2 py-0.5 rounded">
-                            #{formatShipmentId(s.id)}
+                            {s.isHoldGroup ? `Hold Group #${s.id}` : `#${formatShipmentId(s.id)}`}
                           </span>
+                          {s.isHoldGroup && (
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                              {s.itemsCount} Packages Consolidated
+                            </span>
+                          )}
                         </div>
                         <span className="text-[11px] text-[#0E1F38]/50">
                           {s.created_at ? new Date(s.created_at).toLocaleDateString() : 'Recent'}
@@ -2788,6 +2988,24 @@ export default function Dashboard() {
                         </p>
                       </div>
 
+                      {/* Consolidated Packages List if Hold Group */}
+                      {s.isHoldGroup && Array.isArray(s.allPackages) && s.allPackages.length > 0 && (
+                        <div className="bg-indigo-50/60 p-3 rounded-2xl border border-indigo-100 space-y-1.5 text-xs">
+                          <div className="flex justify-between items-center text-[10px] font-black text-indigo-800 uppercase tracking-wider">
+                            <span>📦 Consolidated Packages in this Layo Box ({s.itemsCount}):</span>
+                            <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">1 Master Box</span>
+                          </div>
+                          <div className="space-y-1">
+                            {s.allPackages.map((pkg: any, pIdx: number) => (
+                              <div key={pkg.id || pIdx} className="flex justify-between items-center text-[11px] bg-white p-2 rounded-xl border border-black/5">
+                                <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(pkg.id)}</span>
+                                <span className="text-[#0E1F38]/70 font-medium">{pkg.external_order_id ? `Ref: #${String(pkg.external_order_id)}` : `Package ${pIdx + 1}`}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Declared Items List Breakdown */}
                       {Array.isArray(s.items) && s.items.length > 0 && (
                         <div className="bg-[#FAF8EE] p-3.5 rounded-2xl border border-black/5 space-y-2 text-xs">
@@ -2801,28 +3019,6 @@ export default function Dashboard() {
                                 {it.quantity || 1}x {it.subcategory || it.name || it.category} {it.demographic ? `(${it.demographic})` : ''}
                               </span>
                             ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Hold & Combine Status Banner */}
-                      {s.warehouse_action === 'hold' && (
-                        <div className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50 flex items-start gap-3 text-xs">
-                          <span className="text-xl leading-none mt-0.5">📦</span>
-                          <div className="flex-1">
-                            <p className="font-black text-amber-800 uppercase tracking-wider text-[10px]">Hold &amp; Combine Active</p>
-                            <p className="text-amber-700 mt-0.5 leading-relaxed">
-                              {s.status === 'Draft Estimate'
-                                ? `Your estimate is saved. Pay deposit to activate Hold & Combine — we'll wait for all ${s.expected_packages || 2} packages before dispatching.`
-                                : s.status === 'holding'
-                                ? `Holding at India Hub — waiting for remaining packages. Expected: ${s.expected_packages || 2} total.`
-                                : (s.status === 'repacked' || s.payment_status === 'awaiting_balance')
-                                ? `Consolidated into 1 Layo Green Box! Combined digital scale weight: ${s.actual_weight || s.total_weight || 1.0} kg. Final balance payment is unlocked in Payment Dues.`
-                                : s.status === 'hold_combined'
-                                ? `All packages combined and ready for airfreight dispatch!`
-                                : `Hold & Combine preference saved. Expecting ${s.expected_packages || 2} packages.`
-                              }
-                            </p>
                           </div>
                         </div>
                       )}
@@ -2905,27 +3101,17 @@ export default function Dashboard() {
                                 <div>
                                   <span className="text-[10px] font-bold text-[#0E1F38]/50 uppercase tracking-wider">Destination</span>
                                   <h3 className="font-black text-sm text-[#0E1F38] mt-0.5">✈ {s.destination_city || 'Toronto (GTA)'}</h3>
-                                  <p className="text-[11px] text-[#0E1F38]/60 font-medium">{s.total_weight || 1.0} kg estimated weight</p>
+                                  <p className="text-[11px] text-[#0E1F38]/60 font-medium">
+                                    {s.actual_weight ? `${Number(s.actual_weight).toFixed(2)} kg verified weight` : `${s.total_weight || 1.0} kg weight`}
+                                    {s.box_dimensions ? ` · Box: ${formatBoxDimensions(s.box_dimensions)}` : ''}
+                                  </p>
                                 </div>
                                 <div className="text-right">
-                                  <span className="text-[10px] font-bold text-[#0E1F38]/50 uppercase tracking-wider">Estimated Total</span>
+                                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Total Paid (CAD)</span>
                                   <p className="font-black text-base text-[#0E1F38] mt-0.5">${totalCAD.toFixed(2)} CAD</p>
                                   <span className="text-[10px] text-[#0E1F38]/50 font-mono block">≈ ₹{totalINR > 0 ? totalINR.toLocaleString() : Math.round(totalCAD * inrRate).toLocaleString()} INR</span>
                                 </div>
                               </div>
-
-                              {isDraft && (
-                                <div className="pt-2 border-t border-black/5 grid grid-cols-2 gap-2 text-xs">
-                                  <div className="bg-white/80 p-2.5 rounded-xl border border-black/5">
-                                    <span className="text-[10px] font-bold text-[#FF5A65] uppercase tracking-wider block">Due Today (20%)</span>
-                                    <span className="font-black text-sm text-[#FF5A65]">${advanceCAD.toFixed(2)} CAD</span>
-                                  </div>
-                                  <div className="bg-white/80 p-2.5 rounded-xl border border-black/5">
-                                    <span className="text-[10px] font-bold text-[#0E1F38]/50 uppercase tracking-wider block">Due After Weighing (80%)</span>
-                                    <span className="font-bold text-sm text-[#0E1F38]">${remainingCAD.toFixed(2)} CAD</span>
-                                  </div>
-                                </div>
-                              )}
                             </div>
 
                             {s.external_order_id && (
@@ -2934,106 +3120,26 @@ export default function Dashboard() {
                               </p>
                             )}
 
-                            {/* Remaining Balance Payment Banner */}
-                            {(s.payment_status === 'awaiting_balance' || (s.remaining_balance_cad > 0 && statusNormalized !== 'fully_paid' && statusNormalized !== 'delivered')) && (
-                              <div className="p-4 bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[#0E1F38] font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-amber-600 text-sm">scale</span>
-                                    Actual Weight Verified at Hub
-                                  </span>
-                                  <span className="px-2.5 py-0.5 bg-amber-500 text-white rounded-full font-black text-[10px]">
-                                    Balance Due
-                                  </span>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2 text-xs bg-white/80 p-3 rounded-xl border border-black/5 font-mono">
-                                  <div>
-                                    <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Est. Weight</span>
-                                    <span className="font-bold text-[#0E1F38]">{s.estimated_weight || s.total_weight} kg</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Verified Weight</span>
-                                    <span className="font-bold text-[#2E7D32]">{s.actual_weight || s.total_weight} kg</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[10px] text-[#0E1F38]/60 block uppercase">20% Paid</span>
-                                    <span className="font-bold text-[#0E1F38]">${(Number(s.advance_amount_cad) || 0).toFixed(2)} CAD</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Balance Due</span>
-                                    <span className="font-black text-[#FF5A65]">${(Number(s.remaining_balance_cad) || 0).toFixed(2)} CAD</span>
-                                  </div>
-                                </div>
-
-                                <button
-                                  onClick={() => {
-                                    const remaining = Number(s.remaining_balance_cad) || 0;
-                                    localStorage.setItem('layo_pending_shipment', JSON.stringify({
-                                      shipmentId: s.id,
-                                      isBalancePayment: true,
-                                      remainingBalanceCAD: remaining,
-                                      totalCostCAD: remaining,
-                                      totalWeight: s.actual_weight || s.total_weight,
-                                      destinationCity: s.destination_city || 'Toronto (GTA)',
-                                      destinationAddress: s.destination_address || '',
-                                      indiaWarehouse: s.india_warehouse || 'delhi',
-                                      items: s.items || [],
-                                    }));
-                                    router.push('/checkout');
-                                  }}
-                                  className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
-                                >
-                                  <span className="material-symbols-outlined text-sm">lock</span>
-                                  Pay Remaining Balance (${(Number(s.remaining_balance_cad) || 0).toFixed(2)} CAD)
-                                </button>
+                            {/* Settled / Paid in Full Banner */}
+                            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2 text-emerald-950 font-bold">
+                                <span className="material-symbols-outlined text-emerald-600 text-base">verified</span>
+                                <span>Final Payment Settled • Nothing Due</span>
                               </div>
-                            )}
+                              <span className="px-2.5 py-0.5 bg-emerald-600 text-white rounded-full font-black text-[10px]">
+                                $0.00 CAD Due
+                              </span>
+                            </div>
 
-                            {/* Draft Controls */}
-                            {isDraft ? (
-                              <div className="space-y-2 pt-1">
-                                <button
-                                  onClick={() => handlePayDraftWithStripe(s)}
-                                  className="w-full py-3.5 bg-[#FF5A65] text-white font-bold text-sm rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[#FF5A65]/20"
-                                >
-                                  <span className="material-symbols-outlined text-base">lock</span>
-                                  <span>Pay 20% Deposit (${advanceCAD.toFixed(2)} CAD) &amp; Book Shipment</span>
-                                </button>
-
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => setSelectedOrderDetails(s)}
-                                    className="flex-1 py-2 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                                  >
-                                    <span className="material-symbols-outlined text-sm">info</span>
-                                    Order Details
-                                  </button>
-                                  <button
-                                    onClick={() => handleEditDraft(s)}
-                                    className="flex-1 py-2 bg-black/5 hover:bg-black/10 text-[#0E1F38] font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                                  >
-                                    <span className="material-symbols-outlined text-sm">edit_square</span>
-                                    Edit Items
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteDraft(s.id)}
-                                    className="p-2 bg-black/5 hover:bg-red-50 text-black/60 hover:text-red-600 font-bold rounded-xl border border-black/5 transition-all flex items-center justify-center cursor-pointer"
-                                    title="Delete Draft"
-                                  >
-                                    <span className="material-symbols-outlined text-sm">delete</span>
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setSelectedOrderDetails(s)}
-                                className="w-full py-2.5 bg-[#FAF8EE] hover:bg-[#1B250F] text-[#0E1F38] hover:text-white border border-black/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                              >
-                                <span className="material-symbols-outlined text-sm">info</span>
-                                View Order &amp; Item Details
-                              </button>
-                            )}
+                            {/* View Full Details Button */}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrderDetails(s)}
+                              className="w-full py-3 bg-[#0E1F38] hover:bg-[#1e3a60] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                            >
+                              <span className="material-symbols-outlined text-sm">visibility</span>
+                              <span>View Full Shipment Details</span>
+                            </button>
                           </div>
                         );
                       })()}
@@ -4109,151 +4215,607 @@ export default function Dashboard() {
       )}
 
       {/* ── Order Details Popup Modal ── */}
-      {selectedOrderDetails && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#FAF8EE] border border-black/10 rounded-3xl w-full max-w-2xl p-6 sm:p-8 shadow-2xl space-y-6 animate-fade-in relative text-[#0E1F38] my-8 max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="flex justify-between items-start border-b border-black/10 pb-4">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-[#FF5A65] block">
-                  Complete Order Specification
-                </span>
-                <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38] flex items-center gap-2 mt-0.5">
-                  Locker Order #{formatShipmentId(selectedOrderDetails.id)}
-                </h2>
-                <p className="text-xs text-[#0E1F38]/60 mt-0.5 font-medium">
-                  Created on {selectedOrderDetails.created_at ? new Date(selectedOrderDetails.created_at).toLocaleString() : 'N/A'}
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedOrderDetails(null)}
-                className="w-9 h-9 rounded-full bg-white border border-black/10 flex items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38] hover:border-black/30 transition-all cursor-pointer font-bold text-lg"
-              >
-                ✕
-              </button>
-            </div>
+      {selectedOrderDetails && (() => {
+        const inrRate = cadToInrRate > 0 ? cadToInrRate : 70.4;
+        const statusNormalized = String(selectedOrderDetails.status || '').toLowerCase();
+        const isDraft = statusNormalized === 'draft' || statusNormalized === 'draft estimate';
+        const isHold = selectedOrderDetails.isHoldGroup || selectedOrderDetails.warehouse_action === 'hold' || statusNormalized === 'holding';
+        const remainingDue = Number(selectedOrderDetails.remaining_balance_cad ?? 0);
+        const payStatus = String(selectedOrderDetails.payment_status || '').toLowerCase();
+        const hasDues = remainingDue > 0 || payStatus === 'awaiting_balance';
+        const isFullySettled = (payStatus === 'completed' || payStatus === 'fully_paid' || payStatus === 'paid_full') && remainingDue <= 0;
 
-            {/* Financial & Weight Overview Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">
-                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate') ? 'Due Today (20% Advance)' : 'Customer Rate ($ CAD)'}
-                </span>
-                <p className="text-lg font-black text-[#FF5A65] font-mono">
-                  ${(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate')
-                    ? (selectedOrderDetails.advance_amount_cad || ((selectedOrderDetails.estimated_cost_cad || selectedOrderDetails.amount_cad || (selectedOrderDetails.total_cost && cadToInrRate > 0 ? (selectedOrderDetails.total_cost / cadToInrRate) : 25.0)) * 0.20)).toFixed(2)
-                    : (selectedOrderDetails.amount_cad || Number(((selectedOrderDetails.total_cost || 0) / (cadToInrRate || 70.4)).toFixed(2))).toFixed(2)
-                  }
-                </p>
-                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">
-                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate') ? '20% Booking Deposit' : 'CAD Price'}
-                </span>
-              </div>
+        // Pricing calculations
+        const totalINR = Number(selectedOrderDetails.total_cost) || 0;
+        let totalCAD = totalINR > 0 ? Number((totalINR / inrRate).toFixed(2)) : 25.0;
+        if (selectedOrderDetails.final_cost_cad && Number(selectedOrderDetails.final_cost_cad) > 0) {
+          totalCAD = Number(Number(selectedOrderDetails.final_cost_cad).toFixed(2));
+        } else if (selectedOrderDetails.estimated_cost_cad && Number(selectedOrderDetails.estimated_cost_cad) > 0) {
+          totalCAD = Number(Number(selectedOrderDetails.estimated_cost_cad).toFixed(2));
+        } else if (selectedOrderDetails.amount_cad && Number(selectedOrderDetails.amount_cad) > 0) {
+          totalCAD = Number(Number(selectedOrderDetails.amount_cad).toFixed(2));
+        }
 
-              <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">
-                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate') ? 'Total Estimated Cost' : 'INR Equivalent (₹)'}
-                </span>
-                <p className="text-lg font-black text-[#0E1F38] font-mono">
-                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate')
-                    ? `$${(selectedOrderDetails.estimated_cost_cad || selectedOrderDetails.amount_cad || (selectedOrderDetails.total_cost && cadToInrRate > 0 ? (selectedOrderDetails.total_cost / cadToInrRate) : 25.0)).toFixed(2)} CAD`
-                    : `₹${(selectedOrderDetails.total_cost || 0).toLocaleString()}`
-                  }
-                </p>
-                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">
-                  {(selectedOrderDetails.status?.toLowerCase() === 'draft' || selectedOrderDetails.status?.toLowerCase() === 'draft estimate') ? `₹${(selectedOrderDetails.total_cost || 0).toLocaleString()}` : '1 CAD ≈ 70.4 INR'}
-                </span>
-              </div>
+        const advanceCAD = selectedOrderDetails.advance_amount_cad !== undefined && Number(selectedOrderDetails.advance_amount_cad) > 0
+          ? Number(Number(selectedOrderDetails.advance_amount_cad).toFixed(2))
+          : Number((totalCAD * 0.20).toFixed(2));
 
-              <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Gross Weight</span>
-                <p className="text-lg font-black text-[#0E1F38] font-mono">
-                  {selectedOrderDetails.total_weight || 1.0} kg
-                </p>
-                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">{((selectedOrderDetails.total_weight || 1.0) * 1000).toLocaleString()} grams</span>
-              </div>
+        const balanceDueCAD = remainingDue > 0 ? remainingDue : Math.max(0, Number((totalCAD - advanceCAD).toFixed(2)));
 
-              <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Status Stage</span>
-                <p className="text-xs font-black text-emerald-700 capitalize mt-1 truncate">
-                  {selectedOrderDetails.status || 'Active'}
-                </p>
-                <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Trackable</span>
-              </div>
-            </div>
+        // Stage mapping
+        const STEPS = ['paid', 'inwarded', 'repacked', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'];
+        const STEP_LABELS = ['Paid', 'India Hub', 'SOP Repack', 'Airfreight', 'Canada Hub', 'Local Dispatch', 'Delivered'];
+        const STATUS_COLORS: Record<string, string> = {
+          draft: '#64748b',
+          paid: '#f59e0b',
+          inwarded: '#8b5cf6',
+          arrived: '#8b5cf6',
+          qc_verified: '#3b82f6',
+          repacked: '#d97706',
+          bulk_consolidated: '#6366f1',
+          in_transit: '#059669',
+          shipped: '#059669',
+          received_canada: '#0d9488',
+          out_for_delivery: '#0284c7',
+          delivered: '#10b981'
+        };
 
-            {/* Declared Parcel Items */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-black/5 space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
-                <span>📦</span> Declared Items &amp; Parcel Breakdown ({Array.isArray(selectedOrderDetails.items) ? selectedOrderDetails.items.length : 0})
-              </h3>
-              {Array.isArray(selectedOrderDetails.items) && selectedOrderDetails.items.length > 0 ? (
-                <div className="divide-y divide-black/5">
-                  {selectedOrderDetails.items.map((it: any, idx: number) => (
-                    <div key={idx} className="py-2.5 flex justify-between items-center text-xs">
-                      <div>
-                        <p className="font-bold text-[#0E1F38]">
-                          {it.subcategory || it.name || it.category || 'Parcel Item'}
-                        </p>
-                        <p className="text-[10px] text-[#0E1F38]/60 font-medium">
-                          Category: {it.category || 'General'} {it.demographic ? `· ${it.demographic}` : ''}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="bg-[#FAF8EE] px-2.5 py-1 rounded-lg border border-black/5 font-mono font-bold text-[#0E1F38]">
-                          {it.quantity || 1} qty
-                        </span>
-                        {it.weight && (
-                          <span className="text-[10px] text-[#0E1F38]/60 block mt-0.5 font-mono">
-                            {it.weight} kg each
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-[#0E1F38]/60 font-light">No individual item declarations logged.</p>
-              )}
-            </div>
+        let currentIdx = -1;
+        if (!isDraft) {
+          if (STEPS.indexOf(statusNormalized) >= 0) {
+            currentIdx = STEPS.indexOf(statusNormalized);
+          } else if (statusNormalized === 'arrived' || statusNormalized === 'inwarded') {
+            currentIdx = 1;
+          } else if (statusNormalized === 'qc_verified') {
+            currentIdx = 2;
+          } else if (statusNormalized === 'bulk_consolidated' || statusNormalized === 'shipped') {
+            currentIdx = 3;
+          } else {
+            currentIdx = 0;
+          }
+        }
 
-            {/* Assigned Hub & Destination Address */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="bg-white p-4 rounded-2xl border border-black/5 space-y-1.5 text-xs">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">🇮🇳 India Hub Location</span>
-                <p className="font-bold text-[#0E1F38]">{selectedOrderDetails.india_warehouse || 'Delhi NCR Hub'}</p>
-                <p className="text-[11px] text-[#0E1F38]/70 font-light leading-relaxed">
-                  Layo Locker (Locker #{formatShipmentId(selectedOrderDetails.id)})<br />
-                  C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi, Delhi - 110077
-                </p>
-              </div>
+        const getModalStageInfo = () => {
+          if (isDraft) {
+            return {
+              title: 'Draft Shipping Estimate · Awaiting Booking Deposit',
+              desc: 'This shipping estimate is saved in your account. Complete the 20% deposit to assign your Indian forwarding locker address.',
+              badge: 'Draft Estimate',
+              color: '#64748b',
+              bg: '#f8fafc',
+              border: '#e2e8f0'
+            };
+          }
+          if (statusNormalized === 'holding' || (isHold && !selectedOrderDetails.actual_weight && statusNormalized !== 'repacked')) {
+            return {
+              title: 'India Hub Consolidation Hold Active',
+              desc: 'Your parcel is stored safely at our India Hub locker. We are holding dispatch until all expected packages arrive for combined packing.',
+              badge: 'Holding @ India Hub',
+              color: '#4f46e5',
+              bg: '#eef2ff',
+              border: '#c7d2fe'
+            };
+          }
+          if (statusNormalized === 'repacked') {
+            if (hasDues) {
+              return {
+                title: 'Layo SOP Repacked & Scale Verified · Final Balance Due',
+                desc: 'Floor associates stripped merchant boxes, packed items in standard Layo Green Box, and logged verified scale weight. Pay the remaining balance to authorize airfreight.',
+                badge: 'Repacked · Balance Due',
+                color: '#d97706',
+                bg: '#fffbeb',
+                border: '#fde68a'
+              };
+            }
+            return {
+              title: 'Final Payment Confirmed · Queued for Airfreight',
+              desc: 'All final balance payments completed and verified. Package is staged for bulk master crate consolidation and flight dispatch.',
+              badge: 'Paid in Full · Ready for Flight',
+              color: '#059669',
+              bg: '#ecfdf5',
+              border: '#a7f3d0'
+            };
+          }
+          if (statusNormalized === 'paid' || statusNormalized === 'advance_paid') {
+            return {
+              title: '20% Advance Booking Confirmed (Order Active)',
+              desc: 'Please ship your purchases from Amazon/Myntra/Ajio to your assigned India Hub locker forwarding address below.',
+              badge: 'Deposit Paid · Awaiting Hub',
+              color: '#f59e0b',
+              bg: '#fffbeb',
+              border: '#fef3c7'
+            };
+          }
+          if (statusNormalized === 'inwarded' || statusNormalized === 'arrived') {
+            return {
+              title: 'Parcel Received at India Hub (Delhi NCR)',
+              desc: 'Your package arrived at our Delhi Hub. Associates are matching physical contents against your declared checklist.',
+              badge: 'Received @ India Hub',
+              color: '#8b5cf6',
+              bg: '#f5f3ff',
+              border: '#ddd6fe'
+            };
+          }
+          if (statusNormalized === 'qc_verified') {
+            return {
+              title: 'QC Verified & Unboxing Photographed',
+              desc: 'All items matched declaration with zero discrepancies. Unboxing photos logged and ready for SOP repacking.',
+              badge: 'QC Matched & Photographed',
+              color: '#3b82f6',
+              bg: '#eff6ff',
+              border: '#bfdbfe'
+            };
+          }
+          if (statusNormalized === 'bulk_consolidated') {
+            return {
+              title: 'Packed into Bulk Cargo Master Crate',
+              desc: `Consolidated into Canada-bound Master Crate ${selectedOrderDetails.master_box_id || 'BATCH-CA-801'} for bulk freight savings.`,
+              badge: 'In Master Cargo Crate',
+              color: '#6366f1',
+              bg: '#eef2ff',
+              border: '#c7d2fe'
+            };
+          }
+          if (statusNormalized === 'in_transit' || statusNormalized === 'shipped') {
+            return {
+              title: 'Bulk Airfreight in Flight to Canada (DEL → YYZ)',
+              desc: 'Master Air Cargo pallet in flight from Delhi Hub to Toronto Pearson International Airport.',
+              badge: 'Airfreight in Flight',
+              color: '#059669',
+              bg: '#ecfdf5',
+              border: '#a7f3d0'
+            };
+          }
+          if (statusNormalized === 'received_canada') {
+            return {
+              title: 'Received at Layo Canada Hub (Toronto GTA)',
+              desc: 'Master crate de-consolidated and individual customer parcel sorted for local Canadian courier dispatch.',
+              badge: 'Received @ Canada Hub',
+              color: '#0d9488',
+              bg: '#f0fdfa',
+              border: '#99f6e4'
+            };
+          }
+          if (statusNormalized === 'out_for_delivery') {
+            return {
+              title: 'Out for Local Canadian Delivery',
+              desc: `Dispatched with ${selectedOrderDetails.canada_local_carrier || 'Canada Post'} · Tracking: ${selectedOrderDetails.canada_local_awb || 'CP-TRACKING'}. On courier vehicle for delivery.`,
+              badge: 'Out for Delivery',
+              color: '#0284c7',
+              bg: '#f0f9ff',
+              border: '#bae6fd'
+            };
+          }
+          if (statusNormalized === 'delivered') {
+            return {
+              title: 'Delivered to Doorstep in Canada',
+              desc: 'Parcel successfully delivered to your Canadian address. Thank you for shipping with Layo!',
+              badge: 'Delivered in Canada',
+              color: '#10b981',
+              bg: '#ecfdf5',
+              border: '#a7f3d0'
+            };
+          }
+          return {
+            title: `Order Status: ${selectedOrderDetails.status || 'Active'}`,
+            desc: 'Your order is progressing through the Layo cross-border pipeline.',
+            badge: selectedOrderDetails.status || 'Active',
+            color: '#0E1F38',
+            bg: '#FAF8EE',
+            border: '#e2e8f0'
+          };
+        };
 
-              <div className="bg-white p-4 rounded-2xl border border-black/5 space-y-1.5 text-xs">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">🇨🇦 Canada Destination</span>
-                <p className="font-bold text-[#0E1F38]">{selectedOrderDetails.destination_city || 'Toronto (GTA)'}</p>
-                <p className="text-[11px] text-[#0E1F38]/70 font-light leading-relaxed">
-                  {selectedOrderDetails.destination_address || 'Delivery Address on File'}
-                </p>
-                {selectedOrderDetails.external_order_id && (
-                  <p className="text-[10px] font-mono text-[#0E1F38]/70 pt-1">
-                    <strong>Ref Order:</strong> {selectedOrderDetails.external_order_id}
+        const stageInfo = getModalStageInfo();
+        const matchedHub = warehouses.find(
+          w => w.city?.toLowerCase() === (selectedOrderDetails.india_warehouse || '').toLowerCase() ||
+               w.address?.toLowerCase().includes((selectedOrderDetails.india_warehouse || '').toLowerCase())
+        ) || warehouses[0] || { city: 'Delhi NCR Hub', address: 'C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi', pincode: '110077', contact: '+91 9321852629' };
+
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#FAF8EE] border border-black/10 rounded-3xl w-full max-w-2xl p-6 sm:p-8 shadow-2xl space-y-6 animate-fade-in relative text-[#0E1F38] my-8 max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex justify-between items-start border-b border-black/10 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#FF5A65] block">
+                      Order Specification &amp; Live Tracking
+                    </span>
+                    {selectedOrderDetails.isHoldGroup && (
+                      <span className="text-[9px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full border border-indigo-200">
+                        Consolidated Hold Group
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38] flex items-center gap-2 mt-0.5">
+                    {selectedOrderDetails.isHoldGroup ? `Hold Group #${selectedOrderDetails.id}` : `Locker Order #${formatShipmentId(selectedOrderDetails.id)}`}
+                  </h2>
+                  <p className="text-xs text-[#0E1F38]/60 mt-0.5 font-medium">
+                    Created on {selectedOrderDetails.created_at ? new Date(selectedOrderDetails.created_at).toLocaleString() : 'Recent'}
                   </p>
+                </div>
+                <button
+                  onClick={() => setSelectedOrderDetails(null)}
+                  className="w-9 h-9 rounded-full bg-white border border-black/10 flex items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38] hover:border-black/30 transition-all cursor-pointer font-bold text-lg shadow-2xs"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Live Status Stage Banner */}
+              <div
+                className="p-4 rounded-2xl border text-xs space-y-1.5"
+                style={{ backgroundColor: stageInfo.bg, borderColor: stageInfo.border }}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border"
+                    style={{ backgroundColor: stageInfo.bg, borderColor: stageInfo.border, color: stageInfo.color }}
+                  >
+                    {stageInfo.badge}
+                  </span>
+                  <span className="font-bold text-[11px]" style={{ color: stageInfo.color }}>
+                    {stageInfo.title}
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#0E1F38]/80 leading-relaxed font-light">
+                  {stageInfo.desc}
+                </p>
+              </div>
+
+              {/* Stepper tracker (for booked / active shipments) */}
+              {!isDraft && (
+                <div className="bg-white p-4 rounded-2xl border border-black/5 space-y-2">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60 pb-1">
+                    <span>Live Cross-Border Pipeline</span>
+                    <span>Step {Math.max(1, currentIdx + 1)} of 7</span>
+                  </div>
+                  <div className="relative pt-2">
+                    <div className="absolute top-[13px] left-0 right-0 h-[2px] bg-black/5 -z-10"></div>
+                    <div className="flex justify-between">
+                      {STEPS.map((step, idx) => {
+                        const isPassed = idx <= currentIdx;
+                        const isCurrent = idx === currentIdx;
+                        return (
+                          <div key={step} className="flex flex-col items-center gap-1 flex-1 relative">
+                            <div
+                              className="w-3.5 h-3.5 rounded-full transition-all border-2 border-transparent"
+                              style={{
+                                backgroundColor: isPassed ? STATUS_COLORS[statusNormalized] ?? '#059669' : '#e2e8f0',
+                                boxShadow: isCurrent ? `0 0 10px ${STATUS_COLORS[statusNormalized] ?? '#059669'}` : 'none'
+                              }}
+                            />
+                            <span 
+                              className={`text-[7px] uppercase tracking-wider font-bold text-center ${
+                                isPassed ? 'text-[#0E1F38]' : 'text-[#0E1F38]/40'
+                              }`}
+                            >
+                              {STEP_LABELS[idx]}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Financial & Weight Overview Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {isDraft ? (
+                  <>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#FF5A65] block">Due Today (20%)</span>
+                      <p className="text-lg font-black text-[#FF5A65] font-mono">${advanceCAD.toFixed(2)}</p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">CAD Advance</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Remaining (80%)</span>
+                      <p className="text-lg font-black text-[#0E1F38] font-mono">${balanceDueCAD.toFixed(2)}</p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Billed after Weighing</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Est. Total Fee</span>
+                      <p className="text-lg font-black text-[#0E1F38] font-mono">${totalCAD.toFixed(2)} CAD</p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">≈ ₹{Math.round(totalCAD * inrRate).toLocaleString()} INR</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Est. Weight</span>
+                      <p className="text-lg font-black text-[#0E1F38] font-mono">{selectedOrderDetails.total_weight || 1.0} kg</p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Estimated Gross</span>
+                    </div>
+                  </>
+                ) : hasDues ? (
+                  <>
+                    <div className="bg-white p-3.5 rounded-2xl border-2 border-amber-400 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#FF5A65] block">80% Balance Due</span>
+                      <p className="text-lg font-black text-[#FF5A65] font-mono">${balanceDueCAD.toFixed(2)}</p>
+                      <span className="text-[9px] text-amber-800 font-bold block">Action Required</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Total Verified Fee</span>
+                      <p className="text-lg font-black text-[#0E1F38] font-mono">${totalCAD.toFixed(2)} CAD</p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">≈ ₹{Math.round(totalCAD * inrRate).toLocaleString()} INR</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 block">20% Deposit Paid</span>
+                      <p className="text-lg font-black text-emerald-700 font-mono">-${advanceCAD.toFixed(2)}</p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Settled</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Scale Weight</span>
+                      <p className="text-lg font-black text-emerald-700 font-mono">
+                        {(Number(selectedOrderDetails.actual_weight || selectedOrderDetails.total_weight) || 1.0).toFixed(2)} kg
+                      </p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Verified at Hub</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 block">Total Paid (CAD)</span>
+                      <p className="text-lg font-black text-emerald-700 font-mono">${totalCAD.toFixed(2)}</p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">≈ ₹{Math.round(totalCAD * inrRate).toLocaleString()} INR</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 block">Balance Due</span>
+                      <p className="text-lg font-black text-emerald-700 font-mono">$0.00 CAD</p>
+                      <span className="text-[9px] text-emerald-600 font-bold block">100% Cleared ✓</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Gross Weight</span>
+                      <p className="text-lg font-black text-[#0E1F38] font-mono">
+                        {(Number(selectedOrderDetails.actual_weight || selectedOrderDetails.total_weight) || 1.0).toFixed(2)} kg
+                      </p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Scale Verified</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Payment State</span>
+                      <p className="text-xs font-black text-emerald-700 mt-1 truncate">
+                        Fully Settled
+                      </p>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Authorized</span>
+                    </div>
+                  </>
                 )}
               </div>
-            </div>
 
-            {/* Close Button */}
-            <div className="pt-2">
-              <button
-                onClick={() => setSelectedOrderDetails(null)}
-                className="w-full py-3 bg-[#1B250F] text-white font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-[#2c3b19] transition-all cursor-pointer shadow-md"
-              >
-                Close Order Details
-              </button>
+              {/* SOP Box Dimensions & Scale Verification Callout */}
+              {(selectedOrderDetails.box_dimensions || selectedOrderDetails.actual_weight || statusNormalized === 'repacked') && (
+                <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 text-xs space-y-2">
+                  <div className="flex items-center justify-between text-emerald-950 font-bold">
+                    <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-black">
+                      <span className="material-symbols-outlined text-emerald-700 text-sm">inventory_2</span>
+                      Layo SOP Repack Specification
+                    </span>
+                    <span className="bg-emerald-200/80 text-emerald-900 text-[10px] font-black px-2 py-0.5 rounded-full">
+                      Verified
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-white/90 p-3 rounded-xl border border-emerald-200/60 font-mono">
+                    <div>
+                      <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Standard Box Size</span>
+                      <span className="font-bold text-[#0E1F38]">{formatBoxDimensions(selectedOrderDetails.box_dimensions)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Digital Scale Gross</span>
+                      <span className="font-bold text-emerald-700">{(Number(selectedOrderDetails.actual_weight || selectedOrderDetails.total_weight) || 1.0).toFixed(2)} kg</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Merchant Waste Stripped</span>
+                      <span className="font-bold text-[#0E1F38]">Yes (Zero Waste)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Local Carrier Tracking (Canada) */}
+              {(selectedOrderDetails.canada_local_carrier || selectedOrderDetails.canada_local_awb) && (
+                <div className="flex items-center justify-between p-4 bg-blue-50/80 rounded-2xl border border-blue-200 text-xs">
+                  <div className="flex items-center gap-2.5 text-blue-950 font-bold">
+                    <span className="material-symbols-outlined text-base text-blue-600">local_shipping</span>
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-blue-800/70 font-black">Canada Local Courier</span>
+                      <span className="text-sm font-black">{selectedOrderDetails.canada_local_carrier || 'Canada Local Dispatch'}</span>
+                    </div>
+                  </div>
+                  {selectedOrderDetails.canada_local_awb && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-blue-800 bg-white px-3 py-1.5 rounded-xl border border-blue-200 shadow-2xs">
+                        {selectedOrderDetails.canada_local_awb}
+                      </span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedOrderDetails.canada_local_awb);
+                          alert('AWB Tracking copied to clipboard!');
+                        }}
+                        className="p-1.5 bg-white hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-200 transition-all cursor-pointer"
+                        title="Copy AWB Tracking Number"
+                      >
+                        <span className="material-symbols-outlined text-sm">content_copy</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* QC Inspection Photos */}
+              {Array.isArray(selectedOrderDetails.qc_photos) && selectedOrderDetails.qc_photos.length > 0 && (
+                <div className="space-y-2 bg-white p-4 rounded-2xl border border-black/5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60 block">
+                    📸 Warehouse Unboxing Photos ({selectedOrderDetails.qc_photos.length})
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {selectedOrderDetails.qc_photos.map((photo: any, pIdx: number) => (
+                      <div key={pIdx} className="aspect-square rounded-xl overflow-hidden border border-black/10 bg-black/5">
+                        <img src={photo.url} alt="QC Unboxing" className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Hold Group Breakdown */}
+              {Array.isArray(selectedOrderDetails.shipments) && selectedOrderDetails.shipments.length > 1 && (
+                <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-200 space-y-2 text-xs">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-900 block">
+                    📦 Consolidated Packages in this Hold Group ({selectedOrderDetails.shipments.length})
+                  </span>
+                  <div className="space-y-1.5">
+                    {selectedOrderDetails.shipments.map((pkg: any, pIdx: number) => (
+                      <div key={pkg.id || pIdx} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-black/5">
+                        <div>
+                          <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(pkg.id)}</span>
+                          <span className="text-[#0E1F38]/70 font-medium ml-2">{pkg.external_order_id ? `Ref: #${pkg.external_order_id}` : `Package ${pIdx + 1}`}</span>
+                        </div>
+                        <span className="text-[11px] font-mono text-[#0E1F38]/80 font-bold">
+                          {pkg.actual_weight || pkg.total_weight || 1.0} kg
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Declared Parcel Items */}
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-black/5 space-y-3">
+                <div className="flex justify-between items-center border-b border-black/5 pb-2">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
+                    <span>📦</span> Declared Items Breakdown ({Array.isArray(selectedOrderDetails.items) ? selectedOrderDetails.items.reduce((sum: number, it: any) => sum + (it.quantity || 1), 0) : 0})
+                  </h3>
+                  <span className="text-[10px] font-bold text-[#0E1F38]/60 bg-[#FAF8EE] px-2 py-0.5 rounded border border-black/5">
+                    {selectedOrderDetails.mode || 'Online Retailer'}
+                  </span>
+                </div>
+                {Array.isArray(selectedOrderDetails.items) && selectedOrderDetails.items.length > 0 ? (
+                  <div className="divide-y divide-black/5 max-h-56 overflow-y-auto pr-1">
+                    {selectedOrderDetails.items.map((it: any, idx: number) => (
+                      <div key={idx} className="py-2.5 flex justify-between items-center text-xs">
+                        <div>
+                          <p className="font-bold text-[#0E1F38]">
+                            {it.subcategory || it.name || it.category || 'Parcel Item'}
+                          </p>
+                          <p className="text-[10px] text-[#0E1F38]/60 font-medium">
+                            Category: {it.category || 'General'} {it.demographic ? `· ${it.demographic}` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="bg-[#FAF8EE] px-2.5 py-1 rounded-lg border border-black/5 font-mono font-bold text-[#0E1F38]">
+                            {it.quantity || 1} qty
+                          </span>
+                          {it.weight && (
+                            <span className="text-[10px] text-[#0E1F38]/60 block mt-0.5 font-mono">
+                              {it.weight} kg each
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#0E1F38]/60 font-light">No individual item declarations logged.</p>
+                )}
+              </div>
+
+              {/* Assigned Hub & Destination Address */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-white p-4 rounded-2xl border border-black/5 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">🇮🇳 India Forwarding Hub</span>
+                    <button
+                      onClick={() => {
+                        const addr = `Layo Locker (Locker #${formatShipmentId(selectedOrderDetails.id)})\n${matchedHub.address}\n${matchedHub.city} - ${matchedHub.pincode}\nPhone: ${matchedHub.contact || '+91 9321852629'}`;
+                        navigator.clipboard.writeText(addr);
+                        alert('India Hub delivery address copied to clipboard!');
+                      }}
+                      className="text-[9px] font-bold bg-[#8BC34A] hover:bg-[#9ccc65] text-[#1B250F] px-2 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[10px]">content_copy</span>
+                      Copy Hub
+                    </button>
+                  </div>
+                  <p className="font-bold text-[#0E1F38]">{matchedHub.city || 'Delhi NCR Hub'}</p>
+                  <p className="text-[11px] text-[#0E1F38]/70 font-mono leading-tight">
+                    Layo Locker (Locker #{formatShipmentId(selectedOrderDetails.id)})<br />
+                    {matchedHub.address}, {matchedHub.city} - {matchedHub.pincode}
+                  </p>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl border border-black/5 space-y-2 text-xs">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">🇨🇦 Canada Destination</span>
+                  <p className="font-bold text-[#0E1F38]">{selectedOrderDetails.destination_city || 'Toronto (GTA)'}</p>
+                  <p className="text-[11px] text-[#0E1F38]/70 font-light leading-relaxed">
+                    {selectedOrderDetails.destination_address || 'Delivery Address on File'}
+                  </p>
+                  {selectedOrderDetails.external_order_id && (
+                    <p className="text-[10px] font-mono text-[#0E1F38]/70 pt-1">
+                      <strong>Ref Order:</strong> {selectedOrderDetails.external_order_id}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Dynamic Action Buttons */}
+              <div className="pt-2 space-y-2">
+                {isDraft ? (
+                  <button
+                    onClick={() => {
+                      setSelectedOrderDetails(null);
+                      handlePayDraftWithStripe(selectedOrderDetails);
+                    }}
+                    className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-sm">lock</span>
+                    <span>Pay 20% Deposit (${advanceCAD.toFixed(2)} CAD) &amp; Book Shipment</span>
+                  </button>
+                ) : hasDues && (statusNormalized === 'repacked' || payStatus === 'awaiting_balance') ? (
+                  <button
+                    onClick={() => {
+                      setSelectedOrderDetails(null);
+                      if (selectedOrderDetails.isHoldGroup) {
+                        handlePayRemainingBalanceGroup(selectedOrderDetails);
+                      } else {
+                        handlePayRemainingBalance(selectedOrderDetails);
+                      }
+                    }}
+                    className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-sm">lock_open</span>
+                    <span>Pay Remaining Balance (${balanceDueCAD.toFixed(2)} CAD)</span>
+                  </button>
+                ) : isHold && (statusNormalized === 'holding' || !selectedOrderDetails.actual_weight) ? (
+                  <button
+                    onClick={() => {
+                      const holdId = selectedOrderDetails.hold_group_id || selectedOrderDetails.id;
+                      setSelectedOrderDetails(null);
+                      setSelectedHoldGroupId(holdId);
+                      setHoldOptionMode('existing');
+                      setWarehouseAction('hold');
+                      if (selectedOrderDetails.destination_city) setDestinationCity(selectedOrderDetails.destination_city);
+                      if (selectedOrderDetails.destination_address) setDestinationAddress(selectedOrderDetails.destination_address);
+                      if (selectedOrderDetails.india_warehouse) setSelectedWarehouse(selectedOrderDetails.india_warehouse);
+                      setActiveTab('new');
+                      setCurrentStep(1);
+                    }}
+                    className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-sm">add</span>
+                    <span>+ Add Another Package to this Hold Group</span>
+                  </button>
+                ) : null}
+
+                <button
+                  onClick={() => setSelectedOrderDetails(null)}
+                  className="w-full py-3 bg-[#1B250F] text-white font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-[#2c3b19] transition-all cursor-pointer shadow-md"
+                >
+                  Close Order Details
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Manage My Addresses Popup Modal ── */}
       {showManageAddressesModal && (
