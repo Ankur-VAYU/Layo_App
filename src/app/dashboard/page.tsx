@@ -468,9 +468,13 @@ export default function Dashboard() {
   const pendingDuesShipments = useMemo(() => {
     return shipments.filter(s => {
       if (!s) return false;
-      const isRepackedOrAwaiting = s.status === 'repacked' || s.payment_status === 'awaiting_balance' || (s.remaining_balance_cad && s.remaining_balance_cad > 0);
-      const isNotPaid = s.payment_status !== 'completed' && s.payment_status !== 'fully_paid' && s.payment_status !== 'paid_full';
-      const hasBalance = (s.remaining_balance_cad && s.remaining_balance_cad > 0) || s.payment_status === 'awaiting_balance';
+      const statusLower = String(s.status || '').toLowerCase();
+      const paymentStatusLower = String(s.payment_status || '').toLowerCase();
+      const remainingBal = Number(s.remaining_balance_cad || 0);
+
+      const isRepackedOrAwaiting = statusLower === 'repacked' || paymentStatusLower === 'awaiting_balance' || remainingBal > 0;
+      const isNotPaid = paymentStatusLower !== 'completed' && paymentStatusLower !== 'fully_paid' && paymentStatusLower !== 'paid_full';
+      const hasBalance = remainingBal > 0 || paymentStatusLower === 'awaiting_balance';
       return isRepackedOrAwaiting && isNotPaid && hasBalance;
     });
   }, [shipments]);
@@ -1789,11 +1793,11 @@ export default function Dashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {pendingDuesShipments.map(s => {
-                  const verifiedWeightKg = s.actual_weight || s.total_weight || 1.0;
-                  const boxSize = s.box_dimensions || 'Layo Box M (35 x 25 x 20 cm)';
-                  const finalCost = s.final_cost_cad || s.total_cost || 0;
-                  const advancePaid = s.advance_amount_cad || (finalCost > 0 ? Math.round(finalCost * 0.20 * 100) / 100 : 0);
-                  const dueCAD = s.remaining_balance_cad || Math.max(0, Math.round((finalCost - advancePaid) * 100) / 100);
+                  const verifiedWeightKg = Number(s.actual_weight || s.total_weight || 1.0) || 1.0;
+                  const boxSize = typeof s.box_dimensions === 'string' ? s.box_dimensions : 'Layo Box M (35 x 25 x 20 cm)';
+                  const finalCost = Number(s.final_cost_cad || s.total_cost || 0) || 0;
+                  const advancePaid = Number(s.advance_amount_cad) || (finalCost > 0 ? Math.round(finalCost * 0.20 * 100) / 100 : 0);
+                  const dueCAD = Number(s.remaining_balance_cad) || Math.max(0, Math.round((finalCost - advancePaid) * 100) / 100);
                   const displayId = formatShipmentId(s.id);
 
                   return (
@@ -2285,17 +2289,17 @@ export default function Dashboard() {
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-[#0E1F38]/60 block uppercase">20% Paid</span>
-                                    <span className="font-bold text-[#0E1F38]">${(s.advance_amount_cad || 0).toFixed(2)} CAD</span>
+                                    <span className="font-bold text-[#0E1F38]">${(Number(s.advance_amount_cad) || 0).toFixed(2)} CAD</span>
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Balance Due</span>
-                                    <span className="font-black text-[#FF5A65]">${(s.remaining_balance_cad || 0).toFixed(2)} CAD</span>
+                                    <span className="font-black text-[#FF5A65]">${(Number(s.remaining_balance_cad) || 0).toFixed(2)} CAD</span>
                                   </div>
                                 </div>
 
                                 <button
                                   onClick={() => {
-                                    const remaining = s.remaining_balance_cad || 0;
+                                    const remaining = Number(s.remaining_balance_cad) || 0;
                                     localStorage.setItem('layo_pending_shipment', JSON.stringify({
                                       shipmentId: s.id,
                                       isBalancePayment: true,
@@ -2312,7 +2316,7 @@ export default function Dashboard() {
                                   className="w-full py-3 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#e24550] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#FF5A65]/20"
                                 >
                                   <span className="material-symbols-outlined text-sm">lock</span>
-                                  Pay Remaining Balance (${(s.remaining_balance_cad || 0).toFixed(2)} CAD)
+                                  Pay Remaining Balance (${(Number(s.remaining_balance_cad) || 0).toFixed(2)} CAD)
                                 </button>
                               </div>
                             )}
