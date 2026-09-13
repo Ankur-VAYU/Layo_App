@@ -791,7 +791,7 @@ export default function Dashboard() {
     return list;
   }, [activeItems]);
 
-  // Active Hold Groups memoization
+  // Active Hold Groups memoization (only returns open groups that still have remaining capacity)
   const activeHoldGroups = useMemo(() => {
     const activeHoldShips = shipments.filter(s =>
       s &&
@@ -809,7 +809,32 @@ export default function Dashboard() {
       }
       map.get(groupId)!.shipments.push(s);
     });
-    return Array.from(map.values());
+
+    const groupsWithCapacity = Array.from(map.values()).map(grp => {
+      // Find expected_packages from primary shipment (first created or explicit expected_packages)
+      const primary = grp.shipments.reduce((acc, curr) => {
+        if (!acc) return curr;
+        return (curr.expected_packages !== undefined && curr.expected_packages !== null && curr.expected_packages > 0) ? curr : acc;
+      }, grp.shipments[0]);
+
+      const expectedMore = primary?.expected_packages ?? 1;
+      const totalCapacity = 1 + expectedMore;
+      const currentLinkedCount = grp.shipments.length;
+      const remainingSlots = Math.max(0, totalCapacity - currentLinkedCount);
+
+      return {
+        ...grp,
+        primaryShipment: primary,
+        expectedMore,
+        totalCapacity,
+        currentLinkedCount,
+        remainingSlots,
+        isOpen: remainingSlots > 0
+      };
+    });
+
+    // Only return hold groups that are still open for more packages
+    return groupsWithCapacity.filter(grp => grp.isOpen);
   }, [shipments]);
 
   // Auto-select hold action and active hold group when entering Step 5 if active hold groups exist
@@ -2572,7 +2597,7 @@ export default function Dashboard() {
                             Active Hold Group Found ({activeHoldGroups[0].group_id})
                           </span>
                           <span className="bg-blue-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
-                            {activeHoldGroups[0].shipments.length} Package(s) Linked
+                            {activeHoldGroups[0].currentLinkedCount}/{activeHoldGroups[0].totalCapacity} Linked • {activeHoldGroups[0].remainingSlots} Slot(s) Left
                           </span>
                         </div>
                         <p className="text-[11px] text-blue-800 leading-relaxed font-normal">
@@ -2705,7 +2730,7 @@ export default function Dashboard() {
                                         <div className="text-xs font-bold text-[#0E1F38] flex items-center gap-2">
                                           <span>Group: {grp.group_id}</span>
                                           <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-medium">
-                                            {pkgCount} package{pkgCount > 1 ? 's' : ''} linked
+                                            {grp.currentLinkedCount} of {grp.totalCapacity} linked ({grp.remainingSlots} slot{grp.remainingSlots > 1 ? 's' : ''} left)
                                           </span>
                                         </div>
                                         <p className="text-[10px] text-gray-500 mt-0.5">
