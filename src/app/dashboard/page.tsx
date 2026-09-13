@@ -637,7 +637,7 @@ export default function Dashboard() {
   }, [shipments]);
 
   // Grouped list of shipments for Payment Dues tab (Hold group packages combined into single entries)
-  const groupedPendingDues = useMemo(() => {
+  const groupedPendingDues = useMemo(() => { try {
     // 1. Filter eligible shipments (not draft, not cancelled, not completed)
     const holdCount = shipments.filter(s => s && (s.warehouse_action === 'hold' || String(s.status || '').toLowerCase() === 'holding')).length;
 
@@ -722,7 +722,7 @@ export default function Dashboard() {
         boxDimensions,
       };
     });
-  }, [shipments]);
+  } catch (e) { console.error('groupedPendingDues error:', e); return []; } }, [shipments]);
 
   // 4. My Shipments (Active booked shipments undergoing locker processing, airfreight, delivery, or completed)
   const myShipmentsList = useMemo(() => {
@@ -1056,8 +1056,9 @@ export default function Dashboard() {
       } catch (e) {}
 
       // Dual-sync merge: DB records take precedence, local backups fill any gaps
+      // Run local shipments through parseShipment so they always have normalized fields
       const mergedMap = new Map();
-      localShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
+      localShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, parseShipment(s) || s); });
       dbShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
 
       const mergedList = Array.from(mergedMap.values()).sort(
@@ -2395,15 +2396,15 @@ export default function Dashboard() {
                             <span className="text-[#0E1F38]/70 font-medium">
                               {isRepackDone ? 'Verified Shipping Cost:' : 'Estimated Shipping Cost:'}
                             </span>
-                            <span className="font-bold text-[#0E1F38]">${grp.combinedFinalCost.toFixed(2)} CAD</span>
+                            <span className="font-bold text-[#0E1F38]">${(Number(grp.combinedFinalCost) || 0).toFixed(2)} CAD</span>
                           </div>
                           <div className="flex justify-between items-center text-xs text-emerald-700">
                             <span className="font-medium">Total 20% Advance Paid:</span>
-                            <span className="font-bold">-${grp.combinedAdvancePaid.toFixed(2)} CAD</span>
+                            <span className="font-bold">-${(Number(grp.combinedAdvancePaid) || 0).toFixed(2)} CAD</span>
                           </div>
                           <div className="flex justify-between items-center text-sm pt-2 border-t border-amber-200 font-black text-[#0E1F38]">
                             <span className="text-[#FF5A65]">80% Remaining Balance Due:</span>
-                            <span className="text-xl text-[#FF5A65]">${grp.combinedRemainingBalance.toFixed(2)} CAD</span>
+                            <span className="text-xl text-[#FF5A65]">${(Number(grp.combinedRemainingBalance) || 0).toFixed(2)} CAD</span>
                           </div>
                         </div>
                       </div>
@@ -2416,7 +2417,7 @@ export default function Dashboard() {
                           className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                         >
                           <span className="material-symbols-outlined text-sm">lock</span>
-                          <span>Pay Remaining Balance (${grp.combinedRemainingBalance.toFixed(2)} CAD)</span>
+                          <span>Pay Remaining Balance (${(Number(grp.combinedRemainingBalance) || 0).toFixed(2)} CAD)</span>
                         </button>
                       ) : (
                         <button
