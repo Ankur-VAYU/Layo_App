@@ -207,12 +207,14 @@ export default function Dashboard() {
 
   // Navigation and view tabs
   // ── State ────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'new' | 'history'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'dues' | 'history'>('new');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('tab') === 'history') setActiveTab('history');
+      const tabParam = params.get('tab');
+      if (tabParam === 'history') setActiveTab('history');
+      else if (tabParam === 'dues' || tabParam === 'remaining' || tabParam === 'payment_dues') setActiveTab('dues');
     }
   }, []);
   const [currentStep, setCurrentStep] = useState(1);
@@ -462,6 +464,53 @@ export default function Dashboard() {
     deliveryType, editingDraftId
   ]);
 
+  // Memoized list of shipments awaiting remaining balance payment after Ops repack
+  const pendingDuesShipments = useMemo(() => {
+    return shipments.filter(s => {
+      if (!s) return false;
+      const isRepackedOrAwaiting = s.status === 'repacked' || s.payment_status === 'awaiting_balance' || (s.remaining_balance_cad && s.remaining_balance_cad > 0);
+      const isNotPaid = s.payment_status !== 'completed' && s.payment_status !== 'fully_paid' && s.payment_status !== 'paid_full';
+      const hasBalance = (s.remaining_balance_cad && s.remaining_balance_cad > 0) || s.payment_status === 'awaiting_balance';
+      return isRepackedOrAwaiting && isNotPaid && hasBalance;
+    });
+  }, [shipments]);
+
+  const handlePayRemainingBalance = async (shipment: any) => {
+    setIsProcessingPayment(true);
+    try {
+      const dueCAD = shipment.remaining_balance_cad || Math.max(0, (shipment.final_cost_cad || shipment.total_cost || 0) - (shipment.advance_amount_cad || 0));
+      
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountCAD: dueCAD,
+          shipmentId: shipment.id,
+          userId: user?.id,
+          userEmail: user?.email,
+          isAdvance: false,
+          destinationCity: shipment.destination_city || 'Canada',
+          destinationAddress: shipment.destination_address || '',
+          warehouseName: shipment.india_warehouse || 'Indian Locker Hub',
+          totalWeightKg: shipment.actual_weight || shipment.total_weight || 1.0,
+          itemsSummary: `Remaining 80% balance payment for Layo Locker #${formatShipmentId(shipment.id)}`,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Failed to initiate Stripe payment');
+      }
+    } catch (err: any) {
+      console.error('Pay balance error:', err);
+      alert('Payment error: ' + (err.message || 'Please try again'));
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
   // Check for return from Stripe Checkout
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -475,12 +524,68 @@ export default function Dashboard() {
           .then(res => res.json())
           .then(async (data) => {
             if (data.verified) {
-              const targetId = (data.metadata?.shipment_id && data.metadata.shipment_id.length === 36)
+              const targetId = data.metadata?.shipment_id || null;
+
+              if (targetId) {
+                // Check if this was a balance payment for an existing repacked shipment
+                const existingShip = shipments.find(s => s.id === targetId || formatShipmentId(s.id) === formatShipmentId(targetId));
+                if (existingShip && (existingShip.status === 'repacked' || existingShip.payment_status === 'awaiting_balance')) {
+                  await updateShipmentStage(
+                    existingShip.id,
+                    'repacked',
+                    existingShip.stage_timestamps,
+                    {
+                      payment_status: 'completed',
+                      remaining_balance_cad: 0,
+                    },
+                    { id: user?.id || null, email: user?.email || data.customerEmail || null, role: 'customer' },
+                    `Remaining balance payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD completed via Stripe`
+                  );
+
+                  // Update local storage shipments list
+                  try {
+                    const rawLocal = localStorage.getItem('layo_local_shipments');
+                    if (rawLocal) {
+                      const allLocal = JSON.parse(rawLocal);
+                      const updated = allLocal.map((s: any) => s.id === existingShip.id ? { ...s, payment_status: 'completed', remaining_balance_cad: 0 } : s);
+                      localStorage.setItem('layo_local_shipments', JSON.stringify(updated));
+                    }
+                  } catch (e) {}
+
+                  // Record transaction
+                  await supabase.from('transactions').insert({
+                    shipment_id: existingShip.id,
+                    user_id: user?.id || null,
+                    amount_cad: data.amountTotal || 0,
+                    amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 61)) : 0,
+                    currency: data.currency?.toUpperCase() || 'CAD',
+                    exchange_rate: cadToInrRate || 61,
+                    payment_method: 'stripe',
+                    stripe_session_id: sessionId,
+                    stripe_payment_intent_id: data.paymentIntentId || null,
+                    status: 'completed',
+                    customer_email: data.customerEmail || user?.email || null,
+                    customer_name: user?.email || null,
+                    description: `Layo balance payment — Locker #${formatShipmentId(existingShip.id)}`,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  });
+
+                  setPaymentBanner({
+                    type: 'success',
+                    message: `Remaining balance payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed! Locker #${formatShipmentId(existingShip.id)} is fully paid and queued for airfreight dispatch.`
+                  });
+                  setActiveTab('history');
+                  if (user?.id) fetchDashboardData(user.id);
+                  return;
+                }
+              }
+              const bookingTargetId = (data.metadata?.shipment_id && data.metadata.shipment_id.length === 36)
                 ? data.metadata.shipment_id
                 : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-000000000000');
 
               const { data: updatedShipment } = await updateShipmentStage(
-                targetId,
+                bookingTargetId,
                 'paid',
                 {},
                 {
@@ -512,7 +617,7 @@ export default function Dashboard() {
 
               // Record transaction
               await supabase.from('transactions').insert({
-                shipment_id: targetId,
+                shipment_id: bookingTargetId,
                 user_id: user?.id || null,
                 amount_cad: data.amountTotal || 0,
                 amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 61)) : 0,
@@ -524,7 +629,7 @@ export default function Dashboard() {
                 status: 'completed',
                 customer_email: data.customerEmail || user?.email || null,
                 customer_name: user?.email || null,
-                description: `Layo shipment payment — Locker #${formatShipmentId(targetId)}`,
+                description: `Layo shipment payment — Locker #${formatShipmentId(bookingTargetId)}`,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               });
@@ -1615,18 +1720,31 @@ export default function Dashboard() {
         </div>
 
         {/* Tab switcher */}
-        <div className="flex justify-center border-b border-black/10 mb-8 max-w-md mx-auto">
+        <div className="flex justify-center border-b border-black/10 mb-8 max-w-xl mx-auto gap-1 sm:gap-2">
           <button
             onClick={handleStartNewOrder}
-            className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+            className={`flex-1 py-3 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
               activeTab === 'new' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
           >
-            New Locker Order
+            New Order
+          </button>
+          <button
+            onClick={() => setActiveTab('dues')}
+            className={`flex-1 py-3 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeTab === 'dues' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
+            }`}
+          >
+            <span>💳 Payment Dues</span>
+            {pendingDuesShipments.length > 0 && (
+              <span className="bg-[#FF5A65] text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                {pendingDuesShipments.length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+            className={`flex-1 py-3 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
               activeTab === 'history' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
           >
@@ -1634,7 +1752,119 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {activeTab === 'history' ? (
+        {activeTab === 'dues' ? (
+          /* ── REMAINING PAYMENT DUES TAB ── */
+          <div className="space-y-6">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 sm:p-8 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-amber-600 text-3xl">payments</span>
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38]">Final Remaining Payment Dues</h2>
+                  <p className="text-xs sm:text-sm text-[#0E1F38]/70 font-medium">
+                    Verified Digital Scale Weight & Layo SOP Repack Statement
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs sm:text-sm text-[#0E1F38]/70 font-light leading-relaxed">
+                Once our India Hub Ops team strips merchant cardboard boxes, folds items into standard Layo Green Boxes, and records actual digital scale weight, final delivery dues are billed here. Complete the 80% balance payment to initiate international airfreight dispatch to Canada.
+              </p>
+            </div>
+
+            {pendingDuesShipments.length === 0 ? (
+              <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
+                <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-emerald-600">
+                  <span className="material-symbols-outlined text-3xl">task_alt</span>
+                </div>
+                <h3 className="text-lg font-bold text-[#0E1F38]">No Pending Payment Dues</h3>
+                <p className="text-[#0E1F38]/60 text-sm max-w-sm mx-auto font-light">
+                  You have no outstanding balance payments! All your repacked orders are settled or currently processing.
+                </p>
+                <button
+                  onClick={() => setActiveTab('history')}
+                  className="bg-[#0E1F38] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#1e3a60] active:scale-95 transition-all shadow-md mt-2 cursor-pointer"
+                >
+                  View All Shipments ({shipments.length})
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {pendingDuesShipments.map(s => {
+                  const verifiedWeightKg = s.actual_weight || s.total_weight || 1.0;
+                  const boxSize = s.box_dimensions || 'Layo Box M (35 x 25 x 20 cm)';
+                  const finalCost = s.final_cost_cad || s.total_cost || 0;
+                  const advancePaid = s.advance_amount_cad || (finalCost > 0 ? Math.round(finalCost * 0.20 * 100) / 100 : 0);
+                  const dueCAD = s.remaining_balance_cad || Math.max(0, Math.round((finalCost - advancePaid) * 100) / 100);
+                  const displayId = formatShipmentId(s.id);
+
+                  return (
+                    <div key={s.id} className="bg-white border-2 border-amber-400/40 rounded-3xl p-6 shadow-md hover:shadow-lg transition-all space-y-5 flex flex-col justify-between">
+                      <div className="space-y-4">
+                        {/* Card Header */}
+                        <div className="flex justify-between items-start border-b border-black/5 pb-4">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-[#FF5A65]">
+                              Locker Order #{displayId}
+                            </span>
+                            <h3 className="text-lg font-bold text-[#0E1F38] mt-0.5">
+                              {s.external_order_id ? `Order #${s.external_order_id}` : 'Standard Parcel Repack'}
+                            </h3>
+                          </div>
+                          <span className="bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border border-amber-300">
+                            Repacked & Scale Verified
+                          </span>
+                        </div>
+
+                        {/* Ops Repack & Scale Inspection Result */}
+                        <div className="bg-[#FAF8EE] rounded-2xl p-4 border border-black/5 space-y-2 text-xs text-[#0E1F38]">
+                          <div className="flex justify-between items-center font-semibold">
+                            <span className="text-[#0E1F38]/60">Standard Layo Box Size:</span>
+                            <span className="text-[#0E1F38] font-bold">{boxSize}</span>
+                          </div>
+                          <div className="flex justify-between items-center font-semibold">
+                            <span className="text-[#0E1F38]/60">Digital Scale Gross Weight:</span>
+                            <span className="text-emerald-700 font-black text-sm">{verifiedWeightKg} kg</span>
+                          </div>
+                          <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
+                            <span className="text-[#0E1F38]/60">Destination:</span>
+                            <span className="text-[#0E1F38] truncate max-w-[200px]">
+                              {s.destination_city || 'Toronto (GTA)'} ({s.destination_address || 'Canada'})
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Financial Breakdown */}
+                        <div className="bg-white border border-amber-200 rounded-2xl p-4 space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-[#0E1F38]/70 font-medium">Verified Shipping Cost:</span>
+                            <span className="font-bold text-[#0E1F38]">${finalCost.toFixed(2)} CAD</span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs text-emerald-700">
+                            <span className="font-medium">20% Advance Paid:</span>
+                            <span className="font-bold">-${advancePaid.toFixed(2)} CAD</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm pt-2 border-t border-amber-200 font-black text-[#0E1F38]">
+                            <span className="text-[#FF5A65]">80% Remaining Balance Due:</span>
+                            <span className="text-xl text-[#FF5A65]">${dueCAD.toFixed(2)} CAD</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pay Action Button */}
+                      <button
+                        onClick={() => handlePayRemainingBalance(s)}
+                        disabled={isProcessingPayment}
+                        className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-sm">lock</span>
+                        <span>Pay Remaining Balance (${dueCAD.toFixed(2)} CAD)</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'history' ? (
           /* ── MY SHIPMENTS / TRACKER TAB ── */
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
