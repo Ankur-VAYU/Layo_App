@@ -62,12 +62,28 @@ export default function WarehouseOpsPortal() {
     setIsFetching(true);
     try {
       const { data } = await fetchShipments();
-      if (data) {
-        setShipments(data);
-        if (selectedShipment) {
-          const updated = data.find(s => s.id === selectedShipment.id);
-          if (updated) setSelectedShipment(updated);
+      const dbShips = data ?? [];
+
+      let localShips: any[] = [];
+      try {
+        const rawLocal = localStorage.getItem('layo_local_shipments');
+        if (rawLocal) {
+          localShips = JSON.parse(rawLocal);
         }
+      } catch (e) {}
+
+      const mergedMap = new Map();
+      localShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
+      dbShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
+
+      const mergedList = Array.from(mergedMap.values()).sort(
+        (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+
+      setShipments(mergedList);
+      if (selectedShipment) {
+        const updated = mergedList.find(s => s.id === selectedShipment.id);
+        if (updated) setSelectedShipment(updated);
       }
     } catch (err) {
       console.error('Failed to load shipments for ops', err);
@@ -104,11 +120,10 @@ export default function WarehouseOpsPortal() {
     });
   }, [shipments, searchQuery, activeTab]);
 
-  // Hold & Combine groups — group by user_id for the hold_combine tab
-  // Only show PAID shipments (not drafts) in ops
+  // Hold & Combine groups — group by user_id or hold_group_id for the hold_combine tab
   const holdGroups = useMemo(() => {
     const holdShipments = shipments.filter(s =>
-      s.warehouse_action === 'hold' &&
+      (s.warehouse_action === 'hold' || s.status === 'holding' || (s.hold_group_id && String(s.hold_group_id).startsWith('HOLD-'))) &&
       s.status !== 'Draft Estimate' &&
       s.status !== 'draft'
     );
@@ -714,18 +729,31 @@ export default function WarehouseOpsPortal() {
             </div>
 
             {/* Stage filter pills */}
-            <div className="flex gap-1 overflow-x-auto pb-1 text-[10px] font-black uppercase tracking-wider">
+            <div className="flex flex-wrap gap-1.5 pb-1 text-[10px] font-black uppercase tracking-wider">
               <button
                 onClick={() => setActiveTab('all')}
-                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
                   activeTab === 'all' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
                 }`}
               >
                 All ({filteredShipments.length})
               </button>
               <button
+                onClick={() => setActiveTab('hold_combine')}
+                className={`px-3 py-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 font-bold ${
+                  activeTab === 'hold_combine' ? 'bg-amber-700 text-white border-amber-700 shadow-sm' : 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                }`}
+              >
+                📦 Hold &amp; Combine Queue
+                {holdGroups.length > 0 && (
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                    activeTab === 'hold_combine' ? 'bg-white/20 text-white' : 'bg-amber-800 text-white'
+                  }`}>{holdGroups.length}</span>
+                )}
+              </button>
+              <button
                 onClick={() => setActiveTab('inward')}
-                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
                   activeTab === 'inward' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
                 }`}
               >
@@ -733,7 +761,7 @@ export default function WarehouseOpsPortal() {
               </button>
               <button
                 onClick={() => setActiveTab('qc')}
-                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
                   activeTab === 'qc' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
                 }`}
               >
@@ -741,7 +769,7 @@ export default function WarehouseOpsPortal() {
               </button>
               <button
                 onClick={() => setActiveTab('repack')}
-                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
                   activeTab === 'repack' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
                 }`}
               >
@@ -749,24 +777,11 @@ export default function WarehouseOpsPortal() {
               </button>
               <button
                 onClick={() => setActiveTab('master_bulk')}
-                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
                   activeTab === 'master_bulk' ? 'bg-[#1B250F] text-white border-[#1B250F]' : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/5'
                 }`}
               >
                 4. Master Cargo
-              </button>
-              <button
-                onClick={() => setActiveTab('hold_combine')}
-                className={`px-3 py-1.5 rounded-lg border transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
-                  activeTab === 'hold_combine' ? 'bg-amber-700 text-white border-amber-700' : 'bg-amber-50 text-amber-800 border-amber-200'
-                }`}
-              >
-                📦 Hold &amp; Combine
-                {holdGroups.length > 0 && (
-                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-                    activeTab === 'hold_combine' ? 'bg-white/20 text-white' : 'bg-amber-700 text-white'
-                  }`}>{holdGroups.length}</span>
-                )}
               </button>
             </div>
           </div>
