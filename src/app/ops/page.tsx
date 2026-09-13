@@ -160,6 +160,8 @@ export default function WarehouseOpsPortal() {
 
   // Handler: Inward scan / arrival at India Hub
   // ── Ops Stage Handlers ─────────────────────────────────────────────────
+  // Handler: Inward scan / arrival at India Hub
+  // ── Ops Stage Handlers ─────────────────────────────────────────────────
   /** Stage 1: Inward — scan package in at India Hub */
   const handleMarkInwarded = async (shipmentId: string) => {
     setUpdating(true);
@@ -174,11 +176,18 @@ export default function WarehouseOpsPortal() {
         'Package inward scanned at India Hub'
       );
 
-      if (!result.error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'inwarded', stage_timestamps: result.updatedTimestamps } : s));
-        if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'inwarded', stage_timestamps: result.updatedTimestamps }));
-        }
+      const updatedTimestamps = result.updatedTimestamps || { ...(current?.stage_timestamps || {}), inwarded: new Date().toISOString() };
+
+      setShipments(prev => {
+        const nextList = prev.map(s => s.id === shipmentId ? { ...s, status: 'inwarded', stage_timestamps: updatedTimestamps } : s);
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
+      if (selectedShipment?.id === shipmentId) {
+        setSelectedShipment((prev: any) => ({ ...prev, status: 'inwarded', stage_timestamps: updatedTimestamps }));
       }
     } catch (err) {
       console.error('Failed to mark inwarded', err);
@@ -202,11 +211,18 @@ export default function WarehouseOpsPortal() {
         `QC inspection passed with ${uploadedPhotos.length} photos`
       );
 
-      if (!result.error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'qc_verified', stage_timestamps: result.updatedTimestamps, qc_photos: uploadedPhotos } : s));
-        if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'qc_verified', stage_timestamps: result.updatedTimestamps, qc_photos: uploadedPhotos }));
-        }
+      const updatedTimestamps = result.updatedTimestamps || { ...(current?.stage_timestamps || {}), qc_verified: new Date().toISOString() };
+
+      setShipments(prev => {
+        const nextList = prev.map(s => s.id === shipmentId ? { ...s, status: 'qc_verified', stage_timestamps: updatedTimestamps, qc_photos: uploadedPhotos } : s);
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
+      if (selectedShipment?.id === shipmentId) {
+        setSelectedShipment((prev: any) => ({ ...prev, status: 'qc_verified', stage_timestamps: updatedTimestamps, qc_photos: uploadedPhotos }));
       }
     } catch (err) {
       console.error('Failed to mark QC verified', err);
@@ -230,12 +246,19 @@ export default function WarehouseOpsPortal() {
         `QC Discrepancy Flagged: ${discrepancyNote}`
       );
 
-      if (!result.error) {
-        setShipments(prev => prev.map(s => s.id === selectedShipment.id ? { ...s, status: 'qc_discrepancy', discrepancy_note: discrepancyNote, stage_timestamps: result.updatedTimestamps } : s));
-        setSelectedShipment((prev: any) => ({ ...prev, status: 'qc_discrepancy', discrepancy_note: discrepancyNote, stage_timestamps: result.updatedTimestamps }));
-        setShowDiscrepancyModal(false);
-        setDiscrepancyNote('');
-      }
+      const updatedTimestamps = result.updatedTimestamps || { ...(selectedShipment.stage_timestamps || {}), qc_discrepancy: new Date().toISOString() };
+
+      setShipments(prev => {
+        const nextList = prev.map(s => s.id === selectedShipment.id ? { ...s, status: 'qc_discrepancy', discrepancy_note: discrepancyNote, stage_timestamps: updatedTimestamps } : s);
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
+      setSelectedShipment((prev: any) => ({ ...prev, status: 'qc_discrepancy', discrepancy_note: discrepancyNote, stage_timestamps: updatedTimestamps }));
+      setShowDiscrepancyModal(false);
+      setDiscrepancyNote('');
     } catch (err) {
       console.error('Failed to flag discrepancy', err);
     } finally {
@@ -272,8 +295,10 @@ export default function WarehouseOpsPortal() {
         `Repacked in Layo Green Box (${verifiedWeight} kg). Final Cost: $${finalCostCAD} CAD, Remaining Balance: $${remainingBalanceCAD} CAD`
       );
 
-      if (!result.error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { 
+      const updatedTimestamps = result.updatedTimestamps || { ...(current?.stage_timestamps || {}), repacked: new Date().toISOString() };
+
+      setShipments(prev => {
+        const nextList = prev.map(s => s.id === shipmentId ? { 
           ...s, 
           status: 'repacked', 
           total_weight: verifiedWeight, 
@@ -282,21 +307,26 @@ export default function WarehouseOpsPortal() {
           remaining_balance_cad: remainingBalanceCAD,
           payment_status: newPaymentStatus,
           box_dimensions: boxDimensions, 
-          stage_timestamps: result.updatedTimestamps 
-        } : s));
-        if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ 
-            ...prev, 
-            status: 'repacked', 
-            total_weight: verifiedWeight, 
-            actual_weight: verifiedWeight,
-            final_cost_cad: finalCostCAD,
-            remaining_balance_cad: remainingBalanceCAD,
-            payment_status: newPaymentStatus,
-            box_dimensions: boxDimensions, 
-            stage_timestamps: result.updatedTimestamps 
-          }));
-        }
+          stage_timestamps: updatedTimestamps 
+        } : s);
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
+      if (selectedShipment?.id === shipmentId) {
+        setSelectedShipment((prev: any) => ({ 
+          ...prev, 
+          status: 'repacked', 
+          total_weight: verifiedWeight, 
+          actual_weight: verifiedWeight,
+          final_cost_cad: finalCostCAD,
+          remaining_balance_cad: remainingBalanceCAD,
+          payment_status: newPaymentStatus,
+          box_dimensions: boxDimensions, 
+          stage_timestamps: updatedTimestamps 
+        }));
       }
     } catch (err) {
       console.error('Failed to mark repacked', err);
@@ -979,7 +1009,7 @@ export default function WarehouseOpsPortal() {
                         <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">1</span>
                         India Hub Inward Ingestion
                       </h3>
-                      {selectedShipment.status !== 'draft' && selectedShipment.status !== 'paid' && (
+                      {['inwarded', 'qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
                         <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
                           <span className="material-symbols-outlined text-xs">check_circle</span>
                           Received @ Delhi Hub
@@ -989,7 +1019,7 @@ export default function WarehouseOpsPortal() {
                     <p className="text-xs text-[#0E1F38]/70">
                       Verify incoming domestic merchant parcel (Myntra/Amazon/Ajio) against customer locker ID.
                     </p>
-                    {(selectedShipment.status === 'draft' || selectedShipment.status === 'paid') && (
+                    {!['inwarded', 'qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
                       <button
                         onClick={() => handleMarkInwarded(selectedShipment.id)}
                         disabled={updating}
