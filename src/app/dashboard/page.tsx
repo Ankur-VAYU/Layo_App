@@ -2891,28 +2891,37 @@ export default function Dashboard() {
                       <button
                         type="button"
                         onClick={() => setDeliveryType('normal')}
-                        className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-between transition-all cursor-pointer ${
+                        className={`py-2 px-3 rounded-xl border font-bold text-xs flex flex-col items-start justify-center transition-all cursor-pointer ${
                           deliveryType === 'normal'
                             ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-xs ring-1 ring-[#8BC34A]/40'
                             : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/10 hover:border-black/20'
                         }`}
                       >
-                        <span>📦 Normal</span>
-                        {deliveryType === 'normal' && <span className="text-[8px] bg-[#8BC34A] text-[#1B250F] font-black px-1 rounded">ON</span>}
+                        <div className="flex items-center justify-between w-full">
+                          <span>📦 Normal</span>
+                          {deliveryType === 'normal' && <span className="text-[8px] bg-[#8BC34A] text-[#1B250F] font-black px-1 rounded">ON</span>}
+                        </div>
+                        <span className={`text-[10px] font-semibold mt-0.5 ${deliveryType === 'normal' ? 'text-white/80' : 'text-[#0E1F38]/60'}`}>10-12 days*</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setDeliveryType('express')}
-                        className={`py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-between transition-all cursor-pointer ${
+                        className={`py-2 px-3 rounded-xl border font-bold text-xs flex flex-col items-start justify-center transition-all cursor-pointer ${
                           deliveryType === 'express'
                             ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-xs ring-1 ring-[#8BC34A]/40'
                             : 'bg-[#FAF8EE] text-[#0E1F38]/70 border-black/10 hover:border-black/20'
                         }`}
                       >
-                        <span>⚡ Express</span>
-                        {deliveryType === 'express' && <span className="text-[8px] bg-[#8BC34A] text-[#1B250F] font-black px-1 rounded">ON</span>}
+                        <div className="flex items-center justify-between w-full">
+                          <span>⚡ Express</span>
+                          {deliveryType === 'express' && <span className="text-[8px] bg-[#8BC34A] text-[#1B250F] font-black px-1 rounded">ON</span>}
+                        </div>
+                        <span className={`text-[10px] font-semibold mt-0.5 ${deliveryType === 'express' ? 'text-white/80' : 'text-[#0E1F38]/60'}`}>7-9 days*</span>
                       </button>
                     </div>
+                    <p className="text-[9.5px] text-[#0E1F38]/60 italic pt-1 leading-tight">
+                      *- It is tentative days. It may vary in case of unforeseen circumstances.
+                    </p>
                   </div>
 
                   <div className="h-px bg-black/5 my-2"></div>

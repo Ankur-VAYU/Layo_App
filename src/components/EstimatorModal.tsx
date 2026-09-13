@@ -645,38 +645,43 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
               </div>
 
               {/* Delivery Type Option Selector */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDeliveryType('normal')}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                    deliveryType === 'normal'
-                      ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-sm ring-2 ring-[#8BC34A]/30'
-                      : 'bg-[#FAF8EE] text-[#0E1F38] border-black/10 hover:border-black/20'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black">📦 Normal Delivery</span>
-                    {deliveryType === 'normal' && <span className="text-[9px] bg-[#8BC34A] text-[#1B250F] font-black px-1.5 py-0.5 rounded uppercase">Selected</span>}
-                  </div>
-                  <p className="text-[10px] opacity-70 mt-1">Best Value (Standard Air Cargo)</p>
-                </button>
+              <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('normal')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      deliveryType === 'normal'
+                        ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-sm ring-2 ring-[#8BC34A]/30'
+                        : 'bg-[#FAF8EE] text-[#0E1F38] border-black/10 hover:border-black/20'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black">📦 Normal Delivery</span>
+                      {deliveryType === 'normal' && <span className="text-[9px] bg-[#8BC34A] text-[#1B250F] font-black px-1.5 py-0.5 rounded uppercase">Selected</span>}
+                    </div>
+                    <p className="text-[11px] font-semibold mt-1">10-12 days*</p>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setDeliveryType('express')}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                    deliveryType === 'express'
-                      ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-sm ring-2 ring-[#8BC34A]/30'
-                      : 'bg-[#FAF8EE] text-[#0E1F38] border-black/10 hover:border-black/20'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black">⚡ Express Delivery</span>
-                    {deliveryType === 'express' && <span className="text-[9px] bg-[#8BC34A] text-[#1B250F] font-black px-1.5 py-0.5 rounded uppercase">Selected</span>}
-                  </div>
-                  <p className="text-[10px] opacity-70 mt-1">Priority Air Cargo</p>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('express')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      deliveryType === 'express'
+                        ? 'bg-[#1B250F] text-white border-[#1B250F] shadow-sm ring-2 ring-[#8BC34A]/30'
+                        : 'bg-[#FAF8EE] text-[#0E1F38] border-black/10 hover:border-black/20'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black">⚡ Express Delivery</span>
+                      {deliveryType === 'express' && <span className="text-[9px] bg-[#8BC34A] text-[#1B250F] font-black px-1.5 py-0.5 rounded uppercase">Selected</span>}
+                    </div>
+                    <p className="text-[11px] font-semibold mt-1">7-9 days*</p>
+                  </button>
+                </div>
+                <p className="text-[9.5px] text-[#0E1F38]/60 italic mt-1.5 leading-tight">
+                  *- It is tentative days. It may vary in case of unforeseen circumstances.
+                </p>
               </div>
 
               {/* Final Rate Display (Customer View) */}
