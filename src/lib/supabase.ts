@@ -306,6 +306,7 @@ export function parseShipment(raw: any) {
     final_cost_cad: raw.final_cost_cad ?? itemMeta.final_cost_cad ?? null,
     remaining_balance_cad: raw.remaining_balance_cad ?? itemMeta.remaining_balance_cad ?? 0,
     payment_status: raw.payment_status || itemMeta.payment_status || 'pending',
+    box_dimensions: raw.box_dimensions ?? itemMeta.box_dimensions ?? null,
   };
 }
 
@@ -372,7 +373,7 @@ export async function updateShipmentStage(
     'destination_address', 'india_warehouse', 'external_order_id', 'external_tracking',
     'total_weight', 'total_cost', 'payment_method', 'items', 'stage_timestamps',
     'stage_history', 'master_box_id', 'canada_local_carrier', 'canada_local_awb',
-    'warehouse_action', 'expected_packages', 'hold_group_id', 'created_at', 'updated_at'
+    'warehouse_action', 'expected_packages', 'hold_group_id', 'box_dimensions', 'created_at', 'updated_at'
   ]);
 
   const rawHoldId = extraFields?.hold_group_id ? String(extraFields.hold_group_id).trim() : (existingItemsObj.raw_hold_group_id || null);
@@ -389,6 +390,7 @@ export async function updateShipmentStage(
     ...(extraFields?.estimated_weight !== undefined ? { estimated_weight: extraFields.estimated_weight } : {}),
     ...(extraFields?.estimated_cost_cad !== undefined ? { estimated_cost_cad: extraFields.estimated_cost_cad } : {}),
     ...(extraFields?.payment_status !== undefined ? { payment_status: extraFields.payment_status } : {}),
+    ...(extraFields?.box_dimensions !== undefined ? { box_dimensions: extraFields.box_dimensions } : {}),
     ...(rawHoldId ? { raw_hold_group_id: rawHoldId } : {}),
   };
 

@@ -25,6 +25,22 @@ export const normalizeHoldGroupId = (raw: any): string => {
   return `HOLD-${str}`;
 };
 
+export const formatBoxDimensions = (raw: any): string => {
+  if (!raw) return 'Standard Layo Green Box';
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'object' && raw !== null) {
+    const l = raw.length ?? raw.l;
+    const w = raw.width ?? raw.w;
+    const h = raw.height ?? raw.h;
+    if (l !== undefined && w !== undefined && h !== undefined) {
+      return `${l} × ${w} × ${h} cm (Layo Box)`;
+    }
+    const vals = Object.values(raw).filter(v => typeof v === 'string' || typeof v === 'number');
+    if (vals.length > 0) return `${vals.join(' × ')} cm`;
+  }
+  return 'Standard Layo Green Box';
+};
+
 export const getHoldGroupKey = (s: any): string | null => {
   if (!s) return null;
   const st = String(s.status || '').toLowerCase();
@@ -707,7 +723,7 @@ export default function Dashboard() {
         combinedRemainingBalance = Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
       }
 
-      const boxDimensions = items.find(it => it.box_dimensions)?.box_dimensions || 'Standard Layo Green Box';
+      const boxDimensions = formatBoxDimensions(items.find(it => it.box_dimensions)?.box_dimensions);
 
       return {
         groupKey,
@@ -2337,7 +2353,7 @@ export default function Dashboard() {
                               {grp.isHoldGroup ? `Hold Group #${displayId}` : `Locker Order #${displayId}`}
                             </span>
                             <h3 className="text-lg font-bold text-[#0E1F38] mt-0.5">
-                              {grp.isHoldGroup ? `Consolidated Hold Group (${grp.items.length} Packages)` : (primary?.external_order_id ? `Order #${primary.external_order_id}` : 'Standard Parcel Repack')}
+                              {grp.isHoldGroup ? `Consolidated Hold Group (${grp.items.length} Packages)` : (primary?.external_order_id ? `Order #${String(primary.external_order_id)}` : 'Standard Parcel Repack')}
                             </h3>
                           </div>
                           <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
@@ -2354,7 +2370,7 @@ export default function Dashboard() {
                             {grp.items.map((it: any, itIdx: number) => (
                               <div key={it.id || itIdx} className="flex justify-between items-center text-[11px] bg-white p-2 rounded-xl border border-black/5">
                                 <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(it.id)}</span>
-                                <span className="text-[#0E1F38]/70 font-medium">{it.external_order_id ? `Ref: #${it.external_order_id}` : `Package ${itIdx + 1}`}</span>
+                                <span className="text-[#0E1F38]/70 font-medium">{it.external_order_id ? `Ref: #${String(it.external_order_id)}` : `Package ${itIdx + 1}`}</span>
                               </div>
                             ))}
                           </div>
@@ -2365,16 +2381,16 @@ export default function Dashboard() {
                           <div className="bg-[#FAF8EE] rounded-2xl p-4 border border-black/5 space-y-2 text-xs text-[#0E1F38]">
                             <div className="flex justify-between items-center font-semibold">
                               <span className="text-[#0E1F38]/60">Standard Layo Box Size:</span>
-                              <span className="text-[#0E1F38] font-bold">{grp.boxDimensions}</span>
+                              <span className="text-[#0E1F38] font-bold">{formatBoxDimensions(grp.boxDimensions)}</span>
                             </div>
                             <div className="flex justify-between items-center font-semibold">
                               <span className="text-[#0E1F38]/60">Digital Scale Gross Weight:</span>
-                              <span className="text-emerald-700 font-black text-sm">{grp.combinedActualWeight} kg</span>
+                              <span className="text-emerald-700 font-black text-sm">{(Number(grp.combinedActualWeight) || 1.0).toFixed(1)} kg</span>
                             </div>
                             <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
                               <span className="text-[#0E1F38]/60">Destination:</span>
                               <span className="text-[#0E1F38] truncate max-w-[200px]">
-                                {primary?.destination_city || 'Toronto (GTA)'} ({primary?.destination_address || 'Canada'})
+                                {typeof primary?.destination_city === 'string' ? primary.destination_city : 'Toronto (GTA)'} ({typeof primary?.destination_address === 'string' ? primary.destination_address : 'Canada'})
                               </span>
                             </div>
                           </div>
