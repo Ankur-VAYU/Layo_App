@@ -11,6 +11,40 @@ import { useAuth } from '@/components/AuthProvider';
 import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 import { formatShipmentId } from '@/lib/idGenerator';
 
+const normalizeHoldGroupId = (raw: any): string => {
+  if (!raw) return '';
+  let str = String(raw).trim();
+  while (str.startsWith('#') || str.toUpperCase().startsWith('HOLD-') || str.toUpperCase().startsWith('HOLD_')) {
+    if (str.startsWith('#')) str = str.slice(1).trim();
+    if (str.toUpperCase().startsWith('HOLD-')) str = str.slice(5).trim();
+    if (str.toUpperCase().startsWith('HOLD_')) str = str.slice(5).trim();
+  }
+  str = str.toUpperCase().trim();
+  if (!str) return '';
+  return `HOLD-${str}`;
+};
+
+const getHoldGroupKey = (s: any): string | null => {
+  if (!s) return null;
+  const st = String(s.status || '').toLowerCase();
+
+  const rawHold = s.raw_hold_group_id || s.stage_timestamps?.raw_hold_group_id || s.items?.raw_hold_group_id;
+  if (rawHold && String(rawHold).trim()) {
+    return normalizeHoldGroupId(rawHold);
+  }
+
+  if (s.hold_group_id && typeof s.hold_group_id === 'string' && s.hold_group_id.toUpperCase().includes('HOLD-')) {
+    return normalizeHoldGroupId(s.hold_group_id);
+  }
+
+  const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
+  if (!isHold) return null;
+
+  const extId = s.external_order_id ? String(s.external_order_id).trim() : (s.id ? formatShipmentId(s.id) : null);
+  if (!extId) return null;
+  return normalizeHoldGroupId(extId);
+};
+
 // ── Types & Interfaces ───────────────────────────────────────────────────────
 
 interface QCPhoto {
@@ -124,13 +158,13 @@ export default function WarehouseOpsPortal() {
   // Hold & Combine groups — group by user_id or hold_group_id for the hold_combine tab
   const holdGroups = useMemo(() => {
     const holdShipments = shipments.filter(s =>
-      (s.warehouse_action === 'hold' || s.status === 'holding' || (s.hold_group_id && String(s.hold_group_id).startsWith('HOLD-'))) &&
+      getHoldGroupKey(s) !== null &&
       s.status !== 'Draft Estimate' &&
       s.status !== 'draft'
     );
     const groups: Record<string, any[]> = {};
     holdShipments.forEach(s => {
-      const key = s.hold_group_id || s.user_id || s.id;
+      const key = getHoldGroupKey(s) || s.user_id || s.id;
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
     });
@@ -273,33 +307,51 @@ export default function WarehouseOpsPortal() {
     const verifiedWeight = parseFloat(grossWeightInput) || selectedShipment?.total_weight || 1.0;
     const calc = calculateLayoDeliveryCost({ weightKg: verifiedWeight, deliveryType: 'normal' });
     const finalCostCAD = calc.finalPriceCAD;
-    const advancePaidCAD = selectedShipment?.advance_amount_cad ?? Math.round((selectedShipment?.estimated_cost_cad || (selectedShipment?.total_cost ? selectedShipment.total_cost / 70.4 : 25.0)) * 0.20 * 100) / 100;
-    const remainingBalanceCAD = Math.max(0, Math.round((finalCostCAD - advancePaidCAD) * 100) / 100);
+    const current = shipments.find(s => s.id === shipmentId);
+    
+    // Check if this shipment belongs to a hold group
+    const holdGroupId = getHoldGroupKey(current || selectedShipment);
+    const groupShipments = holdGroupId
+      ? shipments.filter(s => getHoldGroupKey(s) === holdGroupId)
+      : [current || selectedShipment].filter(Boolean);
+
+    // Sum advance paid across all shipments in this hold group
+    const totalAdvancePaidCAD = groupShipments.reduce((sum, s) => {
+      const adv = s?.advance_amount_cad;
+      if (adv !== undefined && adv !== null) return sum + Number(adv);
+      const est = Number(s?.estimated_cost_cad || (s?.total_cost ? s.total_cost / 70.4 : 25.0));
+      return sum + Math.round(est * 0.20 * 100) / 100;
+    }, 0);
+
+    const remainingBalanceCAD = Math.max(0, Math.round((finalCostCAD - totalAdvancePaidCAD) * 100) / 100);
     const newPaymentStatus = remainingBalanceCAD > 0 ? 'awaiting_balance' : 'fully_paid';
 
     setUpdating(true);
     try {
-      const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(
-        shipmentId,
-        'repacked',
-        current?.stage_timestamps,
-        { 
-          total_weight: verifiedWeight, 
-          actual_weight: verifiedWeight,
-          final_cost_cad: finalCostCAD,
-          remaining_balance_cad: remainingBalanceCAD,
-          payment_status: newPaymentStatus,
-          box_dimensions: boxDimensions 
-        },
-        operatorUser,
-        `Repacked in Layo Green Box (${verifiedWeight} kg). Final Cost: $${finalCostCAD} CAD, Remaining Balance: $${remainingBalanceCAD} CAD`
-      );
+      // Update each shipment in the group
+      for (const ship of groupShipments) {
+        if (!ship?.id) continue;
+        await updateShipmentStage(
+          ship.id,
+          'repacked',
+          ship.stage_timestamps,
+          { 
+            total_weight: verifiedWeight, 
+            actual_weight: verifiedWeight,
+            final_cost_cad: finalCostCAD,
+            remaining_balance_cad: remainingBalanceCAD,
+            payment_status: newPaymentStatus,
+            box_dimensions: boxDimensions 
+          },
+          operatorUser,
+          `Repacked in Layo Green Box (${verifiedWeight} kg). Combined Final Cost: $${finalCostCAD} CAD, Total Advance: $${totalAdvancePaidCAD} CAD, Remaining Balance: $${remainingBalanceCAD} CAD`
+        );
+      }
 
-      const updatedTimestamps = result.updatedTimestamps || { ...(current?.stage_timestamps || {}), repacked: new Date().toISOString() };
+      const targetIds = new Set(groupShipments.map(s => s.id));
 
       setShipments(prev => {
-        const nextList = prev.map(s => s.id === shipmentId ? { 
+        const nextList = prev.map(s => targetIds.has(s.id) ? { 
           ...s, 
           status: 'repacked', 
           total_weight: verifiedWeight, 
@@ -308,7 +360,7 @@ export default function WarehouseOpsPortal() {
           remaining_balance_cad: remainingBalanceCAD,
           payment_status: newPaymentStatus,
           box_dimensions: boxDimensions, 
-          stage_timestamps: updatedTimestamps 
+          stage_timestamps: { ...(s.stage_timestamps || {}), repacked: new Date().toISOString() } 
         } : s);
         try {
           localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
@@ -316,7 +368,7 @@ export default function WarehouseOpsPortal() {
         return nextList;
       });
 
-      if (selectedShipment?.id === shipmentId) {
+      if (selectedShipment && targetIds.has(selectedShipment.id)) {
         setSelectedShipment((prev: any) => ({ 
           ...prev, 
           status: 'repacked', 
@@ -326,7 +378,7 @@ export default function WarehouseOpsPortal() {
           remaining_balance_cad: remainingBalanceCAD,
           payment_status: newPaymentStatus,
           box_dimensions: boxDimensions, 
-          stage_timestamps: updatedTimestamps 
+          stage_timestamps: { ...(prev?.stage_timestamps || {}), repacked: new Date().toISOString() } 
         }));
       }
     } catch (err) {

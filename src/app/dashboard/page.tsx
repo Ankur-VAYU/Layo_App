@@ -12,6 +12,40 @@ import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 import { formatShipmentId, formatTransactionId, formatUserId, formatWarehouseId } from '@/lib/idGenerator';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
 
+export const normalizeHoldGroupId = (raw: any): string => {
+  if (!raw) return '';
+  let str = String(raw).trim();
+  while (str.startsWith('#') || str.toUpperCase().startsWith('HOLD-') || str.toUpperCase().startsWith('HOLD_')) {
+    if (str.startsWith('#')) str = str.slice(1).trim();
+    if (str.toUpperCase().startsWith('HOLD-')) str = str.slice(5).trim();
+    if (str.toUpperCase().startsWith('HOLD_')) str = str.slice(5).trim();
+  }
+  str = str.toUpperCase().trim();
+  if (!str) return '';
+  return `HOLD-${str}`;
+};
+
+export const getHoldGroupKey = (s: any): string | null => {
+  if (!s) return null;
+  const st = String(s.status || '').toLowerCase();
+
+  const rawHold = s.raw_hold_group_id || s.stage_timestamps?.raw_hold_group_id || s.items?.raw_hold_group_id;
+  if (rawHold && String(rawHold).trim()) {
+    return normalizeHoldGroupId(rawHold);
+  }
+
+  if (s.hold_group_id && typeof s.hold_group_id === 'string' && s.hold_group_id.toUpperCase().includes('HOLD-')) {
+    return normalizeHoldGroupId(s.hold_group_id);
+  }
+
+  const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
+  if (!isHold) return null;
+
+  const extId = s.external_order_id ? String(s.external_order_id).trim() : (s.id ? formatShipmentId(s.id) : null);
+  if (!extId) return null;
+  return normalizeHoldGroupId(extId);
+};
+
 // ── Types & Interfaces ───────────────────────────────────────────────────────
 
 interface SubCategoryItem {
@@ -485,6 +519,109 @@ export default function Dashboard() {
     });
   }, [shipments]);
 
+  // Active Hold Groups (Grouped - only OPEN hold groups that are still waiting for additional packages)
+  const activeHoldGroups = useMemo(() => {
+    const eligible = shipments.filter(s => {
+      if (!s) return false;
+      const st = String(s.status || '').toLowerCase();
+      const paySt = String(s.payment_status || '').toLowerCase();
+      if (st === 'draft' || st === 'draft estimate' || st === 'cancelled' || st === 'delivered' || st === 'shipped') return false;
+      if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') return false;
+      const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
+      if (!isHold) return false;
+      if (paySt === 'awaiting_balance' || st === 'repacked') return false;
+      return true;
+    });
+
+    const map = new Map<string, any[]>();
+    eligible.forEach(s => {
+      const key = getHoldGroupKey(s) || (s.id ? `HOLD-${formatShipmentId(s.id)}` : 'HOLD-GROUP');
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(s);
+    });
+
+    // Handle legacy/unlinked hold packages: Merge loose hold packages into open primary hold group if total capacity allows
+    const entries = Array.from(map.entries());
+    if (entries.length > 1) {
+      const primaryEntry = entries.find(([_, items]) => items.some(it => Number(it.expected_packages) > 0));
+      if (primaryEntry) {
+        const [primaryKey, primaryItems] = primaryEntry;
+        const targetCap = 1 + (primaryItems.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1));
+        
+        entries.forEach(([otherKey, otherItems]) => {
+          if (otherKey !== primaryKey && primaryItems.length < targetCap) {
+            otherItems.forEach(item => {
+              if (primaryItems.length < targetCap && !primaryItems.some(x => x.id === item.id)) {
+                primaryItems.push(item);
+              }
+            });
+          }
+        });
+
+        const unifiedMap = new Map<string, any[]>();
+        unifiedMap.set(primaryKey, primaryItems);
+        entries.forEach(([k, items]) => {
+          if (k !== primaryKey) {
+            const remaining = items.filter(it => !primaryItems.some(x => x.id === it.id));
+            if (remaining.length > 0) unifiedMap.set(k, remaining);
+          }
+        });
+
+        return Array.from(unifiedMap.entries()).map(([groupKey, items]) => {
+          const primary = items.reduce((acc, curr) => (Number(curr.expected_packages) > 0 ? curr : acc), items[0]);
+          const expectedPackages = primary?.expected_packages ?? 1;
+          const totalCapacity = 1 + expectedPackages;
+          const currentLinkedCount = items.length;
+          const remainingSlots = Math.max(0, totalCapacity - currentLinkedCount);
+          const isFullyLinked = currentLinkedCount >= totalCapacity;
+
+          return {
+            group_id: groupKey,
+            groupKey,
+            items,
+            shipments: items,
+            primaryShipment: primary,
+            primary,
+            expectedPackages,
+            expectedMore: expectedPackages,
+            totalCapacity,
+            currentLinkedCount,
+            remainingSlots,
+            isFullyLinked,
+            isOpen: !isFullyLinked,
+          };
+        }).filter(grp => grp.isOpen);
+      }
+    }
+
+    return entries
+      .map(([groupKey, items]) => {
+        const primary = items.reduce((acc, curr) => (Number(curr.expected_packages) > 0 ? curr : acc), items[0]);
+        const expectedPackages = primary?.expected_packages ?? 1;
+        const totalCapacity = 1 + expectedPackages;
+        const currentLinkedCount = items.length;
+        const remainingSlots = Math.max(0, totalCapacity - currentLinkedCount);
+        const isFullyLinked = currentLinkedCount >= totalCapacity;
+
+        return {
+          group_id: groupKey,
+          groupKey,
+          items,
+          shipments: items,
+          primaryShipment: primary,
+          primary,
+          expectedPackages,
+          expectedMore: expectedPackages,
+          totalCapacity,
+          currentLinkedCount,
+          remainingSlots,
+          isFullyLinked,
+          isOpen: !isFullyLinked,
+        };
+      })
+      .filter(grp => grp.isOpen); // Key: Fully linked hold groups automatically move to Payment Dues!
+  }, [shipments]);
+
   // 3. Payment Dues (Active Bookings after 20% Advance, awaiting Ops Repack Step 3 or remaining 80% balance)
   const pendingDuesShipments = useMemo(() => {
     return shipments.filter(s => {
@@ -495,22 +632,105 @@ export default function Dashboard() {
       if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
       if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') return false;
 
-      return paySt === 'awaiting_balance' || st === 'repacked' || st === 'paid' || st === 'advance_paid' || st === 'inwarded' || st === 'qc_verified' || Number(s.remaining_balance_cad) > 0;
+      return paySt === 'awaiting_balance' || st === 'repacked' || st === 'paid' || st === 'advance_paid' || st === 'holding' || st === 'inwarded' || st === 'qc_verified' || Number(s.remaining_balance_cad) > 0;
     });
   }, [shipments]);
 
-  // 4. My Shipments (Fully paid & settled active / delivered shipments with zero remaining dues)
+  // Grouped list of shipments for Payment Dues tab (Hold group packages combined into single entries)
+  const groupedPendingDues = useMemo(() => {
+    // 1. Filter eligible shipments (not draft, not cancelled, not completed)
+    const holdCount = shipments.filter(s => s && (s.warehouse_action === 'hold' || String(s.status || '').toLowerCase() === 'holding')).length;
+
+    const eligible = shipments.filter(s => {
+      if (!s) return false;
+      const st = String(s.status || '').toLowerCase();
+      const paySt = String(s.payment_status || '').toLowerCase();
+      if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
+      if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') return false;
+
+      const isHold = s.warehouse_action === 'hold' || st === 'holding';
+      if (isHold && paySt !== 'awaiting_balance' && st !== 'repacked') {
+        const holdKey = getHoldGroupKey(s);
+        const groupAll = shipments.filter(x => x && (getHoldGroupKey(x) === holdKey || x.warehouse_action === 'hold' || String(x.status || '').toLowerCase() === 'holding'));
+        const primary = groupAll.reduce((acc, curr) => (Number(curr.expected_packages) > 0 ? curr : acc), groupAll[0]);
+        const totalCapacity = 1 + (primary?.expected_packages ?? 1);
+        const isHoldFullyLinked = groupAll.length >= totalCapacity || (holdCount >= totalCapacity && isHold);
+        if (!isHoldFullyLinked) return false; // Still waiting in Hold & Consolidation tab!
+      }
+
+      return paySt === 'awaiting_balance' || st === 'repacked' || st === 'paid' || st === 'advance_paid' || st === 'holding' || st === 'inwarded' || st === 'qc_verified' || Number(s.remaining_balance_cad) > 0;
+    });
+
+    // 2. Group by hold_group_id or individual shipment ID
+    const primaryHoldKey = eligible.map(getHoldGroupKey).find(k => k && k.startsWith('HOLD-'));
+    const map = new Map<string, any[]>();
+    eligible.forEach(s => {
+      const holdKey = getHoldGroupKey(s);
+      const isHold = s.warehouse_action === 'hold' || String(s.status || '').toLowerCase() === 'holding';
+      const key = (isHold && primaryHoldKey) ? primaryHoldKey : (holdKey || s.id);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(s);
+    });
+
+    return Array.from(map.entries()).map(([groupKey, items]) => {
+      const primary = items[0];
+      const isHoldGroup = groupKey.startsWith('HOLD-') || items.length > 1;
+      const isRepackDone = items.some(it => String(it.status || '').toLowerCase() === 'repacked' || String(it.payment_status || '').toLowerCase() === 'awaiting_balance');
+
+      const combinedActualWeight = isRepackDone
+        ? (items.reduce((max, it) => Math.max(max, Number(it.actual_weight || 0)), 0) || items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0))
+        : items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0);
+
+      const combinedAdvancePaid = items.reduce((sum, it) => {
+        const adv = Number(it.advance_amount_cad || 0);
+        if (adv > 0) return sum + adv;
+        const est = Number(it.estimated_cost_cad || (it.total_cost ? it.total_cost / 70.4 : 0));
+        return sum + Math.round(est * 0.20 * 100) / 100;
+      }, 0);
+
+      let combinedFinalCost = 0;
+      if (isRepackDone) {
+        combinedFinalCost = items.reduce((max, it) => Math.max(max, Number(it.final_cost_cad || 0)), 0);
+        if (!combinedFinalCost) {
+          const calc = calculateLayoDeliveryCost({ weightKg: combinedActualWeight, deliveryType: 'normal' });
+          combinedFinalCost = calc.finalPriceCAD;
+        }
+      } else {
+        combinedFinalCost = items.reduce((sum, it) => sum + Number(it.estimated_cost_cad || (it.total_cost ? it.total_cost / 70.4 : 25.0)), 0);
+      }
+
+      let combinedRemainingBalance = 0;
+      if (isRepackDone) {
+        const storedRemaining = items.reduce((max, it) => Math.max(max, Number(it.remaining_balance_cad || 0)), 0);
+        combinedRemainingBalance = storedRemaining > 0 ? storedRemaining : Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
+      } else {
+        combinedRemainingBalance = Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
+      }
+
+      const boxDimensions = items.find(it => it.box_dimensions)?.box_dimensions || 'Standard Layo Green Box';
+
+      return {
+        groupKey,
+        isHoldGroup,
+        items,
+        primary,
+        isRepackDone,
+        combinedActualWeight,
+        combinedFinalCost,
+        combinedAdvancePaid,
+        combinedRemainingBalance,
+        boxDimensions,
+      };
+    });
+  }, [shipments]);
+
+  // 4. My Shipments (Active booked shipments undergoing locker processing, airfreight, delivery, or completed)
   const myShipmentsList = useMemo(() => {
     return shipments.filter(s => {
       if (!s) return false;
       const st = String(s.status || '').toLowerCase();
-      const paySt = String(s.payment_status || '').toLowerCase();
-      const remainingBal = Number(s.remaining_balance_cad || 0);
-
       if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
-
-      const isFullyPaid = paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full' || (remainingBal <= 0 && paySt !== 'awaiting_balance' && st !== 'repacked');
-      return isFullyPaid;
+      return true;
     });
   }, [shipments]);
 
@@ -550,6 +770,44 @@ export default function Dashboard() {
     }
   };
 
+  const handlePayRemainingBalanceGroup = async (grp: any) => {
+    setIsProcessingPayment(true);
+    try {
+      const dueCAD = grp.combinedRemainingBalance || 0;
+      const primary = grp.primary || (grp.items && grp.items[0]);
+      const targetId = grp.groupKey || primary?.id;
+
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountCAD: dueCAD.toFixed(2),
+          shipmentId: targetId,
+          userId: user?.id,
+          userEmail: user?.email,
+          isAdvance: false,
+          destinationCity: primary?.destination_city || 'Canada',
+          destinationAddress: primary?.destination_address || '',
+          warehouseName: primary?.india_warehouse || 'Indian Locker Hub',
+          totalWeightKg: grp.combinedActualWeight || 1.0,
+          itemsSummary: `Remaining 80% balance payment for Consolidated Hold Group #${grp.groupKey} (${grp.items?.length || 1} Packages)`,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Failed to initiate Stripe payment');
+      }
+    } catch (err: any) {
+      console.error('Pay group balance error:', err);
+      alert('Payment error: ' + (err.message || 'Please try again'));
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
   // Check for return from Stripe Checkout
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -566,34 +824,37 @@ export default function Dashboard() {
               const targetId = data.metadata?.shipment_id || null;
 
               if (targetId) {
-                // Check if this was a balance payment for an existing repacked shipment
-                const existingShip = shipments.find(s => s.id === targetId || formatShipmentId(s.id) === formatShipmentId(targetId));
-                if (existingShip && (existingShip.status === 'repacked' || existingShip.payment_status === 'awaiting_balance')) {
-                  await updateShipmentStage(
-                    existingShip.id,
-                    'repacked',
-                    existingShip.stage_timestamps,
-                    {
-                      payment_status: 'completed',
-                      remaining_balance_cad: 0,
-                    },
-                    { id: user?.id || null, email: user?.email || data.customerEmail || null, role: 'customer' },
-                    `Remaining balance payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD completed via Stripe`
-                  );
+                const normalizedTargetKey = normalizeHoldGroupId(targetId);
+                const matchingShips = shipments.filter(s => (normalizedTargetKey && getHoldGroupKey(s) === normalizedTargetKey) || s.hold_group_id === targetId || s.id === targetId || formatShipmentId(s.id) === formatShipmentId(targetId));
+                if (matchingShips.length > 0) {
+                  for (const ship of matchingShips) {
+                    await updateShipmentStage(
+                      ship.id,
+                      'repacked',
+                      ship.stage_timestamps,
+                      {
+                        payment_status: 'completed',
+                        remaining_balance_cad: 0,
+                      },
+                      { id: user?.id || null, email: user?.email || data.customerEmail || null, role: 'customer' },
+                      `Remaining balance payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD completed via Stripe`
+                    );
+                  }
 
                   // Update local storage shipments list
                   try {
                     const rawLocal = localStorage.getItem('layo_local_shipments');
                     if (rawLocal) {
                       const allLocal = JSON.parse(rawLocal);
-                      const updated = allLocal.map((s: any) => s.id === existingShip.id ? { ...s, payment_status: 'completed', remaining_balance_cad: 0 } : s);
+                      const targetIds = new Set(matchingShips.map(s => s.id));
+                      const updated = allLocal.map((s: any) => targetIds.has(s.id) ? { ...s, payment_status: 'completed', remaining_balance_cad: 0 } : s);
                       localStorage.setItem('layo_local_shipments', JSON.stringify(updated));
                     }
                   } catch (e) {}
 
                   // Record transaction
                   await supabase.from('transactions').insert({
-                    shipment_id: existingShip.id,
+                    shipment_id: matchingShips[0].id,
                     user_id: user?.id || null,
                     amount_cad: data.amountTotal || 0,
                     amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 61)) : 0,
@@ -605,14 +866,14 @@ export default function Dashboard() {
                     status: 'completed',
                     customer_email: data.customerEmail || user?.email || null,
                     customer_name: user?.email || null,
-                    description: `Layo balance payment — Locker #${formatShipmentId(existingShip.id)}`,
+                    description: `Layo balance payment — ${matchingShips.length > 1 ? 'Hold Group #' + targetId : 'Locker #' + formatShipmentId(matchingShips[0].id)}`,
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
                   });
 
                   setPaymentBanner({
                     type: 'success',
-                    message: `Remaining balance payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed! Locker #${formatShipmentId(existingShip.id)} is fully paid and queued for airfreight dispatch.`
+                    message: `Remaining balance payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed! ${matchingShips.length > 1 ? 'Hold Group #' + targetId : 'Locker #' + formatShipmentId(matchingShips[0].id)} is fully paid and queued for airfreight dispatch.`
                   });
                   setActiveTab('history');
                   if (user?.id) fetchDashboardData(user.id);
@@ -1058,51 +1319,7 @@ export default function Dashboard() {
     return list;
   }, [activeItems]);
 
-  // Active Hold Groups memoization (only returns open groups that still have remaining capacity)
-  const activeHoldGroups = useMemo(() => {
-    const activeHoldShips = shipments.filter(s =>
-      s &&
-      (s.warehouse_action === 'hold' || s.status === 'holding' || (s.hold_group_id && String(s.hold_group_id).startsWith('HOLD-'))) &&
-      s.status !== 'cancelled' &&
-      s.status !== 'delivered' &&
-      s.status !== 'shipped'
-    );
 
-    const map = new Map<string, { group_id: string; shipments: any[] }>();
-    activeHoldShips.forEach(s => {
-      const groupId = s.hold_group_id || `HOLD-${s.external_order_id || formatShipmentId(s.id)}`;
-      if (!map.has(groupId)) {
-        map.set(groupId, { group_id: groupId, shipments: [] });
-      }
-      map.get(groupId)!.shipments.push(s);
-    });
-
-    const groupsWithCapacity = Array.from(map.values()).map(grp => {
-      // Find expected_packages from primary shipment (first created or explicit expected_packages)
-      const primary = grp.shipments.reduce((acc, curr) => {
-        if (!acc) return curr;
-        return (curr.expected_packages !== undefined && curr.expected_packages !== null && curr.expected_packages > 0) ? curr : acc;
-      }, grp.shipments[0]);
-
-      const expectedMore = primary?.expected_packages ?? 1;
-      const totalCapacity = 1 + expectedMore;
-      const currentLinkedCount = grp.shipments.length;
-      const remainingSlots = Math.max(0, totalCapacity - currentLinkedCount);
-
-      return {
-        ...grp,
-        primaryShipment: primary,
-        expectedMore,
-        totalCapacity,
-        currentLinkedCount,
-        remainingSlots,
-        isOpen: remainingSlots > 0
-      };
-    });
-
-    // Only return hold groups that are still open for more packages
-    return groupsWithCapacity.filter(grp => grp.isOpen);
-  }, [shipments]);
 
   // Auto-select hold action and active hold group when entering Step 5 if active hold groups exist
   useEffect(() => {
@@ -1149,8 +1366,21 @@ export default function Dashboard() {
       const remainingCAD = Math.round((totalCostCAD - advanceCAD) * 100) / 100;
 
       const resolvedHoldGroupId = warehouseAction === 'hold'
-        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? selectedHoldGroupId : `HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`)
+        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? normalizeHoldGroupId(selectedHoldGroupId) : normalizeHoldGroupId(`HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`))
         : null;
+
+      if (resolvedHoldGroupId && holdOptionMode === 'existing') {
+        const normalizedGroupId = normalizeHoldGroupId(resolvedHoldGroupId);
+        const matchingShips = shipments.filter(s => getHoldGroupKey(s) === normalizedGroupId);
+        for (const ship of matchingShips) {
+          if (ship?.id && ship.hold_group_id !== normalizedGroupId) {
+            await supabase
+              .from('shipments')
+              .update({ hold_group_id: normalizedGroupId, updated_at: new Date().toISOString() })
+              .eq('id', ship.id);
+          }
+        }
+      }
 
       if (editingDraftId) {
         // Upgrade / sync existing draft
@@ -1790,9 +2020,9 @@ export default function Dashboard() {
             }`}
           >
             <span>Hold &amp; Consolidation</span>
-            {holdList.length > 0 && (
+            {activeHoldGroups.length > 0 && (
               <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-full">
-                {holdList.length}
+                {activeHoldGroups.length}
               </span>
             )}
           </button>
@@ -1804,9 +2034,9 @@ export default function Dashboard() {
             }`}
           >
             <span>💳 Payment Dues</span>
-            {pendingDuesShipments.length > 0 && (
+            {groupedPendingDues.length > 0 && (
               <span className="bg-[#FF5A65] text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
-                {pendingDuesShipments.length}
+                {groupedPendingDues.length}
               </span>
             )}
           </button>
@@ -1941,25 +2171,11 @@ export default function Dashboard() {
                           <span>Pay 20% Deposit (${advanceCAD.toFixed(2)} CAD) &amp; Book</span>
                         </button>
 
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => handleEditDraft(s)}
-                            className="py-2.5 bg-slate-100 hover:bg-slate-200 text-[#0E1F38] font-bold text-[11px] uppercase tracking-wider rounded-xl transition-all text-center border border-slate-200 cursor-pointer"
-                          >
-                            Edit Draft
-                          </button>
-                          <button
-                            onClick={() => handleDeleteDraft(s.id)}
-                            className="py-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px] uppercase tracking-wider rounded-xl transition-all text-center border border-red-200 cursor-pointer"
-                          >
-                            Delete
-                          </button>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
             )}
           </div>
         ) : activeTab === 'hold' ? (
@@ -1977,14 +2193,14 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {holdList.length === 0 ? (
+            {activeHoldGroups.length === 0 ? (
               <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
                 <div className="w-16 h-16 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center mx-auto text-indigo-600">
                   <span className="material-symbols-outlined text-3xl">widgets</span>
                 </div>
-                <h3 className="text-lg font-bold text-[#0E1F38]">No Active Hold Groups</h3>
+                <h3 className="text-lg font-bold text-[#0E1F38]">No Open Hold Groups</h3>
                 <p className="text-[#0E1F38]/60 text-sm max-w-sm mx-auto font-light">
-                  You don't have any active package consolidation hold groups right now.
+                  You don't have any open package consolidation hold groups right now. Once all expected packages are added to a hold group, it shifts automatically to Payment Dues.
                 </p>
                 <button
                   onClick={handleStartNewOrder}
@@ -1995,20 +2211,19 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {holdList.map(s => {
-                  const displayId = formatShipmentId(s.id);
-                  const groupId = s.hold_group_id || `HOLD-${displayId}`;
+                {activeHoldGroups.map(grp => {
+                  const primary = grp.primaryShipment;
 
                   return (
-                    <div key={s.id} className="bg-white border-2 border-indigo-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all space-y-5 flex flex-col justify-between">
+                    <div key={grp.group_id} className="bg-white border-2 border-indigo-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all space-y-5 flex flex-col justify-between">
                       <div className="space-y-4">
                         <div className="flex justify-between items-start border-b border-black/5 pb-4">
                           <div>
                             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
-                              Hold Group #{groupId}
+                              Hold Group #{grp.group_id}
                             </span>
                             <h3 className="text-lg font-bold text-[#0E1F38] mt-0.5">
-                              {s.external_order_id ? `Ref #${s.external_order_id}` : 'Consolidation Hold'}
+                              Consolidation Hold
                             </h3>
                           </div>
                           <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border border-indigo-300">
@@ -2022,25 +2237,44 @@ export default function Dashboard() {
                             <span className="text-indigo-700 font-bold uppercase">Waiting for Additional Packages</span>
                           </div>
                           <div className="flex justify-between items-center font-semibold">
-                            <span className="text-[#0E1F38]/60">Expected Total Packages:</span>
-                            <span className="text-[#0E1F38] font-bold">{s.expected_packages || 2} Packages</span>
+                            <span className="text-[#0E1F38]/60">Linked Packages Progress:</span>
+                            <span className="text-[#0E1F38] font-bold text-sm">
+                              {grp.currentLinkedCount} of {grp.totalCapacity} Packages Linked
+                            </span>
                           </div>
                           <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
                             <span className="text-[#0E1F38]/60">Destination Address:</span>
                             <span className="text-[#0E1F38] truncate max-w-[200px]">
-                              {s.destination_city || 'Toronto (GTA)'} ({s.destination_address || 'Canada'})
+                              {primary?.destination_city || 'Toronto (GTA)'} ({primary?.destination_address || 'Canada'})
                             </span>
                           </div>
+                        </div>
+
+                        {/* Linked packages summary list */}
+                        <div className="bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100 space-y-1.5 text-xs">
+                          <span className="text-[10px] font-black text-indigo-800 uppercase tracking-wider block">Linked Packages in this Group:</span>
+                          {grp.shipments.map((s, sIdx) => (
+                            <div key={s.id || sIdx} className="flex justify-between items-center text-[11px] bg-white p-2 rounded-xl border border-black/5">
+                              <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(s.id)}</span>
+                              <span className="text-[#0E1F38]/70 font-medium">{s.external_order_id ? `Ref: #${s.external_order_id}` : `Package ${sIdx + 1}`}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
                       <div className="pt-2 space-y-2">
                         <button
-                          onClick={handleStartNewOrder}
+                          onClick={() => {
+                            setSelectedHoldGroupId(grp.group_id);
+                            setHoldOptionMode('existing');
+                            setWarehouseAction('hold');
+                            setActiveTab('new');
+                            setCurrentStep(1);
+                          }}
                           className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <span className="material-symbols-outlined text-sm">add</span>
-                          <span>Add Another Package to this Hold Group</span>
+                          <span>+ Add Another Package to this Hold Group</span>
                         </button>
                       </div>
                     </div>
@@ -2067,8 +2301,8 @@ export default function Dashboard() {
               </p>
             </div>
 
-            {pendingDuesShipments.length === 0 ? (
-              <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
+            {groupedPendingDues.length === 0 ? (
+              <div className="bg-[#FAF8EE] border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
                 <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-emerald-600">
                   <span className="material-symbols-outlined text-3xl">task_alt</span>
                 </div>
@@ -2085,20 +2319,13 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {pendingDuesShipments.map(s => {
-                  const statusLower = String(s.status || '').toLowerCase();
-                  const payStatusLower = String(s.payment_status || '').toLowerCase();
-                  const isRepackDone = statusLower === 'repacked' || payStatusLower === 'awaiting_balance';
-
-                  const verifiedWeightKg = Number(s.actual_weight || s.total_weight || 1.0) || 1.0;
-                  const boxSize = typeof s.box_dimensions === 'string' ? s.box_dimensions : 'Layo Box M (35 x 25 x 20 cm)';
-                  const finalCost = Number(s.final_cost_cad || s.total_cost || 0) || 0;
-                  const advancePaid = Number(s.advance_amount_cad) || (finalCost > 0 ? Math.round(finalCost * 0.20 * 100) / 100 : 0);
-                  const dueCAD = Number(s.remaining_balance_cad) || Math.max(0, Math.round((finalCost - advancePaid) * 100) / 100);
-                  const displayId = formatShipmentId(s.id);
+                {groupedPendingDues.map(grp => {
+                  const primary = grp.primary;
+                  const isRepackDone = grp.isRepackDone;
+                  const displayId = grp.isHoldGroup ? grp.groupKey : formatShipmentId(primary?.id);
 
                   return (
-                    <div key={s.id} className={`bg-white border-2 rounded-3xl p-6 shadow-md hover:shadow-lg transition-all space-y-5 flex flex-col justify-between ${
+                    <div key={grp.groupKey} className={`bg-white border-2 rounded-3xl p-6 shadow-md hover:shadow-lg transition-all space-y-5 flex flex-col justify-between ${
                       isRepackDone ? 'border-amber-400/60' : 'border-blue-200'
                     }`}>
                       <div className="space-y-4">
@@ -2106,10 +2333,10 @@ export default function Dashboard() {
                         <div className="flex justify-between items-start border-b border-black/5 pb-4">
                           <div>
                             <span className="text-[10px] font-black uppercase tracking-widest text-[#FF5A65]">
-                              Locker Order #{displayId}
+                              {grp.isHoldGroup ? `Hold Group #${displayId}` : `Locker Order #${displayId}`}
                             </span>
                             <h3 className="text-lg font-bold text-[#0E1F38] mt-0.5">
-                              {s.external_order_id ? `Order #${s.external_order_id}` : 'Standard Parcel Repack'}
+                              {grp.isHoldGroup ? `Consolidated Hold Group (${grp.items.length} Packages)` : (primary?.external_order_id ? `Order #${primary.external_order_id}` : 'Standard Parcel Repack')}
                             </h3>
                           </div>
                           <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
@@ -2119,21 +2346,34 @@ export default function Dashboard() {
                           </span>
                         </div>
 
+                        {/* Combined Packages List if Hold Group */}
+                        {grp.isHoldGroup && (
+                          <div className="bg-indigo-50/60 p-3 rounded-2xl border border-indigo-100 space-y-1.5 text-xs">
+                            <span className="text-[10px] font-black text-indigo-800 uppercase tracking-wider block">Combined Packages in this Group:</span>
+                            {grp.items.map((it: any, itIdx: number) => (
+                              <div key={it.id || itIdx} className="flex justify-between items-center text-[11px] bg-white p-2 rounded-xl border border-black/5">
+                                <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(it.id)}</span>
+                                <span className="text-[#0E1F38]/70 font-medium">{it.external_order_id ? `Ref: #${it.external_order_id}` : `Package ${itIdx + 1}`}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         {/* Ops Repack & Scale Inspection Result */}
                         {isRepackDone ? (
                           <div className="bg-[#FAF8EE] rounded-2xl p-4 border border-black/5 space-y-2 text-xs text-[#0E1F38]">
                             <div className="flex justify-between items-center font-semibold">
                               <span className="text-[#0E1F38]/60">Standard Layo Box Size:</span>
-                              <span className="text-[#0E1F38] font-bold">{boxSize}</span>
+                              <span className="text-[#0E1F38] font-bold">{grp.boxDimensions}</span>
                             </div>
                             <div className="flex justify-between items-center font-semibold">
                               <span className="text-[#0E1F38]/60">Digital Scale Gross Weight:</span>
-                              <span className="text-emerald-700 font-black text-sm">{verifiedWeightKg} kg</span>
+                              <span className="text-emerald-700 font-black text-sm">{grp.combinedActualWeight} kg</span>
                             </div>
                             <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
                               <span className="text-[#0E1F38]/60">Destination:</span>
                               <span className="text-[#0E1F38] truncate max-w-[200px]">
-                                {s.destination_city || 'Toronto (GTA)'} ({s.destination_address || 'Canada'})
+                                {primary?.destination_city || 'Toronto (GTA)'} ({primary?.destination_address || 'Canada'})
                               </span>
                             </div>
                           </div>
@@ -2155,15 +2395,15 @@ export default function Dashboard() {
                             <span className="text-[#0E1F38]/70 font-medium">
                               {isRepackDone ? 'Verified Shipping Cost:' : 'Estimated Shipping Cost:'}
                             </span>
-                            <span className="font-bold text-[#0E1F38]">${finalCost.toFixed(2)} CAD</span>
+                            <span className="font-bold text-[#0E1F38]">${grp.combinedFinalCost.toFixed(2)} CAD</span>
                           </div>
                           <div className="flex justify-between items-center text-xs text-emerald-700">
-                            <span className="font-medium">20% Advance Paid:</span>
-                            <span className="font-bold">-${advancePaid.toFixed(2)} CAD</span>
+                            <span className="font-medium">Total 20% Advance Paid:</span>
+                            <span className="font-bold">-${grp.combinedAdvancePaid.toFixed(2)} CAD</span>
                           </div>
                           <div className="flex justify-between items-center text-sm pt-2 border-t border-amber-200 font-black text-[#0E1F38]">
                             <span className="text-[#FF5A65]">80% Remaining Balance Due:</span>
-                            <span className="text-xl text-[#FF5A65]">${dueCAD.toFixed(2)} CAD</span>
+                            <span className="text-xl text-[#FF5A65]">${grp.combinedRemainingBalance.toFixed(2)} CAD</span>
                           </div>
                         </div>
                       </div>
@@ -2171,12 +2411,12 @@ export default function Dashboard() {
                       {/* Pay Action Button */}
                       {isRepackDone ? (
                         <button
-                          onClick={() => handlePayRemainingBalance(s)}
+                          onClick={() => handlePayRemainingBalanceGroup(grp)}
                           disabled={isProcessingPayment}
                           className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                         >
                           <span className="material-symbols-outlined text-sm">lock</span>
-                          <span>Pay Remaining Balance (${dueCAD.toFixed(2)} CAD)</span>
+                          <span>Pay Remaining Balance (${grp.combinedRemainingBalance.toFixed(2)} CAD)</span>
                         </button>
                       ) : (
                         <button
@@ -2206,7 +2446,7 @@ export default function Dashboard() {
                 Book New Shipment
               </button>
             </div>
-            {shipments.length === 0 ? (
+            {myShipmentsList.length === 0 ? (
               <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
                 <span className="material-symbols-outlined text-6xl text-[#0E1F38]/30">inventory_2</span>
                 <h3 className="text-lg font-bold text-[#0E1F38]">No shipments yet</h3>
@@ -2222,7 +2462,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {shipments.map(s => {
+                {myShipmentsList.map(s => {
                   const STEPS = ['paid', 'inwarded', 'repacked', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'];
                   const STEP_LABELS = ['Paid', 'India Hub', 'SOP Repack', 'Airfreight', 'Canada Hub', 'Local Dispatch', 'Delivered'];
                   const STATUS_COLORS: Record<string, string> = {

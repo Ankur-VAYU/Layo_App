@@ -124,6 +124,24 @@ export function getStageLabel(stage: string): string {
   return map[stage] || stage;
 }
 
+export function isValidUuid(str: any): boolean {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
+export function stringToUuid(str: any): string | null {
+  if (!str) return null;
+  const s = String(str).trim();
+  if (isValidUuid(s)) return s;
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash) + s.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = (Math.abs(hash).toString(16) + '00000000000000000000000000000000').slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 // ── Shipment Operations ──────────────────────────────────────────────────────
 
 /**
@@ -134,17 +152,6 @@ export async function insertShipment(payload: ShipmentPayload, operatorUser?: Op
   const validUserId = payload.user_id && payload.user_id !== '00000000-0000-0000-0000-000000000000'
     ? payload.user_id
     : null;
-
-  // Auto-resolve customer_id from customers table if not provided
-  let resolvedCustomerId = payload.customer_id || null;
-  if (!resolvedCustomerId && validUserId) {
-    const { data: custData } = await supabase
-      .from('customers')
-      .select('id')
-      .eq('user_id', validUserId)
-      .maybeSingle();
-    resolvedCustomerId = custData?.id || null;
-  }
 
   const initialStatus = payload.status || 'Draft Estimate';
   const nowIso = new Date().toISOString();
@@ -158,10 +165,31 @@ export async function insertShipment(payload: ShipmentPayload, operatorUser?: Op
     done_by_role: operatorUser?.role || (validUserId ? 'customer' : 'system'),
   };
 
+  const rawHoldId = payload.hold_group_id ? String(payload.hold_group_id).trim() : null;
+  const uuidHoldId = stringToUuid(rawHoldId);
+
+  const itemsObject = {
+    items: Array.isArray(payload.items) ? payload.items : ((payload.items as any)?.items || []),
+    advance_pct: payload.advance_pct ?? 20,
+    advance_amount_cad: payload.advance_amount_cad ?? 0,
+    advance_paid_inr: payload.advance_paid_inr ?? 0,
+    estimated_weight: payload.estimated_weight ?? payload.total_weight ?? 1.0,
+    estimated_cost_cad: payload.estimated_cost_cad ?? payload.total_cost ?? 0,
+    actual_weight: payload.actual_weight ?? null,
+    final_cost_cad: payload.final_cost_cad ?? null,
+    remaining_balance_cad: payload.remaining_balance_cad ?? 0,
+    payment_status: payload.payment_status || 'pending',
+    raw_hold_group_id: rawHoldId,
+  };
+
+  const stageTimestamps = payload.stage_timestamps || { [initialStatus]: nowIso };
+  if (rawHoldId) {
+    (stageTimestamps as any).raw_hold_group_id = rawHoldId;
+  }
+
   const insertPayload = {
     id: formatShipmentId(payload.id || Date.now()),
-    user_id: validUserId,
-    customer_id: resolvedCustomerId,
+    user_id: isValidUuid(validUserId) ? validUserId : null,
     mode: payload.mode || 'online',
     status: initialStatus,
     destination_city: payload.destination_city || null,
@@ -172,24 +200,15 @@ export async function insertShipment(payload: ShipmentPayload, operatorUser?: Op
     total_weight: payload.total_weight || 0,
     total_cost: payload.total_cost || 0,
     payment_method: payload.payment_method || 'draft',
-    items: payload.items || [],
-    stage_timestamps: payload.stage_timestamps || { [initialStatus]: nowIso },
+    items: itemsObject,
+    stage_timestamps: stageTimestamps,
     stage_history: [initialLog],
     master_box_id: payload.master_box_id || null,
     canada_local_carrier: payload.canada_local_carrier || null,
     canada_local_awb: payload.canada_local_awb || null,
     warehouse_action: payload.warehouse_action || 'ship',
     expected_packages: payload.expected_packages || 1,
-    hold_group_id: payload.hold_group_id || null,
-    advance_pct: payload.advance_pct ?? 20,
-    advance_amount_cad: payload.advance_amount_cad ?? 0,
-    advance_paid_inr: payload.advance_paid_inr ?? 0,
-    estimated_weight: payload.estimated_weight ?? payload.total_weight ?? 1.0,
-    estimated_cost_cad: payload.estimated_cost_cad ?? payload.total_cost ?? 0,
-    actual_weight: payload.actual_weight ?? null,
-    final_cost_cad: payload.final_cost_cad ?? null,
-    remaining_balance_cad: payload.remaining_balance_cad ?? 0,
-    payment_status: payload.payment_status || 'pending',
+    hold_group_id: uuidHoldId,
     created_at: nowIso,
     updated_at: nowIso,
   };
@@ -201,7 +220,7 @@ export async function insertShipment(payload: ShipmentPayload, operatorUser?: Op
 
   if (error) {
     console.error('insertShipment error:', error);
-    const fallbackRow = { ...insertPayload };
+    const fallbackRow = parseShipment({ ...insertPayload });
     return { data: [fallbackRow], error: null };
   } else if (data && data[0]) {
     // Log to shipment_activity_logs table
@@ -220,10 +239,10 @@ export async function insertShipment(payload: ShipmentPayload, operatorUser?: Op
     } catch (logErr) {
       console.error('insertShipment activity log error:', logErr);
     }
-    return { data, error: null };
+    return { data: [parseShipment(data[0])], error: null };
   }
 
-  const fallbackRow = { ...insertPayload };
+  const fallbackRow = parseShipment({ ...insertPayload });
   return { data: [fallbackRow], error: null };
 }
 
@@ -236,29 +255,57 @@ export async function insertShipment(payload: ShipmentPayload, operatorUser?: Op
 export function parseShipment(raw: any) {
   if (!raw) return null;
   let itemsArray = raw.items;
-  let metadata: any = {};
+  let itemMeta: any = {};
   
-  if (raw.items && !Array.isArray(raw.items) && raw.items.items) {
-    itemsArray = raw.items.items;
-    metadata = raw.items.metadata || {};
+  if (raw.items && !Array.isArray(raw.items)) {
+    itemsArray = raw.items.items || [];
+    itemMeta = raw.items;
   }
   
-  const stageTimestamps = raw.stage_timestamps || metadata.stage_timestamps || {
+  const stageTimestamps = raw.stage_timestamps || itemMeta.stage_timestamps || {
     [raw.status || 'draft']: raw.created_at || new Date().toISOString()
   };
 
+  let rawHoldId = stageTimestamps.raw_hold_group_id || itemMeta.raw_hold_group_id || null;
+  if (!rawHoldId && raw.hold_group_id) {
+    const holdStr = String(raw.hold_group_id).trim();
+    if (holdStr.toUpperCase().includes('HOLD-')) {
+      rawHoldId = holdStr;
+    } else if (raw.warehouse_action === 'hold' || String(raw.status || '').toLowerCase() === 'holding') {
+      const refId = raw.external_order_id || (raw.id ? formatShipmentId(raw.id) : null);
+      if (refId) {
+        const cleanRef = String(refId).trim().replace(/^#/, '').replace(/^HOLD-/i, '').toUpperCase();
+        rawHoldId = `HOLD-${cleanRef}`;
+      } else {
+        rawHoldId = holdStr;
+      }
+    } else {
+      rawHoldId = holdStr;
+    }
+  }
+
   return {
     ...raw,
-    items: itemsArray || [],
-    user_id: raw.user_id || metadata.user_id || null,
-    india_warehouse: raw.india_warehouse || metadata.india_warehouse || null,
-    external_order_id: raw.external_order_id || metadata.external_order_id || null,
-    external_tracking: raw.external_tracking || metadata.external_tracking || null,
+    items: Array.isArray(itemsArray) ? itemsArray : [],
+    user_id: raw.user_id || itemMeta.user_id || null,
+    india_warehouse: raw.india_warehouse || itemMeta.india_warehouse || null,
+    external_order_id: raw.external_order_id || itemMeta.external_order_id || null,
+    external_tracking: raw.external_tracking || itemMeta.external_tracking || null,
     stage_timestamps: stageTimestamps,
     stage_history: raw.stage_history || [],
-    master_box_id: raw.master_box_id || metadata.master_box_id || null,
-    canada_local_carrier: raw.canada_local_carrier || metadata.canada_local_carrier || null,
-    canada_local_awb: raw.canada_local_awb || metadata.canada_local_awb || null,
+    master_box_id: raw.master_box_id || itemMeta.master_box_id || null,
+    canada_local_carrier: raw.canada_local_carrier || itemMeta.canada_local_carrier || null,
+    canada_local_awb: raw.canada_local_awb || itemMeta.canada_local_awb || null,
+    hold_group_id: rawHoldId || raw.hold_group_id || null,
+    advance_pct: raw.advance_pct ?? itemMeta.advance_pct ?? 20,
+    advance_amount_cad: raw.advance_amount_cad ?? itemMeta.advance_amount_cad ?? 0,
+    advance_paid_inr: raw.advance_paid_inr ?? itemMeta.advance_paid_inr ?? 0,
+    estimated_weight: raw.estimated_weight ?? itemMeta.estimated_weight ?? raw.total_weight ?? 1.0,
+    estimated_cost_cad: raw.estimated_cost_cad ?? itemMeta.estimated_cost_cad ?? raw.total_cost ?? 0,
+    actual_weight: raw.actual_weight ?? itemMeta.actual_weight ?? null,
+    final_cost_cad: raw.final_cost_cad ?? itemMeta.final_cost_cad ?? null,
+    remaining_balance_cad: raw.remaining_balance_cad ?? itemMeta.remaining_balance_cad ?? 0,
+    payment_status: raw.payment_status || itemMeta.payment_status || 'pending',
   };
 }
 
@@ -294,30 +341,83 @@ export async function updateShipmentStage(
     extra: extraFields || null,
   };
 
-  // Fetch existing stage_history array
+  // Fetch existing shipment row to merge stage_history and items
   let currentHistory: any[] = [];
+  let existingItemsObj: any = { items: [] };
   try {
     const { data: currentShipment } = await supabase
       .from('shipments')
-      .select('stage_history')
+      .select('stage_history, items, user_id, hold_group_id')
       .eq('id', id)
       .maybeSingle();
     if (currentShipment?.stage_history && Array.isArray(currentShipment.stage_history)) {
       currentHistory = currentShipment.stage_history;
     }
+    if (currentShipment?.items) {
+      if (Array.isArray(currentShipment.items)) {
+        existingItemsObj = { items: currentShipment.items };
+      } else {
+        existingItemsObj = { ...currentShipment.items };
+      }
+    }
   } catch (e) {
-    console.warn('Could not fetch stage_history', e);
+    console.warn('Could not fetch existing shipment before updateStage', e);
   }
 
   const updatedHistory = [...currentHistory, newLogEntry];
+
+  // List of columns that strictly exist in Postgres shipments table schema
+  const ALLOWED_COLUMNS = new Set([
+    'id', 'user_id', 'layo_number', 'mode', 'status', 'destination_city',
+    'destination_address', 'india_warehouse', 'external_order_id', 'external_tracking',
+    'total_weight', 'total_cost', 'payment_method', 'items', 'stage_timestamps',
+    'stage_history', 'master_box_id', 'canada_local_carrier', 'canada_local_awb',
+    'warehouse_action', 'expected_packages', 'hold_group_id', 'created_at', 'updated_at'
+  ]);
+
+  const rawHoldId = extraFields?.hold_group_id ? String(extraFields.hold_group_id).trim() : (existingItemsObj.raw_hold_group_id || null);
+
+  const updatedItemsObj = {
+    ...existingItemsObj,
+    ...(extraFields?.items ? (Array.isArray(extraFields.items) ? { items: extraFields.items } : extraFields.items) : {}),
+    ...(extraFields?.actual_weight !== undefined ? { actual_weight: extraFields.actual_weight } : {}),
+    ...(extraFields?.final_cost_cad !== undefined ? { final_cost_cad: extraFields.final_cost_cad } : {}),
+    ...(extraFields?.remaining_balance_cad !== undefined ? { remaining_balance_cad: extraFields.remaining_balance_cad } : {}),
+    ...(extraFields?.advance_amount_cad !== undefined ? { advance_amount_cad: extraFields.advance_amount_cad } : {}),
+    ...(extraFields?.advance_paid_inr !== undefined ? { advance_paid_inr: extraFields.advance_paid_inr } : {}),
+    ...(extraFields?.advance_pct !== undefined ? { advance_pct: extraFields.advance_pct } : {}),
+    ...(extraFields?.estimated_weight !== undefined ? { estimated_weight: extraFields.estimated_weight } : {}),
+    ...(extraFields?.estimated_cost_cad !== undefined ? { estimated_cost_cad: extraFields.estimated_cost_cad } : {}),
+    ...(extraFields?.payment_status !== undefined ? { payment_status: extraFields.payment_status } : {}),
+    ...(rawHoldId ? { raw_hold_group_id: rawHoldId } : {}),
+  };
+
+  if (rawHoldId) {
+    (updatedTimestamps as any).raw_hold_group_id = rawHoldId;
+  }
 
   const updatePayload: any = {
     status: newStatus,
     stage_timestamps: updatedTimestamps,
     stage_history: updatedHistory,
+    items: updatedItemsObj,
     updated_at: nowIso,
-    ...(extraFields || {})
   };
+
+  // Copy allowed extra top-level fields
+  if (extraFields) {
+    for (const [key, val] of Object.entries(extraFields)) {
+      if (ALLOWED_COLUMNS.has(key)) {
+        if (key === 'hold_group_id') {
+          updatePayload[key] = stringToUuid(val);
+        } else if (key === 'user_id') {
+          updatePayload[key] = isValidUuid(val) ? val : null;
+        } else if (key !== 'items' && key !== 'stage_timestamps' && key !== 'stage_history') {
+          updatePayload[key] = val;
+        }
+      }
+    }
+  }
 
   // Try direct update
   let { data, error } = await supabase
@@ -334,6 +434,10 @@ export async function updateShipmentStage(
       .select();
     data = upsertRes.data;
     error = upsertRes.error;
+  }
+
+  if (error) {
+    console.error('updateShipmentStage error:', error);
   }
 
   // Insert to shipment_activity_logs table for audit & analysis
