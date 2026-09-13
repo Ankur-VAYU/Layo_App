@@ -50,14 +50,20 @@ export const getHoldGroupKey = (s: any): string | null => {
     return normalizeHoldGroupId(rawHold);
   }
 
-  if (s.hold_group_id && typeof s.hold_group_id === 'string' && s.hold_group_id.toUpperCase().includes('HOLD-')) {
-    return normalizeHoldGroupId(s.hold_group_id);
+  if (s.hold_group_id) {
+    const holdStr = String(s.hold_group_id).trim();
+    if (holdStr) {
+      if (holdStr.toUpperCase().includes('HOLD-')) {
+        return normalizeHoldGroupId(holdStr);
+      }
+      return `HOLD-${formatShipmentId(holdStr)}`;
+    }
   }
 
   const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
   if (!isHold) return null;
 
-  const extId = s.external_order_id ? String(s.external_order_id).trim() : (s.id ? formatShipmentId(s.id) : null);
+  const extId = s.id ? formatShipmentId(s.id) : (s.external_order_id ? String(s.external_order_id).trim() : null);
   if (!extId) return null;
   return normalizeHoldGroupId(extId);
 };
@@ -542,7 +548,6 @@ export default function Dashboard() {
       const st = String(s.status || '').toLowerCase();
       const paySt = String(s.payment_status || '').toLowerCase();
       if (st === 'draft' || st === 'draft estimate' || st === 'cancelled' || st === 'delivered' || st === 'shipped') return false;
-      if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') return false;
       const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
       if (!isHold) return false;
       if (paySt === 'awaiting_balance' || st === 'repacked') return false;
@@ -556,64 +561,11 @@ export default function Dashboard() {
       map.get(key)!.push(s);
     });
 
-    // Handle legacy/unlinked hold packages: Merge loose hold packages into open primary hold group if total capacity allows
-    const entries = Array.from(map.entries());
-    if (entries.length > 1) {
-      const primaryEntry = entries.find(([_, items]) => items.some(it => Number(it.expected_packages) > 0));
-      if (primaryEntry) {
-        const [primaryKey, primaryItems] = primaryEntry;
-        const targetCap = 1 + (primaryItems.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1));
-        
-        entries.forEach(([otherKey, otherItems]) => {
-          if (otherKey !== primaryKey && primaryItems.length < targetCap) {
-            otherItems.forEach(item => {
-              if (primaryItems.length < targetCap && !primaryItems.some(x => x.id === item.id)) {
-                primaryItems.push(item);
-              }
-            });
-          }
-        });
-
-        const unifiedMap = new Map<string, any[]>();
-        unifiedMap.set(primaryKey, primaryItems);
-        entries.forEach(([k, items]) => {
-          if (k !== primaryKey) {
-            const remaining = items.filter(it => !primaryItems.some(x => x.id === it.id));
-            if (remaining.length > 0) unifiedMap.set(k, remaining);
-          }
-        });
-
-        return Array.from(unifiedMap.entries()).map(([groupKey, items]) => {
-          const primary = items.reduce((acc, curr) => (Number(curr.expected_packages) > 0 ? curr : acc), items[0]);
-          const expectedPackages = primary?.expected_packages ?? 1;
-          const totalCapacity = 1 + expectedPackages;
-          const currentLinkedCount = items.length;
-          const remainingSlots = Math.max(0, totalCapacity - currentLinkedCount);
-          const isFullyLinked = currentLinkedCount >= totalCapacity;
-
-          return {
-            group_id: groupKey,
-            groupKey,
-            items,
-            shipments: items,
-            primaryShipment: primary,
-            primary,
-            expectedPackages,
-            expectedMore: expectedPackages,
-            totalCapacity,
-            currentLinkedCount,
-            remainingSlots,
-            isFullyLinked,
-            isOpen: !isFullyLinked,
-          };
-        }).filter(grp => grp.isOpen);
-      }
-    }
-
-    return entries
+    return Array.from(map.entries())
       .map(([groupKey, items]) => {
-        const primary = items.reduce((acc, curr) => (Number(curr.expected_packages) > 0 ? curr : acc), items[0]);
-        const expectedPackages = primary?.expected_packages ?? 1;
+        const sortedByDate = [...items].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+        const primary = sortedByDate[0] || items[0];
+        const expectedPackages = items.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
         const totalCapacity = 1 + expectedPackages;
         const currentLinkedCount = items.length;
         const remainingSlots = Math.max(0, totalCapacity - currentLinkedCount);
@@ -635,7 +587,7 @@ export default function Dashboard() {
           isOpen: !isFullyLinked,
         };
       })
-      .filter(grp => grp.isOpen); // Key: Fully linked hold groups automatically move to Payment Dues!
+      .filter(grp => grp.isOpen); // Key: Open hold groups waiting for more packages stay here
   }, [shipments]);
 
   // 3. Payment Dues (Active Bookings after 20% Advance, awaiting Ops Repack Step 3 or remaining 80% balance)
@@ -655,8 +607,6 @@ export default function Dashboard() {
   // Grouped list of shipments for Payment Dues tab (Hold group packages combined into single entries)
   const groupedPendingDues = useMemo(() => { try {
     // 1. Filter eligible shipments (not draft, not cancelled, not completed)
-    const holdCount = shipments.filter(s => s && (s.warehouse_action === 'hold' || String(s.status || '').toLowerCase() === 'holding')).length;
-
     const eligible = shipments.filter(s => {
       if (!s) return false;
       const st = String(s.status || '').toLowerCase();
@@ -664,26 +614,25 @@ export default function Dashboard() {
       if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
       if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') return false;
 
-      const isHold = s.warehouse_action === 'hold' || st === 'holding';
+      const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
       if (isHold && paySt !== 'awaiting_balance' && st !== 'repacked') {
         const holdKey = getHoldGroupKey(s);
-        const groupAll = shipments.filter(x => x && (getHoldGroupKey(x) === holdKey || x.warehouse_action === 'hold' || String(x.status || '').toLowerCase() === 'holding'));
-        const primary = groupAll.reduce((acc, curr) => (Number(curr.expected_packages) > 0 ? curr : acc), groupAll[0]);
-        const totalCapacity = 1 + (primary?.expected_packages ?? 1);
-        const isHoldFullyLinked = groupAll.length >= totalCapacity || (holdCount >= totalCapacity && isHold);
-        if (!isHoldFullyLinked) return false; // Still waiting in Hold & Consolidation tab!
+        const groupPackages = shipments.filter(x => x && getHoldGroupKey(x) === holdKey);
+        const expectedMore = groupPackages.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
+        const totalCapacity = 1 + expectedMore;
+        const isHoldFullyLinked = groupPackages.length >= totalCapacity;
+        if (!isHoldFullyLinked) return false; // Still waiting for packages in Hold & Consolidation tab!
       }
 
       return paySt === 'awaiting_balance' || st === 'repacked' || st === 'paid' || st === 'advance_paid' || st === 'holding' || st === 'inwarded' || st === 'qc_verified' || Number(s.remaining_balance_cad) > 0;
     });
 
-    // 2. Group by hold_group_id or individual shipment ID
-    const primaryHoldKey = eligible.map(getHoldGroupKey).find(k => k && k.startsWith('HOLD-'));
+    // 2. Group by hold group key or individual shipment ID
     const map = new Map<string, any[]>();
     eligible.forEach(s => {
-      const holdKey = getHoldGroupKey(s);
-      const isHold = s.warehouse_action === 'hold' || String(s.status || '').toLowerCase() === 'holding';
-      const key = (isHold && primaryHoldKey) ? primaryHoldKey : (holdKey || s.id);
+      const isHold = s.warehouse_action === 'hold' || String(s.status || '').toLowerCase() === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
+      const holdKey = isHold ? getHoldGroupKey(s) : null;
+      const key = holdKey || s.id;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(s);
     });
@@ -838,8 +787,10 @@ export default function Dashboard() {
           .then(async (data) => {
             if (data.verified) {
               const targetId = data.metadata?.shipment_id || null;
+              const isAdvancePayment = data.metadata?.is_advance === 'true' || data.metadata?.payment_type === 'advance';
 
-              if (targetId) {
+              if (!isAdvancePayment && targetId) {
+                // Remaining Balance Payment
                 const normalizedTargetKey = normalizeHoldGroupId(targetId);
                 const matchingShips = shipments.filter(s => (normalizedTargetKey && getHoldGroupKey(s) === normalizedTargetKey) || s.hold_group_id === targetId || s.id === targetId || formatShipmentId(s.id) === formatShipmentId(targetId));
                 if (matchingShips.length > 0) {
@@ -896,69 +847,72 @@ export default function Dashboard() {
                   return;
                 }
               }
+
+              // Advance 20% Booking Payment
               const bookingTargetId = (data.metadata?.shipment_id && data.metadata.shipment_id.length === 36)
                 ? data.metadata.shipment_id
-                : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-4000-8000-000000000000');
+                : targetId;
 
-              const { data: updatedShipment } = await updateShipmentStage(
-                bookingTargetId,
-                'paid',
-                {},
-                {
+              if (bookingTargetId) {
+                const { data: currentShip } = await supabase.from('shipments').select('*').eq('id', bookingTargetId).maybeSingle();
+                const isHold = currentShip?.warehouse_action === 'hold' || currentShip?.status === 'holding';
+                const nextStatus = isHold ? 'holding' : 'paid';
+
+                await updateShipmentStage(
+                  bookingTargetId,
+                  nextStatus,
+                  currentShip?.stage_timestamps,
+                  {
+                    payment_status: 'advance_paid',
+                    payment_method: 'stripe',
+                  },
+                  { id: user?.id || null, email: user?.email || data.customerEmail || null, role: 'customer' },
+                  `20% Advance booking deposit of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed via Stripe`
+                );
+
+                // Look up customer_id for proper FK linkage
+                let customerId: string | null = null;
+                if (user?.id) {
+                  const { data: custRow } = await supabase
+                    .from('customers')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .maybeSingle();
+                  customerId = custRow?.id || null;
+                }
+
+                await supabase.from('transactions').insert({
+                  shipment_id: bookingTargetId,
+                  user_id: user?.id || null,
+                  amount_cad: data.amountTotal || 0,
+                  amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 61)) : 0,
+                  currency: data.currency?.toUpperCase() || 'CAD',
+                  exchange_rate: cadToInrRate || 61,
                   payment_method: 'stripe',
-                  user_id: user?.id || data.metadata?.user_id || null,
-                  destination_city: data.metadata?.destination_city || 'Canada',
-                  destination_address: data.metadata?.destination_address || '',
-                  india_warehouse: data.metadata?.warehouse || 'Indian Locker Hub',
-                  total_weight: parseFloat(data.metadata?.total_weight_kg || '1.0'),
-                  total_cost: Math.round((data.amountTotal || 0) * (cadToInrRate || 70.4)),
-                  items: data.metadata?.items_summary
-                    ? [{ category: 'Parcel', subcategory: data.metadata.items_summary, quantity: 1, weight: parseFloat(data.metadata?.total_weight_kg || '1.0') }]
-                    : [{ category: 'Parcel', subcategory: 'Layo Locker Dispatch', quantity: 1, weight: 1.0 }],
-                },
-                { id: user?.id || null, email: user?.email || data.customerEmail || null, role: 'customer' },
-                `Payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD completed via Stripe`
-              );
+                  stripe_session_id: sessionId,
+                  stripe_payment_intent_id: data.paymentIntentId || null,
+                  status: 'completed',
+                  customer_email: data.customerEmail || user?.email || null,
+                  customer_name: user?.email || null,
+                  description: `20% Advance deposit — Locker #${formatShipmentId(bookingTargetId)}`,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                });
 
-              // Look up customer_id for proper FK linkage
-              let customerId: string | null = null;
-              if (user?.id) {
-                const { data: custRow } = await supabase
-                  .from('customers')
-                  .select('id')
-                  .eq('user_id', user.id)
-                  .maybeSingle();
-                customerId = custRow?.id || null;
+                localStorage.removeItem('layo_pending_shipment');
+                localStorage.removeItem('layo_pending_shipment_draft');
+                localStorage.removeItem('layo_dashboard_flow_state');
+                handleStartNewOrder();
+                setPaymentBanner({
+                  type: 'success',
+                  message: isHold
+                    ? `20% Advance deposit of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed! Package linked to Hold & Combine group.`
+                    : `20% Advance deposit of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed! Locker space booked.`
+                });
+                setActiveTab(isHold ? 'hold' : 'history');
+                if (user?.id) fetchDashboardData(user.id);
+                return;
               }
-
-              // Record transaction
-              await supabase.from('transactions').insert({
-                shipment_id: bookingTargetId,
-                user_id: user?.id || null,
-                amount_cad: data.amountTotal || 0,
-                amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 61)) : 0,
-                currency: data.currency?.toUpperCase() || 'CAD',
-                exchange_rate: cadToInrRate || 61,
-                payment_method: 'stripe',
-                stripe_session_id: sessionId,
-                stripe_payment_intent_id: data.paymentIntentId || null,
-                status: 'completed',
-                customer_email: data.customerEmail || user?.email || null,
-                customer_name: user?.email || null,
-                description: `Layo shipment payment — Locker #${formatShipmentId(bookingTargetId)}`,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              });
-              localStorage.removeItem('layo_pending_shipment');
-              localStorage.removeItem('layo_pending_shipment_draft');
-              localStorage.removeItem('layo_dashboard_flow_state');
-              handleStartNewOrder();
-              setPaymentBanner({
-                type: 'success',
-                message: `Payment of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed via Stripe! Your shipment is active and dispatched to our Indian locker hub.`
-              });
-              setActiveTab('history');
-              if (user?.id) fetchDashboardData(user.id);
             } else {
               setPaymentBanner({
                 type: 'warning',
@@ -1386,16 +1340,15 @@ export default function Dashboard() {
         ? (holdOptionMode === 'existing' && selectedHoldGroupId ? normalizeHoldGroupId(selectedHoldGroupId) : normalizeHoldGroupId(`HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`))
         : null;
 
-      if (resolvedHoldGroupId && holdOptionMode === 'existing') {
-        const normalizedGroupId = normalizeHoldGroupId(resolvedHoldGroupId);
-        const matchingShips = shipments.filter(s => getHoldGroupKey(s) === normalizedGroupId);
-        for (const ship of matchingShips) {
-          if (ship?.id && ship.hold_group_id !== normalizedGroupId) {
-            await supabase
-              .from('shipments')
-              .update({ hold_group_id: normalizedGroupId, updated_at: new Date().toISOString() })
-              .eq('id', ship.id);
-          }
+      // Inherit expected packages from existing hold group so group capacity stays consistent
+      let groupExpectedPackages = morePackages || 1;
+      if (warehouseAction === 'hold' && holdOptionMode === 'existing' && resolvedHoldGroupId) {
+        const existingGroup = activeHoldGroups.find(g => g.group_id === resolvedHoldGroupId || g.groupKey === resolvedHoldGroupId);
+        if (existingGroup) {
+          groupExpectedPackages = existingGroup.expectedPackages;
+        } else {
+          const groupShips = shipments.filter(s => getHoldGroupKey(s) === resolvedHoldGroupId);
+          groupExpectedPackages = groupShips.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
         }
       }
 
@@ -1421,7 +1374,7 @@ export default function Dashboard() {
             estimated_cost_cad: totalCostCAD,
             remaining_balance_cad: remainingCAD,
             warehouse_action: warehouseAction || 'ship',
-            expected_packages: morePackages || 1,
+            expected_packages: groupExpectedPackages,
             hold_group_id: resolvedHoldGroupId,
             updated_at: new Date().toISOString()
           })
@@ -1448,7 +1401,7 @@ export default function Dashboard() {
           remaining_balance_cad: remainingCAD,
           payment_method: 'stripe',
           warehouse_action: warehouseAction || 'ship',
-          expected_packages: morePackages || 1,
+          expected_packages: groupExpectedPackages,
           hold_group_id: resolvedHoldGroupId,
         }, { id: user?.id, email: user?.email, role: 'customer' });
         if (data && data[0]) {
@@ -1528,8 +1481,19 @@ export default function Dashboard() {
       const remainingCAD = Math.round((totalCostCAD - advanceCAD) * 100) / 100;
 
       const resolvedHoldGroupId = warehouseAction === 'hold'
-        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? selectedHoldGroupId : `HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`)
+        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? normalizeHoldGroupId(selectedHoldGroupId) : normalizeHoldGroupId(`HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`))
         : null;
+
+      let groupExpectedPackages = morePackages || 1;
+      if (warehouseAction === 'hold' && holdOptionMode === 'existing' && resolvedHoldGroupId) {
+        const existingGroup = activeHoldGroups.find(g => g.group_id === resolvedHoldGroupId || g.groupKey === resolvedHoldGroupId);
+        if (existingGroup) {
+          groupExpectedPackages = existingGroup.expectedPackages;
+        } else {
+          const groupShips = shipments.filter(s => getHoldGroupKey(s) === resolvedHoldGroupId);
+          groupExpectedPackages = groupShips.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
+        }
+      }
 
       const targetStatus = warehouseAction === 'hold' ? 'holding' : 'paid';
       let targetShipmentId = editingDraftId;
@@ -1554,7 +1518,7 @@ export default function Dashboard() {
           estimated_cost_cad: totalCostCAD,
           remaining_balance_cad: remainingCAD,
           warehouse_action: warehouseAction || 'ship',
-          expected_packages: morePackages || 1,
+          expected_packages: groupExpectedPackages,
           hold_group_id: resolvedHoldGroupId,
           updated_at: new Date().toISOString()
         };
@@ -1586,7 +1550,7 @@ export default function Dashboard() {
           remaining_balance_cad: remainingCAD,
           payment_method: 'demo_simulated',
           warehouse_action: warehouseAction || 'ship',
-          expected_packages: morePackages || 1,
+          expected_packages: groupExpectedPackages,
           hold_group_id: resolvedHoldGroupId,
         }, { id: user?.id, email: user?.email, role: 'customer' });
 
@@ -1805,8 +1769,19 @@ export default function Dashboard() {
       const remainingCAD = Math.round((totals.totalPriceCAD - advanceCAD) * 100) / 100;
       const advanceINR = Math.round(totals.totalPriceINR * 0.20);
       const resolvedHoldGroupId = warehouseAction === 'hold'
-        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? selectedHoldGroupId : `HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`)
+        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? normalizeHoldGroupId(selectedHoldGroupId) : normalizeHoldGroupId(`HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`))
         : null;
+
+      let groupExpectedPackages = morePackages || 1;
+      if (warehouseAction === 'hold' && holdOptionMode === 'existing' && resolvedHoldGroupId) {
+        const existingGroup = activeHoldGroups.find(g => g.group_id === resolvedHoldGroupId || g.groupKey === resolvedHoldGroupId);
+        if (existingGroup) {
+          groupExpectedPackages = existingGroup.expectedPackages;
+        } else {
+          const groupShips = shipments.filter(s => getHoldGroupKey(s) === resolvedHoldGroupId);
+          groupExpectedPackages = groupShips.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
+        }
+      }
 
       if (editingDraftId) {
         const updatePayload = {
@@ -1823,7 +1798,7 @@ export default function Dashboard() {
           items: itemsPayload,
           status: 'Draft Estimate',
           warehouse_action: warehouseAction || 'ship',
-          expected_packages: morePackages || 1,
+          expected_packages: groupExpectedPackages,
           hold_group_id: resolvedHoldGroupId,
           updated_at: new Date().toISOString()
         };
@@ -1868,7 +1843,7 @@ export default function Dashboard() {
           remaining_balance_cad: remainingCAD,
           payment_method: 'draft',
           warehouse_action: warehouseAction || 'ship',
-          expected_packages: morePackages || 1,
+          expected_packages: groupExpectedPackages,
           hold_group_id: resolvedHoldGroupId,
         }, { id: user?.id, email: user?.email, role: 'customer' });
         if (data && data[0]) {
@@ -2285,6 +2260,15 @@ export default function Dashboard() {
                             setSelectedHoldGroupId(grp.group_id);
                             setHoldOptionMode('existing');
                             setWarehouseAction('hold');
+                            if (primary?.destination_city) {
+                              setDestinationCity(primary.destination_city);
+                            }
+                            if (primary?.destination_address) {
+                              setDestinationAddress(primary.destination_address);
+                            }
+                            if (primary?.india_warehouse) {
+                              setSelectedWarehouse(primary.india_warehouse);
+                            }
                             setActiveTab('new');
                             setCurrentStep(1);
                           }}
@@ -3761,20 +3745,24 @@ export default function Dashboard() {
                         {(activeHoldGroups.length === 0 || holdOptionMode === 'new') && (
                           <div className="space-y-2">
                             <label className="text-[10px] text-[#0E1F38] font-bold uppercase tracking-wider block">
-                              How many more packages are you expecting for this hold group?
+                              How many additional packages will arrive to combine with this order?
+                              <span className="ml-1 text-indigo-600 font-extrabold normal-case">
+                                (Total: {(morePackages || 1) + 1} packages in this Hold Group)
+                              </span>
                             </label>
-                            <div className="flex gap-2">
-                              {[1, 2, 3].map(num => (
+                            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                              {[1, 2, 3, 4, 5].map(num => (
                                 <button
+                                  type="button"
                                   key={num}
                                   onClick={() => setMorePackages(num)}
-                                  className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                                    morePackages === num
+                                  className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center ${
+                                    (morePackages === num || (!morePackages && num === 1))
                                       ? 'bg-[#FF5A65] text-white border-[#FF5A65] shadow-sm'
                                       : 'bg-white border-black/10 text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
                                   }`}
                                 >
-                                  {num} package(s)
+                                  +{num} more ({num + 1} total)
                                 </button>
                               ))}
                             </div>

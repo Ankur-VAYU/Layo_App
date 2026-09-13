@@ -78,6 +78,8 @@ export async function POST(request: NextRequest) {
         total_weight_kg: totalWeightKg.toString(),
         total_cad: numAmount.toFixed(2),
         items_summary: itemsSummary.slice(0, 450),
+        is_advance: isAdvance ? 'true' : 'false',
+        payment_type: isAdvance ? 'advance' : 'balance',
       },
       success_url: `${origin}/dashboard?session_id={CHECKOUT_SESSION_ID}&payment_status=success`,
       cancel_url: `${origin}/dashboard?payment_status=cancelled`,

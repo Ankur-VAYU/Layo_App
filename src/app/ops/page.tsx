@@ -33,14 +33,20 @@ const getHoldGroupKey = (s: any): string | null => {
     return normalizeHoldGroupId(rawHold);
   }
 
-  if (s.hold_group_id && typeof s.hold_group_id === 'string' && s.hold_group_id.toUpperCase().includes('HOLD-')) {
-    return normalizeHoldGroupId(s.hold_group_id);
+  if (s.hold_group_id) {
+    const holdStr = String(s.hold_group_id).trim();
+    if (holdStr) {
+      if (holdStr.toUpperCase().includes('HOLD-')) {
+        return normalizeHoldGroupId(holdStr);
+      }
+      return `HOLD-${formatShipmentId(holdStr)}`;
+    }
   }
 
   const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
   if (!isHold) return null;
 
-  const extId = s.external_order_id ? String(s.external_order_id).trim() : (s.id ? formatShipmentId(s.id) : null);
+  const extId = s.id ? formatShipmentId(s.id) : (s.external_order_id ? String(s.external_order_id).trim() : null);
   if (!extId) return null;
   return normalizeHoldGroupId(extId);
 };
@@ -164,14 +170,16 @@ export default function WarehouseOpsPortal() {
     );
     const groups: Record<string, any[]> = {};
     holdShipments.forEach(s => {
-      const key = getHoldGroupKey(s) || s.user_id || s.id;
+      const key = getHoldGroupKey(s) || (s.id ? `HOLD-${formatShipmentId(s.id)}` : 'HOLD-GROUP');
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
     });
     return Object.entries(groups).map(([groupKey, items]) => {
-      const primary = items.find(s => s.expected_packages !== undefined && s.expected_packages !== null && s.expected_packages > 0) || items[0];
-      const expectedTotal = Math.max(items.length, 1 + (primary?.expected_packages ?? 1));
-      const arrivedCount = items.filter(s => s.status === 'hold_arrived' || s.status === 'inwarded' || s.status === 'qc_verified').length;
+      const sortedByDate = [...items].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+      const primary = sortedByDate[0] || items[0];
+      const expectedMore = items.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
+      const expectedTotal = 1 + expectedMore;
+      const arrivedCount = items.filter(s => s.status === 'hold_arrived' || s.status === 'inwarded' || s.status === 'qc_verified' || s.status === 'repacked').length;
       const allArrived = arrivedCount >= expectedTotal;
 
       return {

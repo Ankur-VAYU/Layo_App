@@ -271,16 +271,16 @@ export function parseShipment(raw: any) {
     const holdStr = String(raw.hold_group_id).trim();
     if (holdStr.toUpperCase().includes('HOLD-')) {
       rawHoldId = holdStr;
-    } else if (raw.warehouse_action === 'hold' || String(raw.status || '').toLowerCase() === 'holding') {
-      const refId = raw.external_order_id || (raw.id ? formatShipmentId(raw.id) : null);
-      if (refId) {
-        const cleanRef = String(refId).trim().replace(/^#/, '').replace(/^HOLD-/i, '').toUpperCase();
-        rawHoldId = `HOLD-${cleanRef}`;
-      } else {
-        rawHoldId = holdStr;
-      }
+    } else if (isValidUuid(holdStr)) {
+      rawHoldId = `HOLD-${formatShipmentId(holdStr)}`;
     } else {
       rawHoldId = holdStr;
+    }
+  } else if (!rawHoldId && (raw.warehouse_action === 'hold' || String(raw.status || '').toLowerCase() === 'holding')) {
+    const refId = raw.id ? formatShipmentId(raw.id) : (raw.external_order_id ? String(raw.external_order_id).trim() : null);
+    if (refId) {
+      const cleanRef = String(refId).trim().replace(/^#/, '').replace(/^HOLD-/i, '').toUpperCase();
+      rawHoldId = `HOLD-${cleanRef}`;
     }
   }
 
@@ -296,6 +296,8 @@ export function parseShipment(raw: any) {
     master_box_id: raw.master_box_id || itemMeta.master_box_id || null,
     canada_local_carrier: raw.canada_local_carrier || itemMeta.canada_local_carrier || null,
     canada_local_awb: raw.canada_local_awb || itemMeta.canada_local_awb || null,
+    warehouse_action: raw.warehouse_action || itemMeta.warehouse_action || 'ship',
+    expected_packages: Number(raw.expected_packages ?? itemMeta.expected_packages ?? 1),
     hold_group_id: rawHoldId || raw.hold_group_id || null,
     advance_pct: raw.advance_pct ?? itemMeta.advance_pct ?? 20,
     advance_amount_cad: raw.advance_amount_cad ?? itemMeta.advance_amount_cad ?? 0,
