@@ -138,27 +138,143 @@ export default function WarehouseOpsPortal() {
     router.push('/ops/login');
   };
 
-  // Filtered shipments
+  // Filtered shipments & combined hold groups queue
   const filteredShipments = useMemo(() => {
-    return shipments.filter(s => {
-      const q = searchQuery.toLowerCase().trim();
+    const q = searchQuery.toLowerCase().trim();
+    const matchesSearch = (s: any) => {
+      if (!q) return true;
       const lockerMatch = (s.id || '').toLowerCase().includes(q);
       const userMatch = (s.user_id || '').toLowerCase().includes(q);
       const cityMatch = (s.destination_city || '').toLowerCase().includes(q);
       const extOrderMatch = (s.external_order_id || '').toLowerCase().includes(q);
       const trackingMatch = (s.external_tracking || '').toLowerCase().includes(q);
       const masterBoxMatch = (s.master_box_id || '').toLowerCase().includes(q);
+      const holdMatch = (getHoldGroupKey(s) || '').toLowerCase().includes(q);
+      return lockerMatch || userMatch || cityMatch || extOrderMatch || trackingMatch || masterBoxMatch || holdMatch;
+    };
 
-      const matchesSearch = !q || lockerMatch || userMatch || cityMatch || extOrderMatch || trackingMatch || masterBoxMatch;
-      if (!matchesSearch) return false;
+    if (activeTab === 'inward') {
+      return shipments
+        .filter(s => (s.status === 'paid' || s.status === 'draft' || s.status === 'advance_paid') && matchesSearch(s))
+        .map(s => ({
+          ...s,
+          isCombinedGroup: false,
+          itemsCount: Array.isArray(s.items) ? s.items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0) : 0,
+        }));
+    }
 
-      if (activeTab === 'inward') return s.status === 'paid' || s.status === 'draft' || s.status === 'advance_paid';
-      if (activeTab === 'qc') return s.status === 'inwarded' || s.status === 'arrived';
-      if (activeTab === 'repack') return s.status === 'qc_verified';
-      if (activeTab === 'master_bulk') return s.status === 'repacked' || s.status === 'bulk_consolidated';
+    if (activeTab === 'qc') {
+      return shipments
+        .filter(s => (s.status === 'inwarded' || s.status === 'arrived') && matchesSearch(s))
+        .map(s => ({
+          ...s,
+          isCombinedGroup: false,
+          itemsCount: Array.isArray(s.items) ? s.items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0) : 0,
+        }));
+    }
 
-      return true;
+    // ── 3rd Flow onwards (Repack, Master Bulk, or All): COMBINE HOLD GROUPS! ──
+    const holdMap = new Map<string, any[]>();
+    const nonHoldList: any[] = [];
+
+    shipments.forEach(s => {
+      const holdKey = getHoldGroupKey(s);
+      if (holdKey) {
+        if (!holdMap.has(holdKey)) holdMap.set(holdKey, []);
+        holdMap.get(holdKey)!.push(s);
+      } else {
+        nonHoldList.push(s);
+      }
     });
+
+    const result: any[] = [];
+
+    // Process hold groups: combine them into unified cards from 3rd flow
+    holdMap.forEach((groupShips, groupKey) => {
+      const anyMatch = groupShips.some(matchesSearch);
+      if (!anyMatch) return;
+
+      const sortedByDate = [...groupShips].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+      const primary = sortedByDate[0] || groupShips[0];
+
+      const allRepacked = groupShips.every(s => ['repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(s.status));
+      const allMasterBulk = groupShips.every(s => ['bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(s.status));
+      const hasQcVerified = groupShips.some(s => s.status === 'qc_verified');
+      const allQcMatched = groupShips.every(s => ['qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(s.status));
+
+      if (activeTab === 'repack') {
+        // Tab 3: SOP Repack — show groups that have items in qc_verified and not yet repacked
+        if (allRepacked) return;
+        if (!hasQcVerified && !allQcMatched) return;
+      } else if (activeTab === 'master_bulk') {
+        // Tab 4: Master Cargo — show groups that are repacked and not yet in bulk crate
+        const hasRepacked = groupShips.some(s => s.status === 'repacked' || s.status === 'bulk_consolidated');
+        if (!hasRepacked) return;
+        if (allMasterBulk) return;
+      }
+
+      // Combine items and photos across all packages in this group
+      const combinedItems: any[] = [];
+      groupShips.forEach(s => {
+        if (Array.isArray(s.items)) {
+          s.items.forEach((it: any) => {
+            combinedItems.push({
+              ...it,
+              sourceShipmentId: s.id,
+              sourceExternalId: s.external_order_id,
+            });
+          });
+        }
+      });
+
+      const combinedPhotos: QCPhoto[] = [];
+      groupShips.forEach(s => {
+        if (Array.isArray(s.qc_photos)) {
+          combinedPhotos.push(...s.qc_photos);
+        }
+      });
+
+      const totalIncomingWeight = groupShips.reduce((sum, s) => sum + (Number(s.total_weight) || 1.0), 0);
+      const verifiedWeight = groupShips.reduce((max, s) => Math.max(max, Number(s.actual_weight || 0)), 0);
+
+      const combinedStatus = allRepacked ? 'repacked' : (hasQcVerified || allQcMatched ? 'qc_verified' : groupShips[0].status);
+
+      result.push({
+        ...primary,
+        id: groupKey,
+        isCombinedGroup: true,
+        groupKey,
+        shipments: groupShips,
+        primaryShipment: primary,
+        destination_city: primary.destination_city || 'Toronto (GTA)',
+        destination_address: primary.destination_address || '',
+        status: combinedStatus,
+        total_weight: Math.round(totalIncomingWeight * 100) / 100,
+        actual_weight: verifiedWeight > 0 ? verifiedWeight : undefined,
+        items: combinedItems,
+        itemsCount: combinedItems.reduce((acc, it) => acc + (it.quantity || 1), 0),
+        qc_photos: combinedPhotos,
+        master_box_id: groupShips.find(s => s.master_box_id)?.master_box_id || null,
+        canada_local_awb: groupShips.find(s => s.canada_local_awb)?.canada_local_awb || null,
+        allQcMatched,
+        allRepacked,
+      });
+    });
+
+    // Process non-hold shipments
+    nonHoldList.forEach(s => {
+      if (!matchesSearch(s)) return;
+      if (activeTab === 'repack' && s.status !== 'qc_verified') return;
+      if (activeTab === 'master_bulk' && (s.status !== 'repacked' && s.status !== 'bulk_consolidated')) return;
+
+      result.push({
+        ...s,
+        isCombinedGroup: false,
+        itemsCount: Array.isArray(s.items) ? s.items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0) : 0,
+      });
+    });
+
+    return result;
   }, [shipments, searchQuery, activeTab]);
 
   // Hold & Combine groups — group by user_id or hold_group_id for the hold_combine tab
@@ -312,19 +428,19 @@ export default function WarehouseOpsPortal() {
   // Handler: Layo SOP Repack & Gross Scale Weight
   /** Stage 3: Repack — repack into Layo Green Box */
   const handleCompleteRepack = async (shipmentId: string) => {
-    const verifiedWeight = parseFloat(grossWeightInput) || selectedShipment?.total_weight || 1.0;
+    const verifiedWeight = parseFloat(grossWeightInput) || selectedShipment?.actual_weight || selectedShipment?.total_weight || 1.0;
     const calc = calculateLayoDeliveryCost({ weightKg: verifiedWeight, deliveryType: 'normal' });
     const finalCostCAD = calc.finalPriceCAD;
-    const current = shipments.find(s => s.id === shipmentId);
+    const current = shipments.find(s => s.id === shipmentId) || selectedShipment;
     
     // Check if this shipment belongs to a hold group
     const holdGroupId = getHoldGroupKey(current || selectedShipment);
-    const groupShipments = holdGroupId
-      ? shipments.filter(s => getHoldGroupKey(s) === holdGroupId)
-      : [current || selectedShipment].filter(Boolean);
+    const groupShipments = (selectedShipment?.isCombinedGroup && selectedShipment.shipments)
+      ? selectedShipment.shipments
+      : (holdGroupId ? shipments.filter(s => getHoldGroupKey(s) === holdGroupId) : [current || selectedShipment].filter(Boolean));
 
     // Sum advance paid across all shipments in this hold group
-    const totalAdvancePaidCAD = groupShipments.reduce((sum, s) => {
+    const totalAdvancePaidCAD = groupShipments.reduce((sum: number, s: any) => {
       const adv = s?.advance_amount_cad;
       if (adv !== undefined && adv !== null) return sum + Number(adv);
       const est = Number(s?.estimated_cost_cad || (s?.total_cost ? s.total_cost / 70.4 : 25.0));
@@ -336,6 +452,7 @@ export default function WarehouseOpsPortal() {
 
     setUpdating(true);
     try {
+      const nowIso = new Date().toISOString();
       // Update each shipment in the group
       for (const ship of groupShipments) {
         if (!ship?.id) continue;
@@ -356,7 +473,7 @@ export default function WarehouseOpsPortal() {
         );
       }
 
-      const targetIds = new Set(groupShipments.map(s => s.id));
+      const targetIds = new Set(groupShipments.map((s: any) => s.id));
 
       setShipments(prev => {
         const nextList = prev.map(s => targetIds.has(s.id) ? { 
@@ -368,7 +485,7 @@ export default function WarehouseOpsPortal() {
           remaining_balance_cad: remainingBalanceCAD,
           payment_status: newPaymentStatus,
           box_dimensions: boxDimensions, 
-          stage_timestamps: { ...(s.stage_timestamps || {}), repacked: new Date().toISOString() } 
+          stage_timestamps: { ...(s.stage_timestamps || {}), repacked: nowIso } 
         } : s);
         try {
           localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
@@ -376,18 +493,46 @@ export default function WarehouseOpsPortal() {
         return nextList;
       });
 
-      if (selectedShipment && targetIds.has(selectedShipment.id)) {
-        setSelectedShipment((prev: any) => ({ 
-          ...prev, 
-          status: 'repacked', 
-          total_weight: verifiedWeight, 
-          actual_weight: verifiedWeight,
-          final_cost_cad: finalCostCAD,
-          remaining_balance_cad: remainingBalanceCAD,
-          payment_status: newPaymentStatus,
-          box_dimensions: boxDimensions, 
-          stage_timestamps: { ...(prev?.stage_timestamps || {}), repacked: new Date().toISOString() } 
-        }));
+      if (selectedShipment) {
+        setSelectedShipment((prev: any) => {
+          if (!prev) return null;
+          if (prev.isCombinedGroup) {
+            return {
+              ...prev,
+              status: 'repacked',
+              total_weight: verifiedWeight,
+              actual_weight: verifiedWeight,
+              final_cost_cad: finalCostCAD,
+              remaining_balance_cad: remainingBalanceCAD,
+              payment_status: newPaymentStatus,
+              box_dimensions: boxDimensions,
+              stage_timestamps: { ...(prev.stage_timestamps || {}), repacked: nowIso },
+              allRepacked: true,
+              shipments: prev.shipments ? prev.shipments.map((s: any) => ({
+                ...s,
+                status: 'repacked',
+                total_weight: verifiedWeight,
+                actual_weight: verifiedWeight,
+                final_cost_cad: finalCostCAD,
+                remaining_balance_cad: remainingBalanceCAD,
+                payment_status: newPaymentStatus,
+                box_dimensions: boxDimensions,
+                stage_timestamps: { ...(s.stage_timestamps || {}), repacked: nowIso }
+              })) : undefined
+            };
+          }
+          return {
+            ...prev,
+            status: 'repacked',
+            total_weight: verifiedWeight,
+            actual_weight: verifiedWeight,
+            final_cost_cad: finalCostCAD,
+            remaining_balance_cad: remainingBalanceCAD,
+            payment_status: newPaymentStatus,
+            box_dimensions: boxDimensions,
+            stage_timestamps: { ...(prev?.stage_timestamps || {}), repacked: nowIso }
+          };
+        });
       }
     } catch (err) {
       console.error('Failed to mark repacked', err);
@@ -402,21 +547,47 @@ export default function WarehouseOpsPortal() {
     if (!masterBoxId) return;
     setUpdating(true);
     try {
-      const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(
-        shipmentId,
-        'bulk_consolidated',
-        current?.stage_timestamps,
-        { master_box_id: masterBoxId },
-        operatorUser,
-        `Assigned to master cargo batch ${masterBoxId}`
-      );
+      const current = shipments.find(s => s.id === shipmentId) || selectedShipment;
+      const holdGroupId = getHoldGroupKey(current || selectedShipment);
+      const targetShipments = (selectedShipment?.isCombinedGroup && selectedShipment.shipments)
+        ? selectedShipment.shipments
+        : (holdGroupId ? shipments.filter(s => getHoldGroupKey(s) === holdGroupId) : [current || selectedShipment].filter(Boolean));
 
-      if (!result.error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'bulk_consolidated', master_box_id: masterBoxId, stage_timestamps: result.updatedTimestamps } : s));
-        if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'bulk_consolidated', master_box_id: masterBoxId, stage_timestamps: result.updatedTimestamps }));
-        }
+      const nowIso = new Date().toISOString();
+      for (const ship of targetShipments) {
+        if (!ship?.id) continue;
+        await updateShipmentStage(
+          ship.id,
+          'bulk_consolidated',
+          ship.stage_timestamps,
+          { master_box_id: masterBoxId },
+          operatorUser,
+          `Assigned to master cargo batch ${masterBoxId}`
+        );
+      }
+
+      const targetIds = new Set(targetShipments.map((s: any) => s.id));
+      setShipments(prev => {
+        const nextList = prev.map(s => targetIds.has(s.id) ? {
+          ...s,
+          status: 'bulk_consolidated',
+          master_box_id: masterBoxId,
+          stage_timestamps: { ...(s.stage_timestamps || {}), bulk_consolidated: nowIso }
+        } : s);
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
+      if (selectedShipment) {
+        setSelectedShipment((prev: any) => ({
+          ...prev,
+          status: 'bulk_consolidated',
+          master_box_id: masterBoxId,
+          stage_timestamps: { ...(prev?.stage_timestamps || {}), bulk_consolidated: nowIso },
+          shipments: prev.shipments ? prev.shipments.map((s: any) => ({ ...s, status: 'bulk_consolidated', master_box_id: masterBoxId })) : undefined
+        }));
       }
     } catch (err) {
       console.error('Failed to assign master cargo box', err);
@@ -516,30 +687,59 @@ export default function WarehouseOpsPortal() {
     if (!canadaAWB) return;
     setUpdating(true);
     try {
-      const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(
-        shipmentId,
-        'in_transit',
-        current?.stage_timestamps,
-        {
-          canada_local_carrier: canadaCarrier,
-          canada_local_awb: canadaAWB,
-          external_tracking: `${canadaCarrier}: ${canadaAWB}`
-        },
-        operatorUser,
-        `Airfreight dispatched via ${canadaCarrier} (AWB: ${canadaAWB})`
-      );
-      if (!result.error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? {
-          ...s, status: 'in_transit',
+      const current = shipments.find(s => s.id === shipmentId) || selectedShipment;
+      const holdGroupId = getHoldGroupKey(current || selectedShipment);
+      const targetShipments = (selectedShipment?.isCombinedGroup && selectedShipment.shipments)
+        ? selectedShipment.shipments
+        : (holdGroupId ? shipments.filter(s => getHoldGroupKey(s) === holdGroupId) : [current || selectedShipment].filter(Boolean));
+
+      const nowIso = new Date().toISOString();
+      for (const ship of targetShipments) {
+        if (!ship?.id) continue;
+        await updateShipmentStage(
+          ship.id,
+          'in_transit',
+          ship.stage_timestamps,
+          {
+            canada_local_carrier: canadaCarrier,
+            canada_local_awb: canadaAWB,
+            external_tracking: `${canadaCarrier}: ${canadaAWB}`
+          },
+          operatorUser,
+          `Airfreight dispatched via ${canadaCarrier} (AWB: ${canadaAWB})`
+        );
+      }
+
+      const targetIds = new Set(targetShipments.map((s: any) => s.id));
+      setShipments(prev => {
+        const nextList = prev.map(s => targetIds.has(s.id) ? {
+          ...s,
+          status: 'in_transit',
           canada_local_carrier: canadaCarrier,
           canada_local_awb: canadaAWB,
           external_tracking: `${canadaCarrier}: ${canadaAWB}`,
-          stage_timestamps: result.updatedTimestamps
-        } : s));
-        if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'in_transit', canada_local_carrier: canadaCarrier, canada_local_awb: canadaAWB, stage_timestamps: result.updatedTimestamps }));
-        }
+          stage_timestamps: { ...(s.stage_timestamps || {}), in_transit: nowIso }
+        } : s);
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
+      if (selectedShipment) {
+        setSelectedShipment((prev: any) => ({
+          ...prev,
+          status: 'in_transit',
+          canada_local_carrier: canadaCarrier,
+          canada_local_awb: canadaAWB,
+          stage_timestamps: { ...(prev?.stage_timestamps || {}), in_transit: nowIso },
+          shipments: prev.shipments ? prev.shipments.map((s: any) => ({
+            ...s,
+            status: 'in_transit',
+            canada_local_carrier: canadaCarrier,
+            canada_local_awb: canadaAWB
+          })) : undefined
+        }));
       }
     } catch (err) {
       console.error('Failed to dispatch airfreight', err);
@@ -1006,15 +1206,70 @@ export default function WarehouseOpsPortal() {
               </div>
             ) : (
               filteredShipments.map(s => {
-                const isSelected = selectedShipment?.id === s.id;
-                const itemsCount = Array.isArray(s.items) ? s.items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0) : 0;
+                const isSelected = selectedShipment?.id === s.id ||
+                  (s.isCombinedGroup && s.shipments?.some((x: any) => x.id === selectedShipment?.id)) ||
+                  (selectedShipment?.isCombinedGroup && selectedShipment.groupKey === s.groupKey);
+                const itemsCount = s.itemsCount || (Array.isArray(s.items) ? s.items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0) : 0);
                 
+                if (s.isCombinedGroup) {
+                  return (
+                    <div
+                      key={s.id}
+                      onClick={() => {
+                        setSelectedShipment(s);
+                        setGrossWeightInput(s.actual_weight ? s.actual_weight.toString() : s.total_weight ? s.total_weight.toString() : '');
+                        setUploadedPhotos(s.qc_photos || []);
+                        if (s.master_box_id) setMasterBoxId(s.master_box_id);
+                        if (s.canada_local_awb) setCanadaAWB(s.canada_local_awb);
+                        setMobileOpsTab('workstation');
+                      }}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-3 ${
+                        isSelected
+                          ? 'bg-white border-[#8BC34A] shadow-md ring-2 ring-[#8BC34A]/20'
+                          : 'bg-white hover:bg-white/80 border-indigo-200 hover:border-indigo-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-xs font-black bg-indigo-50 text-indigo-900 px-2 py-0.5 rounded border border-indigo-200">
+                              📦 {s.groupKey}
+                            </span>
+                            <span className="bg-indigo-100/90 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-200">
+                              {s.shipments?.length || 2} Combined Packages
+                            </span>
+                            {s.master_box_id && (
+                              <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded text-[9px] font-black font-mono">
+                                📦 {s.master_box_id}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs font-bold text-[#0E1F38] mt-1">
+                            {s.destination_city || 'Canada'}
+                          </p>
+                          <p className="text-[10px] font-mono text-[#0E1F38]/60 mt-0.5">
+                            {s.shipments?.map((sub: any) => `#${formatShipmentId(sub.id)}`).join(' + ')}
+                          </p>
+                        </div>
+                        {getStatusBadge(s.status)}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-[#0E1F38]/70 border-t border-black/5 pt-2">
+                        <span>{itemsCount} Declared Items</span>
+                        <span className="font-mono font-bold text-indigo-950">
+                          {s.actual_weight ? `${s.actual_weight} kg (Verified)` : `${s.total_weight || 1.0} kg (Est. Combined)`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={s.id}
                     onClick={() => {
                       setSelectedShipment(s);
-                      setGrossWeightInput(s.total_weight ? s.total_weight.toString() : '');
+                      setGrossWeightInput(s.actual_weight ? s.actual_weight.toString() : s.total_weight ? s.total_weight.toString() : '');
                       setUploadedPhotos(s.qc_photos || []);
                       if (s.master_box_id) setMasterBoxId(s.master_box_id);
                       if (s.canada_local_awb) setCanadaAWB(s.canada_local_awb);
@@ -1032,6 +1287,11 @@ export default function WarehouseOpsPortal() {
                           <span className="font-mono text-xs font-black bg-[#FAF8EE] px-2 py-0.5 rounded border border-black/5 text-[#0E1F38]">
                             #{formatShipmentId(s.id)}
                           </span>
+                          {getHoldGroupKey(s) && (
+                            <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[9px] font-black font-mono">
+                              📦 {getHoldGroupKey(s)}
+                            </span>
+                          )}
                           {s.master_box_id && (
                             <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[9px] font-black font-mono">
                               📦 {s.master_box_id}
@@ -1047,7 +1307,7 @@ export default function WarehouseOpsPortal() {
 
                     <div className="flex items-center justify-between text-[11px] text-[#0E1F38]/70 border-t border-black/5 pt-2">
                       <span>{itemsCount} Declared Items</span>
-                      <span className="font-mono font-bold text-[#0E1F38]">{s.total_weight || 1.0} kg</span>
+                      <span className="font-mono font-bold text-[#0E1F38]">{s.actual_weight || s.total_weight || 1.0} kg</span>
                     </div>
                   </div>
                 );
@@ -1073,10 +1333,15 @@ export default function WarehouseOpsPortal() {
               {/* Header Info */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-black/5 gap-3">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-black text-sm text-[#0E1F38]">
-                      Locker #{formatShipmentId(selectedShipment.id)}
+                      {selectedShipment.isCombinedGroup ? `Hold Group #${selectedShipment.groupKey}` : `Locker #${formatShipmentId(selectedShipment.id)}`}
                     </span>
+                    {selectedShipment.isCombinedGroup && (
+                      <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-indigo-200">
+                        Consolidated Hold ({selectedShipment.shipments?.length || 2} Packages)
+                      </span>
+                    )}
                     {getStatusBadge(selectedShipment.status)}
                   </div>
                   <p className="text-xs text-[#0E1F38]/60 mt-0.5">
@@ -1092,6 +1357,29 @@ export default function WarehouseOpsPortal() {
                   Flag Discrepancy
                 </button>
               </div>
+
+              {/* Combined Packages Breakdown Banner */}
+              {selectedShipment.isCombinedGroup && selectedShipment.shipments && (
+                <div className="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100 space-y-2 text-xs">
+                  <span className="text-[10px] font-black text-indigo-800 uppercase tracking-wider block">
+                    Combined Packages in this Consolidated Group:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {selectedShipment.shipments.map((s: any, sIdx: number) => (
+                      <div key={s.id || sIdx} className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-black/5 text-[11px]">
+                        <div>
+                          <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(s.id)}</span>
+                          <span className="text-gray-500 ml-1.5">{s.external_order_id ? `Ref: #${s.external_order_id}` : `Pkg ${sIdx + 1}`}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-indigo-700 font-bold">{s.total_weight || 1.0} kg</span>
+                          {getStatusBadge(s.status)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ──────────────── INDIA HUB WORKFLOW ──────────────── */}
               {activeHub === 'india' && (
@@ -1152,6 +1440,11 @@ export default function WarehouseOpsPortal() {
                                 <span className="text-[10px] text-[#0E1F38]/60 ml-2">
                                   {it.category ? `(${it.category})` : ''} {it.demographic ? `· ${it.demographic}` : ''}
                                 </span>
+                                {it.sourceShipmentId && (
+                                  <span className="ml-2 font-mono text-[9px] bg-[#FAF8EE] px-1.5 py-0.5 rounded border border-black/5 text-[#0E1F38]/70">
+                                    Pkg #{formatShipmentId(it.sourceShipmentId)}
+                                  </span>
+                                )}
                               </div>
                               <span className="bg-[#FAF8EE] border border-black/10 px-2 py-0.5 rounded font-black text-xs">
                                 x{it.quantity || 1}
@@ -1227,7 +1520,7 @@ export default function WarehouseOpsPortal() {
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">3</span>
-                        Layo SOP Repack &amp; Digital Scale Weighing
+                        {selectedShipment.isCombinedGroup ? 'Layo SOP Combined Repack & Scale Weighing' : 'Layo SOP Repack & Digital Scale Weighing'}
                       </h3>
                       {['repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
                         <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
@@ -1237,7 +1530,9 @@ export default function WarehouseOpsPortal() {
                       )}
                     </div>
                     <p className="text-xs text-[#0E1F38]/70">
-                      Strip merchant cardboard &amp; plastic fillers. Fold items and seal inside standard Layo Green Box.
+                      {selectedShipment.isCombinedGroup
+                        ? `Consolidate items from all ${selectedShipment.shipments?.length || 2} packages into a single standard Layo Green Box. Strip merchant outer cardboard boxes & plastic fillers. Place the combined Layo Green Box on the digital scale.`
+                        : 'Strip merchant cardboard & plastic fillers. Fold items and seal inside standard Layo Green Box.'}
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1270,14 +1565,49 @@ export default function WarehouseOpsPortal() {
                       </div>
                     </div>
 
+                    {/* Combined Cost & Remaining Calculation Preview */}
+                    {(() => {
+                      const currentWeight = parseFloat(grossWeightInput) || selectedShipment.actual_weight || selectedShipment.total_weight || 1.0;
+                      const calc = calculateLayoDeliveryCost({ weightKg: currentWeight, deliveryType: 'normal' });
+                      const finalCostCAD = calc.finalPriceCAD;
+
+                      const groupShipments = selectedShipment.isCombinedGroup ? selectedShipment.shipments : [selectedShipment];
+                      const totalAdvancePaidCAD = (groupShipments || []).reduce((sum: number, s: any) => {
+                        const adv = s?.advance_amount_cad;
+                        if (adv !== undefined && adv !== null) return sum + Number(adv);
+                        const est = Number(s?.estimated_cost_cad || (s?.total_cost ? s.total_cost / 70.4 : 25.0));
+                        return sum + Math.round(est * 0.20 * 100) / 100;
+                      }, 0);
+                      const remainingBalanceCAD = Math.max(0, Math.round((finalCostCAD - totalAdvancePaidCAD) * 100) / 100);
+
+                      return (
+                        <div className="bg-white p-3 rounded-xl border border-black/10 space-y-1.5 text-xs">
+                          <div className="flex justify-between items-center text-[#0E1F38]/70">
+                            <span>{selectedShipment.isCombinedGroup ? 'Combined Shipping Cost:' : 'Final Shipping Cost:'}</span>
+                            <span className="font-bold text-[#0E1F38]">${finalCostCAD.toFixed(2)} CAD</span>
+                          </div>
+                          <div className="flex justify-between items-center text-emerald-700">
+                            <span>Total 20% Advance Already Paid:</span>
+                            <span className="font-bold">-${totalAdvancePaidCAD.toFixed(2)} CAD</span>
+                          </div>
+                          <div className="flex justify-between items-center font-bold text-[#FF5A65] pt-1 border-t border-black/5">
+                            <span>Remaining Customer Balance Due:</span>
+                            <span className="font-black text-sm">${remainingBalanceCAD.toFixed(2)} CAD</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {selectedShipment.status === 'qc_verified' && (
                       <button
                         onClick={() => handleCompleteRepack(selectedShipment.id)}
                         disabled={updating || !grossWeightInput}
-                        className="w-full py-3 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                        className="w-full py-3.5 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
                       >
                         <span className="material-symbols-outlined text-base">inventory_2</span>
-                        Seal Layo Green Box &amp; Record Weight
+                        {selectedShipment.isCombinedGroup
+                          ? `Seal Combined Layo Green Box & Record Weight (${parseFloat(grossWeightInput) || selectedShipment.total_weight || 1.0} kg)`
+                          : 'Seal Layo Green Box & Record Weight'}
                       </button>
                     )}
                   </div>

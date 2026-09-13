@@ -2369,7 +2369,14 @@ export default function Dashboard() {
                             </div>
                             <div className="flex justify-between items-center font-semibold">
                               <span className="text-[#0E1F38]/60">Digital Scale Gross Weight:</span>
-                              <span className="text-emerald-700 font-black text-sm">{(Number(grp.combinedActualWeight) || 1.0).toFixed(1)} kg</span>
+                              <span className="text-emerald-700 font-black text-sm flex items-center gap-1.5">
+                                {(Number(grp.combinedActualWeight) || 1.0).toFixed(2)} kg
+                                {grp.isHoldGroup && (
+                                  <span className="text-[10px] font-bold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200">
+                                    Combined Box Weight
+                                  </span>
+                                )}
+                              </span>
                             </div>
                             <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
                               <span className="text-[#0E1F38]/60">Destination:</span>
@@ -2715,6 +2722,8 @@ export default function Dashboard() {
                                 ? `Your estimate is saved. Pay deposit to activate Hold & Combine — we'll wait for all ${s.expected_packages || 2} packages before dispatching.`
                                 : s.status === 'holding'
                                 ? `Holding at India Hub — waiting for remaining packages. Expected: ${s.expected_packages || 2} total.`
+                                : (s.status === 'repacked' || s.payment_status === 'awaiting_balance')
+                                ? `Consolidated into 1 Layo Green Box! Combined digital scale weight: ${s.actual_weight || s.total_weight || 1.0} kg. Final balance payment is unlocked in Payment Dues.`
                                 : s.status === 'hold_combined'
                                 ? `All packages combined and ready for airfreight dispatch!`
                                 : `Hold & Combine preference saved. Expecting ${s.expected_packages || 2} packages.`
