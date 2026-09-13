@@ -1018,7 +1018,7 @@ export default function Dashboard() {
     if (!loading && !user) {
       router.push('/login');
     } else if (user) {
-      fetchDashboardData(user.id);
+      fetchDashboardData(user.id, true);
 
       // Restore items from the EstimatorModal if user came via "Proceed to Book"
       const raw = localStorage.getItem('layo_pending_shipment_draft');
@@ -1081,27 +1081,11 @@ export default function Dashboard() {
     }
   }, [user, loading, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-sync polling every 6 seconds when dashboard tab is visible, plus on window focus
-  useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        fetchDashboardData(user.id);
-      }
-    }, 6000);
-    const onFocus = () => {
-      if (user?.id) fetchDashboardData(user.id);
-    };
-    window.addEventListener('focus', onFocus);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Data Fetching ───────────────────────────────────────────────────────
-  const fetchDashboardData = async (userId?: string) => {
-    setIsFetching(true);
+  const fetchDashboardData = async (userId?: string, isInitial = false) => {
+    if (isInitial) {
+      setIsFetching(true);
+    }
     try {
       const [shipsResult, whs] = await Promise.all([
         fetchShipments(userId),
@@ -1138,7 +1122,7 @@ export default function Dashboard() {
 
       const hasFlowState = typeof window !== 'undefined' ? localStorage.getItem('layo_dashboard_flow_state') : null;
       const hasProgress = currentStep > 1 || selectedCategories.length > 0 || storeName || senderName || orderNumber || destinationAddress || promoQty > 0 || hasFlowState;
-      if (mergedList.length > 0 && !hasProgress) {
+      if (isInitial && mergedList.length > 0 && !hasProgress) {
         setActiveTab('history');
       }
 
