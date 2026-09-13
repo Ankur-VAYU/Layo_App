@@ -207,14 +207,16 @@ export default function Dashboard() {
 
   // Navigation and view tabs
   // ── State ────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'new' | 'dues' | 'history'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'drafts' | 'hold' | 'dues' | 'history'>('new');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
-      if (tabParam === 'history') setActiveTab('history');
+      if (tabParam === 'drafts') setActiveTab('drafts');
+      else if (tabParam === 'hold') setActiveTab('hold');
       else if (tabParam === 'dues' || tabParam === 'remaining' || tabParam === 'payment_dues') setActiveTab('dues');
+      else if (tabParam === 'history') setActiveTab('history');
     }
   }, []);
   const [currentStep, setCurrentStep] = useState(1);
@@ -464,18 +466,51 @@ export default function Dashboard() {
     deliveryType, editingDraftId
   ]);
 
-  // Memoized list of shipments awaiting remaining balance payment after Ops repack
+  // 1. Saved Draft Estimates
+  const draftsList = useMemo(() => {
+    return shipments.filter(s => {
+      if (!s) return false;
+      const st = String(s.status || '').toLowerCase();
+      return st === 'draft' || st === 'draft estimate';
+    });
+  }, [shipments]);
+
+  // 2. Active Hold & Consolidation Groups
+  const holdList = useMemo(() => {
+    return shipments.filter(s => {
+      if (!s) return false;
+      const st = String(s.status || '').toLowerCase();
+      if (st === 'draft' || st === 'draft estimate' || st === 'cancelled' || st === 'delivered') return false;
+      return s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).startsWith('HOLD-'));
+    });
+  }, [shipments]);
+
+  // 3. Payment Dues (Active Bookings after 20% Advance, awaiting Ops Repack Step 3 or remaining 80% balance)
   const pendingDuesShipments = useMemo(() => {
     return shipments.filter(s => {
       if (!s) return false;
-      const statusLower = String(s.status || '').toLowerCase();
-      const paymentStatusLower = String(s.payment_status || '').toLowerCase();
+      const st = String(s.status || '').toLowerCase();
+      const paySt = String(s.payment_status || '').toLowerCase();
+
+      if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
+      if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') return false;
+
+      return paySt === 'awaiting_balance' || st === 'repacked' || st === 'paid' || st === 'advance_paid' || st === 'inwarded' || st === 'qc_verified' || Number(s.remaining_balance_cad) > 0;
+    });
+  }, [shipments]);
+
+  // 4. My Shipments (Fully paid & settled active / delivered shipments with zero remaining dues)
+  const myShipmentsList = useMemo(() => {
+    return shipments.filter(s => {
+      if (!s) return false;
+      const st = String(s.status || '').toLowerCase();
+      const paySt = String(s.payment_status || '').toLowerCase();
       const remainingBal = Number(s.remaining_balance_cad || 0);
 
-      const isRepackedOrAwaiting = statusLower === 'repacked' || paymentStatusLower === 'awaiting_balance' || remainingBal > 0;
-      const isNotPaid = paymentStatusLower !== 'completed' && paymentStatusLower !== 'fully_paid' && paymentStatusLower !== 'paid_full';
-      const hasBalance = remainingBal > 0 || paymentStatusLower === 'awaiting_balance';
-      return isRepackedOrAwaiting && isNotPaid && hasBalance;
+      if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
+
+      const isFullyPaid = paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full' || (remainingBal <= 0 && paySt !== 'awaiting_balance' && st !== 'repacked');
+      return isFullyPaid;
     });
   }, [shipments]);
 
@@ -1724,18 +1759,47 @@ export default function Dashboard() {
         </div>
 
         {/* Tab switcher */}
-        <div className="flex justify-center border-b border-black/10 mb-8 max-w-xl mx-auto gap-1 sm:gap-2">
+        <div className="flex flex-wrap justify-center border-b border-black/10 mb-8 max-w-4xl mx-auto gap-1 sm:gap-2">
           <button
             onClick={handleStartNewOrder}
-            className={`flex-1 py-3 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+            className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
               activeTab === 'new' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
           >
             New Order
           </button>
+          
+          <button
+            onClick={() => setActiveTab('drafts')}
+            className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeTab === 'drafts' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
+            }`}
+          >
+            <span>Draft Estimates</span>
+            {draftsList.length > 0 && (
+              <span className="bg-slate-200 text-slate-700 text-[10px] font-black px-2 py-0.5 rounded-full">
+                {draftsList.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('hold')}
+            className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeTab === 'hold' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
+            }`}
+          >
+            <span>Hold &amp; Consolidation</span>
+            {holdList.length > 0 && (
+              <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-full">
+                {holdList.length}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => setActiveTab('dues')}
-            className={`flex-1 py-3 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'dues' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
           >
@@ -1746,17 +1810,246 @@ export default function Dashboard() {
               </span>
             )}
           </button>
+
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-3 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+            className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
               activeTab === 'history' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
           >
-            My Shipments ({shipments.length})
+            My Shipments ({myShipmentsList.length})
           </button>
         </div>
 
-        {activeTab === 'dues' ? (
+        {activeTab === 'drafts' ? (
+          /* ── DRAFT ESTIMATES TAB ── */
+          <div className="space-y-6">
+            <div className="bg-slate-100 border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-slate-700 text-3xl">edit_note</span>
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38]">Saved Draft Estimates</h2>
+                  <p className="text-xs sm:text-sm text-[#0E1F38]/70 font-medium">
+                    Review estimate calculations and pay 20% advance deposit to activate your virtual locker booking.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {draftsList.length === 0 ? (
+              <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
+                <div className="w-16 h-16 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center mx-auto text-slate-600">
+                  <span className="material-symbols-outlined text-3xl">draft</span>
+                </div>
+                <h3 className="text-lg font-bold text-[#0E1F38]">No Saved Draft Estimates</h3>
+                <p className="text-[#0E1F38]/60 text-sm max-w-sm mx-auto font-light">
+                  You don't have any pending draft estimates right now. Start building a new quote estimate!
+                </p>
+                <button
+                  onClick={handleStartNewOrder}
+                  className="bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#e24550] active:scale-95 transition-all shadow-md shadow-[#FF5A65]/20 mt-2 cursor-pointer"
+                >
+                  Create New Order
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {draftsList.map(s => {
+                  const estCost = Number(s.estimated_cost_cad || s.amount_cad || (s.total_cost && cadToInrRate > 0 ? s.total_cost / cadToInrRate : 25.0)) || 25.0;
+                  const advanceCAD = Number((estCost * 0.20).toFixed(2));
+                  const displayId = formatShipmentId(s.id);
+
+                  return (
+                    <div key={s.id} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all space-y-5 flex flex-col justify-between">
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-start border-b border-black/5 pb-4">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                              Draft #{displayId}
+                            </span>
+                            <h3 className="text-lg font-bold text-[#0E1F38] mt-0.5">
+                              {s.external_order_id ? `Ref Order #${s.external_order_id}` : 'Saved Shipping Quote'}
+                            </h3>
+                          </div>
+                          <span className="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border border-slate-200">
+                            Draft Estimate
+                          </span>
+                        </div>
+
+                        <div className="bg-[#FAF8EE] rounded-2xl p-4 border border-black/5 space-y-2 text-xs text-[#0E1F38]">
+                          <div className="flex justify-between items-center font-semibold">
+                            <span className="text-[#0E1F38]/60">Estimated Total Cost:</span>
+                            <span className="text-[#0E1F38] font-bold">${estCost.toFixed(2)} CAD</span>
+                          </div>
+                          <div className="flex justify-between items-center font-semibold">
+                            <span className="text-[#0E1F38]/60">Est. Package Weight:</span>
+                            <span className="text-[#0E1F38] font-bold">{s.total_weight || 1.0} kg</span>
+                          </div>
+                          <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
+                            <span className="text-[#0E1F38]/60">Destination:</span>
+                            <span className="text-[#0E1F38] truncate max-w-[200px]">
+                              {s.destination_city || 'Toronto (GTA)'} ({s.destination_address || 'Canada'})
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex justify-between items-center text-xs">
+                          <div>
+                            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Due Today (20% Advance)</span>
+                            <span className="text-sm font-black text-amber-900">${advanceCAD.toFixed(2)} CAD</span>
+                          </div>
+                          <span className="text-[10px] text-amber-700 font-medium max-w-[140px] text-right">
+                            Lock locker space &amp; get hub delivery address
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 pt-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              setIsProcessingPayment(true);
+                              const res = await fetch('/api/stripe/create-checkout-session', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  amountCAD: advanceCAD,
+                                  shipmentId: s.id,
+                                  userId: user?.id,
+                                  userEmail: user?.email,
+                                  isAdvance: true,
+                                  destinationCity: s.destination_city || 'Toronto (GTA)',
+                                  destinationAddress: s.destination_address || '',
+                                  warehouseName: s.india_warehouse || 'Indian Locker Hub',
+                                  totalWeightKg: s.total_weight || 1.0,
+                                  itemsSummary: `20% Advance booking deposit for Layo Locker #${displayId}`,
+                                }),
+                              });
+                              const data = await res.json();
+                              if (data.url) window.location.href = data.url;
+                              else alert(data.error || 'Failed to initiate payment');
+                            } catch (err: any) {
+                              alert('Payment error: ' + (err.message || 'Please try again'));
+                            } finally {
+                              setIsProcessingPayment(false);
+                            }
+                          }}
+                          disabled={isProcessingPayment}
+                          className="w-full py-3.5 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-sm">lock</span>
+                          <span>Pay 20% Deposit (${advanceCAD.toFixed(2)} CAD) &amp; Book</span>
+                        </button>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => handleEditDraft(s)}
+                            className="py-2.5 bg-slate-100 hover:bg-slate-200 text-[#0E1F38] font-bold text-[11px] uppercase tracking-wider rounded-xl transition-all text-center border border-slate-200 cursor-pointer"
+                          >
+                            Edit Draft
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDraft(s.id)}
+                            className="py-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px] uppercase tracking-wider rounded-xl transition-all text-center border border-red-200 cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'hold' ? (
+          /* ── HOLD & CONSOLIDATION TAB ── */
+          <div className="space-y-6">
+            <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-3xl p-6 sm:p-8 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-indigo-600 text-3xl">inventory_2</span>
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38]">Hold &amp; Consolidation Hub</h2>
+                  <p className="text-xs sm:text-sm text-[#0E1F38]/70 font-medium">
+                    Combine multiple packages at our India Hub before airfreight dispatch to maximize bulk savings.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {holdList.length === 0 ? (
+              <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
+                <div className="w-16 h-16 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center mx-auto text-indigo-600">
+                  <span className="material-symbols-outlined text-3xl">widgets</span>
+                </div>
+                <h3 className="text-lg font-bold text-[#0E1F38]">No Active Hold Groups</h3>
+                <p className="text-[#0E1F38]/60 text-sm max-w-sm mx-auto font-light">
+                  You don't have any active package consolidation hold groups right now.
+                </p>
+                <button
+                  onClick={handleStartNewOrder}
+                  className="bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#e24550] active:scale-95 transition-all shadow-md shadow-[#FF5A65]/20 mt-2 cursor-pointer"
+                >
+                  Create New Order
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {holdList.map(s => {
+                  const displayId = formatShipmentId(s.id);
+                  const groupId = s.hold_group_id || `HOLD-${displayId}`;
+
+                  return (
+                    <div key={s.id} className="bg-white border-2 border-indigo-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all space-y-5 flex flex-col justify-between">
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-start border-b border-black/5 pb-4">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                              Hold Group #{groupId}
+                            </span>
+                            <h3 className="text-lg font-bold text-[#0E1F38] mt-0.5">
+                              {s.external_order_id ? `Ref #${s.external_order_id}` : 'Consolidation Hold'}
+                            </h3>
+                          </div>
+                          <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border border-indigo-300">
+                            Holding @ India Hub
+                          </span>
+                        </div>
+
+                        <div className="bg-[#FAF8EE] rounded-2xl p-4 border border-black/5 space-y-2 text-xs text-[#0E1F38]">
+                          <div className="flex justify-between items-center font-semibold">
+                            <span className="text-[#0E1F38]/60">Status:</span>
+                            <span className="text-indigo-700 font-bold uppercase">Waiting for Additional Packages</span>
+                          </div>
+                          <div className="flex justify-between items-center font-semibold">
+                            <span className="text-[#0E1F38]/60">Expected Total Packages:</span>
+                            <span className="text-[#0E1F38] font-bold">{s.expected_packages || 2} Packages</span>
+                          </div>
+                          <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
+                            <span className="text-[#0E1F38]/60">Destination Address:</span>
+                            <span className="text-[#0E1F38] truncate max-w-[200px]">
+                              {s.destination_city || 'Toronto (GTA)'} ({s.destination_address || 'Canada'})
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 space-y-2">
+                        <button
+                          onClick={handleStartNewOrder}
+                          className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-sm">add</span>
+                          <span>Add Another Package to this Hold Group</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'dues' ? (
           /* ── REMAINING PAYMENT DUES TAB ── */
           <div className="space-y-6">
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 sm:p-8 space-y-3">
@@ -1765,12 +2058,12 @@ export default function Dashboard() {
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38]">Final Remaining Payment Dues</h2>
                   <p className="text-xs sm:text-sm text-[#0E1F38]/70 font-medium">
-                    Verified Digital Scale Weight & Layo SOP Repack Statement
+                    Verified Digital Scale Weight &amp; Layo SOP Repack Statement
                   </p>
                 </div>
               </div>
               <p className="text-xs sm:text-sm text-[#0E1F38]/70 font-light leading-relaxed">
-                Once our India Hub Ops team strips merchant cardboard boxes, folds items into standard Layo Green Boxes, and records actual digital scale weight, final delivery dues are billed here. Complete the 80% balance payment to initiate international airfreight dispatch to Canada.
+                Once our India Hub Ops team strips merchant cardboard boxes, folds items into standard Layo Green Boxes, and records actual digital scale weight (Step 3), final 80% remaining balance payment is unlocked here for international airfreight dispatch to Canada.
               </p>
             </div>
 
@@ -1787,12 +2080,16 @@ export default function Dashboard() {
                   onClick={() => setActiveTab('history')}
                   className="bg-[#0E1F38] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#1e3a60] active:scale-95 transition-all shadow-md mt-2 cursor-pointer"
                 >
-                  View All Shipments ({shipments.length})
+                  View My Shipments ({myShipmentsList.length})
                 </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {pendingDuesShipments.map(s => {
+                  const statusLower = String(s.status || '').toLowerCase();
+                  const payStatusLower = String(s.payment_status || '').toLowerCase();
+                  const isRepackDone = statusLower === 'repacked' || payStatusLower === 'awaiting_balance';
+
                   const verifiedWeightKg = Number(s.actual_weight || s.total_weight || 1.0) || 1.0;
                   const boxSize = typeof s.box_dimensions === 'string' ? s.box_dimensions : 'Layo Box M (35 x 25 x 20 cm)';
                   const finalCost = Number(s.final_cost_cad || s.total_cost || 0) || 0;
@@ -1801,7 +2098,9 @@ export default function Dashboard() {
                   const displayId = formatShipmentId(s.id);
 
                   return (
-                    <div key={s.id} className="bg-white border-2 border-amber-400/40 rounded-3xl p-6 shadow-md hover:shadow-lg transition-all space-y-5 flex flex-col justify-between">
+                    <div key={s.id} className={`bg-white border-2 rounded-3xl p-6 shadow-md hover:shadow-lg transition-all space-y-5 flex flex-col justify-between ${
+                      isRepackDone ? 'border-amber-400/60' : 'border-blue-200'
+                    }`}>
                       <div className="space-y-4">
                         {/* Card Header */}
                         <div className="flex justify-between items-start border-b border-black/5 pb-4">
@@ -1813,33 +2112,49 @@ export default function Dashboard() {
                               {s.external_order_id ? `Order #${s.external_order_id}` : 'Standard Parcel Repack'}
                             </h3>
                           </div>
-                          <span className="bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border border-amber-300">
-                            Repacked & Scale Verified
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
+                            isRepackDone ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-blue-100 text-blue-800 border-blue-300'
+                          }`}>
+                            {isRepackDone ? 'Repacked & Scale Verified' : 'Step 1-3: India Hub In Progress'}
                           </span>
                         </div>
 
                         {/* Ops Repack & Scale Inspection Result */}
-                        <div className="bg-[#FAF8EE] rounded-2xl p-4 border border-black/5 space-y-2 text-xs text-[#0E1F38]">
-                          <div className="flex justify-between items-center font-semibold">
-                            <span className="text-[#0E1F38]/60">Standard Layo Box Size:</span>
-                            <span className="text-[#0E1F38] font-bold">{boxSize}</span>
+                        {isRepackDone ? (
+                          <div className="bg-[#FAF8EE] rounded-2xl p-4 border border-black/5 space-y-2 text-xs text-[#0E1F38]">
+                            <div className="flex justify-between items-center font-semibold">
+                              <span className="text-[#0E1F38]/60">Standard Layo Box Size:</span>
+                              <span className="text-[#0E1F38] font-bold">{boxSize}</span>
+                            </div>
+                            <div className="flex justify-between items-center font-semibold">
+                              <span className="text-[#0E1F38]/60">Digital Scale Gross Weight:</span>
+                              <span className="text-emerald-700 font-black text-sm">{verifiedWeightKg} kg</span>
+                            </div>
+                            <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
+                              <span className="text-[#0E1F38]/60">Destination:</span>
+                              <span className="text-[#0E1F38] truncate max-w-[200px]">
+                                {s.destination_city || 'Toronto (GTA)'} ({s.destination_address || 'Canada'})
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex justify-between items-center font-semibold">
-                            <span className="text-[#0E1F38]/60">Digital Scale Gross Weight:</span>
-                            <span className="text-emerald-700 font-black text-sm">{verifiedWeightKg} kg</span>
+                        ) : (
+                          <div className="bg-blue-50/80 rounded-2xl p-4 border border-blue-100 space-y-2 text-xs text-blue-950">
+                            <div className="flex items-center gap-2 font-bold text-blue-900">
+                              <span className="material-symbols-outlined text-sm">schedule</span>
+                              <span>Awaiting India Hub SOP Repack &amp; Digital Scale Weighing</span>
+                            </div>
+                            <p className="text-[11px] text-blue-900/80 leading-relaxed font-light">
+                              Your 20% advance booking is confirmed! Once our India Hub Ops team strips merchant packaging, seals items into standard Layo Green Box, and inputs scale weight (Step 3), final 80% balance payment will unlock right here.
+                            </p>
                           </div>
-                          <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
-                            <span className="text-[#0E1F38]/60">Destination:</span>
-                            <span className="text-[#0E1F38] truncate max-w-[200px]">
-                              {s.destination_city || 'Toronto (GTA)'} ({s.destination_address || 'Canada'})
-                            </span>
-                          </div>
-                        </div>
+                        )}
 
                         {/* Financial Breakdown */}
                         <div className="bg-white border border-amber-200 rounded-2xl p-4 space-y-2">
                           <div className="flex justify-between items-center text-xs">
-                            <span className="text-[#0E1F38]/70 font-medium">Verified Shipping Cost:</span>
+                            <span className="text-[#0E1F38]/70 font-medium">
+                              {isRepackDone ? 'Verified Shipping Cost:' : 'Estimated Shipping Cost:'}
+                            </span>
                             <span className="font-bold text-[#0E1F38]">${finalCost.toFixed(2)} CAD</span>
                           </div>
                           <div className="flex justify-between items-center text-xs text-emerald-700">
@@ -1854,14 +2169,24 @@ export default function Dashboard() {
                       </div>
 
                       {/* Pay Action Button */}
-                      <button
-                        onClick={() => handlePayRemainingBalance(s)}
-                        disabled={isProcessingPayment}
-                        className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                      >
-                        <span className="material-symbols-outlined text-sm">lock</span>
-                        <span>Pay Remaining Balance (${dueCAD.toFixed(2)} CAD)</span>
-                      </button>
+                      {isRepackDone ? (
+                        <button
+                          onClick={() => handlePayRemainingBalance(s)}
+                          disabled={isProcessingPayment}
+                          className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-sm">lock</span>
+                          <span>Pay Remaining Balance (${dueCAD.toFixed(2)} CAD)</span>
+                        </button>
+                      ) : (
+                        <button
+                          disabled={true}
+                          className="w-full py-4 bg-slate-100 border border-slate-200 text-slate-400 font-bold text-xs uppercase tracking-widest rounded-2xl cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          <span className="material-symbols-outlined text-sm">lock</span>
+                          <span>Payment Locked (Awaiting Ops Step 3 Scale Verification)</span>
+                        </button>
+                      )}
                     </div>
                   );
                 })}
