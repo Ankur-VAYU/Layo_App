@@ -45,19 +45,42 @@ export async function POST(request: NextRequest) {
           .eq('id', shipmentId)
           .maybeSingle();
 
-        const isHoldShipment = currentShipment?.warehouse_action === 'hold';
-        const targetStatus = isHoldShipment ? 'holding' : 'paid';
+        const isAdvance = session.metadata?.is_advance !== 'false' && session.metadata?.payment_type !== 'balance';
+        
+        if (isAdvance) {
+          const isHoldShipment = currentShipment?.warehouse_action === 'hold';
+          const targetStatus = isHoldShipment ? 'holding' : 'paid';
 
-        // Update shipment status and stage timestamps
-        await supabase
-          .from('shipments')
-          .update({
-            status: targetStatus,
-            payment_status: 'advance_paid',
+          await supabase
+            .from('shipments')
+            .update({
+              status: targetStatus,
+              payment_status: 'advance_paid',
+              payment_method: 'stripe',
+              updated_at: nowIso,
+            })
+            .eq('id', shipmentId);
+        } else {
+          // Final balance payment completed
+          const updatePayload: Record<string, any> = {
+            payment_status: 'completed',
+            remaining_balance_cad: 0,
             payment_method: 'stripe',
             updated_at: nowIso,
-          })
-          .eq('id', shipmentId);
+          };
+
+          if (currentShipment?.hold_group_id) {
+            await supabase
+              .from('shipments')
+              .update(updatePayload)
+              .eq('hold_group_id', currentShipment.hold_group_id);
+          } else {
+            await supabase
+              .from('shipments')
+              .update(updatePayload)
+              .eq('id', shipmentId);
+          }
+        }
 
         // 2. Look up customer_id
         let customerId: string | null = null;

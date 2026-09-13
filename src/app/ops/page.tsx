@@ -51,6 +51,48 @@ const getHoldGroupKey = (s: any): string | null => {
   return normalizeHoldGroupId(extId);
 };
 
+// Play pleasant synthesized arpeggio chime for new paid shipments
+const playPaymentChime = () => {
+  try {
+    if (typeof window === 'undefined') return;
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6 arpeggio
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.1);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime + idx * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.1 + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + idx * 0.1);
+      osc.stop(ctx.currentTime + idx * 0.1 + 0.36);
+    });
+  } catch (e) {
+    // Audio autoplay policy handled silently
+  }
+};
+
+export const isShipmentFullyPaid = (s: any): boolean => {
+  if (!s) return false;
+  const paySt = String(s.payment_status || s.items?.payment_status || '').toLowerCase();
+  if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid') return true;
+  if (s.isCombinedGroup && Array.isArray(s.shipments) && s.shipments.length > 0) {
+    const allSubsPaid = s.shipments.every((sub: any) => {
+      const subPay = String(sub.payment_status || sub.items?.payment_status || '').toLowerCase();
+      return subPay === 'completed' || subPay === 'fully_paid' || (sub.remaining_balance_cad === 0 && sub.status === 'repacked');
+    });
+    if (allSubsPaid) return true;
+  }
+  if (s.remaining_balance_cad === 0 && ['repacked', 'bulk_consolidated', 'in_transit', 'shipped', 'delivered'].includes(s.status)) {
+    return true;
+  }
+  return false;
+};
+
 // ── Types & Interfaces ───────────────────────────────────────────────────────
 
 interface QCPhoto {
@@ -70,7 +112,7 @@ export default function WarehouseOpsPortal() {
   const [shipments, setShipments] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'inward' | 'qc' | 'repack' | 'master_bulk' | 'canada_dispatch' | 'hold_combine'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'inward' | 'qc' | 'repack' | 'master_bulk' | 'ready_dispatch' | 'canada_dispatch' | 'hold_combine'>('all');
   const [mobileOpsTab, setMobileOpsTab] = useState<'queue' | 'workstation'>('queue');
   const [selectedShipment, setSelectedShipment] = useState<any | null>(null);
 
@@ -78,12 +120,19 @@ export default function WarehouseOpsPortal() {
   const [grossWeightInput, setGrossWeightInput] = useState('');
   const [boxDimensions, setBoxDimensions] = useState({ length: 35, width: 25, height: 20 });
   const [masterBoxId, setMasterBoxId] = useState('BATCH-CA-801');
-  const [canadaCarrier, setCanadaCarrier] = useState('Canada Post Expedited');
+  const [canadaCarrier, setCanadaCarrier] = useState('FedEx International Priority');
   const [canadaAWB, setCanadaAWB] = useState('');
   const [discrepancyNote, setDiscrepancyNote] = useState('');
   const [showDiscrepancyModal, setShowDiscrepancyModal] = useState(false);
   const [uploadedPhotos, setUploadedPhotos] = useState<QCPhoto[]>([]);
   const [updating, setUpdating] = useState(false);
+
+  // Notification states for Ops
+  const [paymentAlertToast, setPaymentAlertToast] = useState<{ id: string; displayId: string; amountCAD: number; isCombined: boolean } | null>(null);
+  const [showNotificationMenu, setShowNotificationMenu] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{ id: string; displayId: string; amountCAD: number; time: string; shipment: any }>>([]);
+  const knownPaidIdsRef = useRef<Set<string>>(new Set());
+  const initialFetchDone = useRef(false);
 
   // Live Camera Viewfinder State & Refs
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -95,12 +144,17 @@ export default function WarehouseOpsPortal() {
   const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    loadOpsData();
+    loadOpsData(false);
+    // Background polling every 8 seconds to detect incoming payments silently
+    const interval = setInterval(() => {
+      loadOpsData(true);
+    }, 8000);
+    return () => clearInterval(interval);
   }, []);
 
   // ── Data Fetching ───────────────────────────────────────────────────
-  const loadOpsData = async () => {
-    setIsFetching(true);
+  const loadOpsData = async (isQuiet = false) => {
+    if (!isQuiet) setIsFetching(true);
     try {
       const { data } = await fetchShipments();
       const dbShips = data ?? [];
@@ -122,14 +176,66 @@ export default function WarehouseOpsPortal() {
       );
 
       setShipments(mergedList);
+
+      // Check for fully paid shipments
+      const fullyPaidShipments = mergedList.filter(s => isShipmentFullyPaid(s));
+      const currentPaidIds = new Set(fullyPaidShipments.map(s => s.id));
+
+      if (!initialFetchDone.current) {
+        // Initial load: record existing paid IDs and populate initial notifications
+        knownPaidIdsRef.current = currentPaidIds;
+        initialFetchDone.current = true;
+        const initialNotifs = fullyPaidShipments
+          .filter(s => s.status === 'repacked' || s.status === 'bulk_consolidated')
+          .slice(0, 10)
+          .map(s => ({
+            id: s.id,
+            displayId: formatShipmentId(s.id),
+            amountCAD: s.final_cost_cad || 39.56,
+            time: 'Ready for Dispatch',
+            shipment: s
+          }));
+        setNotifications(initialNotifs);
+      } else {
+        // Subsequent poll: detect newly paid shipments!
+        const newlyPaid = fullyPaidShipments.filter(s => !knownPaidIdsRef.current.has(s.id));
+        if (newlyPaid.length > 0) {
+          playPaymentChime();
+          const target = newlyPaid[0];
+          const isCombined = !!(getHoldGroupKey(target) || target.isCombinedGroup);
+          const displayLabel = isCombined ? (getHoldGroupKey(target) || `#${formatShipmentId(target.id)}`) : `#${formatShipmentId(target.id)}`;
+          const amount = target.final_cost_cad || 39.56;
+
+          setPaymentAlertToast({
+            id: target.id,
+            displayId: displayLabel,
+            amountCAD: amount,
+            isCombined,
+          });
+
+          // Add to notifications dropdown
+          const newEntries = newlyPaid.map(s => ({
+            id: s.id,
+            displayId: getHoldGroupKey(s) || `#${formatShipmentId(s.id)}`,
+            amountCAD: s.final_cost_cad || 39.56,
+            time: 'Just now',
+            shipment: s
+          }));
+          setNotifications(prev => [...newEntries, ...prev].slice(0, 15));
+
+          // Update known set
+          newlyPaid.forEach(s => knownPaidIdsRef.current.add(s.id));
+        }
+      }
+
       if (selectedShipment) {
         const updated = mergedList.find(s => s.id === selectedShipment.id);
-        if (updated) setSelectedShipment(updated);
+        if (updated) setSelectedShipment((prev: any) => ({ ...prev, ...updated }));
       }
     } catch (err) {
       console.error('Failed to load shipments for ops', err);
     } finally {
-      setIsFetching(false);
+      if (!isQuiet) setIsFetching(false);
     }
   };
 
@@ -274,8 +380,45 @@ export default function WarehouseOpsPortal() {
       });
     });
 
+    if (activeTab === 'ready_dispatch') {
+      return result.filter(s => isShipmentFullyPaid(s) && (s.status === 'repacked' || s.status === 'bulk_consolidated'));
+    }
+
     return result;
   }, [shipments, searchQuery, activeTab]);
+
+  // Count of shipments and hold groups where final payment is received and ready for dispatch (Step 5)
+  const readyToDispatchCount = useMemo(() => {
+    const holdMap = new Map<string, any[]>();
+    const nonHoldList: any[] = [];
+    shipments.forEach(s => {
+      const holdKey = getHoldGroupKey(s);
+      if (holdKey) {
+        if (!holdMap.has(holdKey)) holdMap.set(holdKey, []);
+        holdMap.get(holdKey)!.push(s);
+      } else {
+        nonHoldList.push(s);
+      }
+    });
+
+    let count = 0;
+    holdMap.forEach(groupShips => {
+      const isPaid = groupShips.every(s => isShipmentFullyPaid(s));
+      const isReadyStage = groupShips.some(s => s.status === 'repacked' || s.status === 'bulk_consolidated');
+      const isAlreadyDispatched = groupShips.every(s => ['in_transit', 'shipped', 'received_canada', 'out_for_delivery', 'delivered'].includes(s.status));
+      if (isPaid && isReadyStage && !isAlreadyDispatched) {
+        count++;
+      }
+    });
+
+    nonHoldList.forEach(s => {
+      if (isShipmentFullyPaid(s) && (s.status === 'repacked' || s.status === 'bulk_consolidated')) {
+        count++;
+      }
+    });
+
+    return count;
+  }, [shipments]);
 
   // Hold & Combine groups — group by user_id or hold_group_id for the hold_combine tab
   const holdGroups = useMemo(() => {
@@ -752,20 +895,49 @@ export default function WarehouseOpsPortal() {
   const handleMarkDelivered = async (shipmentId: string) => {
     setUpdating(true);
     try {
-      const current = shipments.find(s => s.id === shipmentId);
-      const result = await updateShipmentStage(
-        shipmentId,
-        'delivered',
-        current?.stage_timestamps,
-        {},
-        operatorUser,
-        'Confirmed delivered to customer address in Canada'
-      );
-      if (!result.error) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, status: 'delivered', stage_timestamps: result.updatedTimestamps } : s));
-        if (selectedShipment?.id === shipmentId) {
-          setSelectedShipment((prev: any) => ({ ...prev, status: 'delivered', stage_timestamps: result.updatedTimestamps }));
-        }
+      const current = shipments.find(s => s.id === shipmentId) || selectedShipment;
+      const holdGroupId = getHoldGroupKey(current || selectedShipment);
+      const targetShipments = (selectedShipment?.isCombinedGroup && selectedShipment.shipments)
+        ? selectedShipment.shipments
+        : (holdGroupId ? shipments.filter(s => getHoldGroupKey(s) === holdGroupId) : [current || selectedShipment].filter(Boolean));
+
+      const nowIso = new Date().toISOString();
+      for (const ship of targetShipments) {
+        if (!ship?.id) continue;
+        await updateShipmentStage(
+          ship.id,
+          'delivered',
+          ship.stage_timestamps,
+          {},
+          operatorUser,
+          'Confirmed delivered to customer address in Canada'
+        );
+      }
+
+      const targetIds = new Set(targetShipments.map((s: any) => s.id));
+      setShipments(prev => {
+        const nextList = prev.map(s => targetIds.has(s.id) ? {
+          ...s,
+          status: 'delivered',
+          stage_timestamps: { ...(s.stage_timestamps || {}), delivered: nowIso }
+        } : s);
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
+      if (selectedShipment) {
+        setSelectedShipment((prev: any) => ({
+          ...prev,
+          status: 'delivered',
+          stage_timestamps: { ...(prev?.stage_timestamps || {}), delivered: nowIso },
+          shipments: prev.shipments ? prev.shipments.map((s: any) => ({
+            ...s,
+            status: 'delivered',
+            stage_timestamps: { ...(s.stage_timestamps || {}), delivered: nowIso }
+          })) : undefined
+        }));
       }
     } catch (err) {
       console.error('Failed to mark delivered', err);
@@ -984,7 +1156,79 @@ export default function WarehouseOpsPortal() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative">
+          {/* Notification Bell with Badge */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotificationMenu(prev => !prev)}
+              className="relative text-xs bg-white/10 hover:bg-white/20 text-white font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Paid Orders Ready for Dispatch"
+            >
+              <span className="material-symbols-outlined text-sm">notifications</span>
+              <span className="hidden sm:inline">Alerts</span>
+              {notifications.length > 0 && (
+                <span className="bg-[#8BC34A] text-[#1B250F] text-[10px] font-black px-1.5 py-0.2 rounded-full shadow-xs animate-pulse">
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+
+            {/* Notifications Popover */}
+            {showNotificationMenu && (
+              <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-black/10 text-[#0E1F38] z-50 overflow-hidden animate-scale-in">
+                <div className="p-3.5 bg-[#1B250F] text-white flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#8BC34A] text-base">notifications_active</span>
+                    <span className="font-black text-xs uppercase tracking-wider">Ops Payment Alerts</span>
+                  </div>
+                  <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">
+                    {notifications.length} Paid
+                  </span>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-black/5 text-xs">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-[#0E1F38]/50 space-y-1">
+                      <span className="material-symbols-outlined text-2xl text-[#0E1F38]/30">done_all</span>
+                      <p className="text-xs">No pending payment dispatch alerts</p>
+                    </div>
+                  ) : (
+                    notifications.map((notif, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setShowNotificationMenu(false);
+                          const target = filteredShipments.find(s => s.id === notif.id || (s.groupKey && s.groupKey === notif.id) || (s.shipments && s.shipments.some((sub: any) => sub.id === notif.id)));
+                          if (target) {
+                            setSelectedShipment(target);
+                            setMobileOpsTab('workstation');
+                          } else {
+                            setActiveTab('ready_dispatch');
+                          }
+                        }}
+                        className="p-3 hover:bg-[#FAF8EE] transition-colors cursor-pointer space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-xs text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                            {notif.displayId}
+                          </span>
+                          <span className="text-[10px] text-gray-400">{notif.time}</span>
+                        </div>
+                        <p className="text-[11px] font-semibold text-[#0E1F38]">
+                          Final balance payment of <span className="text-emerald-700 font-bold">${notif.amountCAD.toFixed(2)} CAD</span> received.
+                        </p>
+                        <p className="text-[10px] text-[#0E1F38]/60 flex items-center gap-1 font-bold">
+                          <span className="material-symbols-outlined text-xs text-[#8BC34A]">arrow_forward</span>
+                          Click to open in Workstation &rarr; Step 5
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <Link
             href="/admin"
             className="text-xs bg-white/10 hover:bg-white/20 text-white font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer"
@@ -1001,6 +1245,44 @@ export default function WarehouseOpsPortal() {
           </button>
         </div>
       </header>
+
+      {/* ── Top Payment Alert Banner ── */}
+      {paymentAlertToast && (
+        <div className="bg-emerald-600 text-white px-4 py-3 shadow-lg flex items-center justify-between border-b border-emerald-500 animate-slide-down">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-2xl text-emerald-200 animate-bounce">payments</span>
+            <div>
+              <p className="text-xs sm:text-sm font-black tracking-wide">
+                🎉 FINAL PAYMENT RECEIVED: {paymentAlertToast.displayId} has paid ${paymentAlertToast.amountCAD.toFixed(2)} CAD!
+              </p>
+              <p className="text-[11px] text-emerald-100">
+                Steps 1–3 are locked. Only Steps 5 &amp; 6 are unlocked for airfreight dispatch and delivery.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const target = filteredShipments.find(s => s.id === paymentAlertToast.id || (s.groupKey && s.groupKey === paymentAlertToast.id) || (s.shipments && s.shipments.some((sub: any) => sub.id === paymentAlertToast.id)));
+                if (target) {
+                  setSelectedShipment(target);
+                  setMobileOpsTab('workstation');
+                }
+                setPaymentAlertToast(null);
+              }}
+              className="px-3 py-1.5 bg-white text-emerald-900 font-black text-xs rounded-xl shadow-xs hover:bg-emerald-50 transition-all cursor-pointer"
+            >
+              Open Step 5 &rarr;
+            </button>
+            <button
+              onClick={() => setPaymentAlertToast(null)}
+              className="p-1 hover:bg-white/10 rounded-lg transition-all text-white/80 hover:text-white cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">close</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Main Ops Layout ── */}
       <div className="max-w-7xl mx-auto p-3 sm:p-6 space-y-4 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-6">
@@ -1107,6 +1389,23 @@ export default function WarehouseOpsPortal() {
                 }`}
               >
                 4. Master Cargo
+              </button>
+              <button
+                onClick={() => setActiveTab('ready_dispatch')}
+                className={`px-3 py-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 font-bold ${
+                  activeTab === 'ready_dispatch'
+                    ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
+                    : 'bg-emerald-100 text-emerald-900 border-emerald-300 hover:bg-emerald-200'
+                }`}
+              >
+                <span>🚀 5. Ready to Dispatch (Paid)</span>
+                {readyToDispatchCount > 0 && (
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                    activeTab === 'ready_dispatch' ? 'bg-white/20 text-white' : 'bg-emerald-800 text-white'
+                  }`}>
+                    {readyToDispatchCount}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -1220,6 +1519,7 @@ export default function WarehouseOpsPortal() {
                         setGrossWeightInput(s.actual_weight ? s.actual_weight.toString() : s.total_weight ? s.total_weight.toString() : '');
                         setUploadedPhotos(s.qc_photos || []);
                         if (s.master_box_id) setMasterBoxId(s.master_box_id);
+                        if (s.canada_local_carrier) setCanadaCarrier(s.canada_local_carrier);
                         if (s.canada_local_awb) setCanadaAWB(s.canada_local_awb);
                         setMobileOpsTab('workstation');
                       }}
@@ -1238,6 +1538,12 @@ export default function WarehouseOpsPortal() {
                             <span className="bg-indigo-100/90 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-200">
                               {s.shipments?.length || 2} Combined Packages
                             </span>
+                            {isShipmentFullyPaid(s) && (
+                              <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full text-[9px] font-black uppercase flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[11px]">payments</span>
+                                Balance Paid — Ready for Step 5
+                              </span>
+                            )}
                             {s.master_box_id && (
                               <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded text-[9px] font-black font-mono">
                                 📦 {s.master_box_id}
@@ -1272,6 +1578,7 @@ export default function WarehouseOpsPortal() {
                       setGrossWeightInput(s.actual_weight ? s.actual_weight.toString() : s.total_weight ? s.total_weight.toString() : '');
                       setUploadedPhotos(s.qc_photos || []);
                       if (s.master_box_id) setMasterBoxId(s.master_box_id);
+                      if (s.canada_local_carrier) setCanadaCarrier(s.canada_local_carrier);
                       if (s.canada_local_awb) setCanadaAWB(s.canada_local_awb);
                       setMobileOpsTab('workstation');
                     }}
@@ -1283,10 +1590,16 @@ export default function WarehouseOpsPortal() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono text-xs font-black bg-[#FAF8EE] px-2 py-0.5 rounded border border-black/5 text-[#0E1F38]">
                             #{formatShipmentId(s.id)}
                           </span>
+                          {isShipmentFullyPaid(s) && (
+                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full text-[9px] font-black uppercase flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[11px]">payments</span>
+                              Balance Paid — Ready for Step 5
+                            </span>
+                          )}
                           {getHoldGroupKey(s) && (
                             <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[9px] font-black font-mono">
                               📦 {getHoldGroupKey(s)}
@@ -1342,6 +1655,17 @@ export default function WarehouseOpsPortal() {
                         Consolidated Hold ({selectedShipment.shipments?.length || 2} Packages)
                       </span>
                     )}
+                    {isShipmentFullyPaid(selectedShipment) ? (
+                      <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1 shadow-2xs">
+                        <span className="material-symbols-outlined text-xs text-emerald-700">task_alt</span>
+                        Balance Paid — Only Steps 5 &amp; 6 Editable
+                      </span>
+                    ) : (selectedShipment.status === 'repacked' || (selectedShipment.remaining_balance_cad !== undefined && selectedShipment.remaining_balance_cad > 0)) ? (
+                      <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1 shadow-2xs">
+                        <span className="material-symbols-outlined text-xs text-amber-700">hourglass_top</span>
+                        Awaiting Customer Payment (${(selectedShipment.remaining_balance_cad || 0).toFixed(2)} CAD)
+                      </span>
+                    ) : null}
                     {getStatusBadge(selectedShipment.status)}
                   </div>
                   <p className="text-xs text-[#0E1F38]/60 mt-0.5">
@@ -1349,13 +1673,15 @@ export default function WarehouseOpsPortal() {
                   </p>
                 </div>
 
-                <button
-                  onClick={() => setShowDiscrepancyModal(true)}
-                  className="text-xs bg-red-50 hover:bg-red-100 text-red-700 font-bold px-3 py-2 rounded-xl border border-red-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer self-start"
-                >
-                  <span className="material-symbols-outlined text-sm">warning</span>
-                  Flag Discrepancy
-                </button>
+                {!isShipmentFullyPaid(selectedShipment) && (
+                  <button
+                    onClick={() => setShowDiscrepancyModal(true)}
+                    className="text-xs bg-red-50 hover:bg-red-100 text-red-700 font-bold px-3 py-2 rounded-xl border border-red-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer self-start"
+                  >
+                    <span className="material-symbols-outlined text-sm">warning</span>
+                    Flag Discrepancy
+                  </button>
+                )}
               </div>
 
               {/* Combined Packages Breakdown Banner */}
@@ -1386,23 +1712,28 @@ export default function WarehouseOpsPortal() {
                 <div className="space-y-5">
                   
                   {/* Step 1: Inward Receipt */}
-                  <div className="p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-3">
+                  <div className={`p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-3 ${isShipmentFullyPaid(selectedShipment) ? 'opacity-85' : ''}`}>
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">1</span>
                         India Hub Inward Ingestion
                       </h3>
-                      {['inwarded', 'qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
+                      {isShipmentFullyPaid(selectedShipment) ? (
+                        <span className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">lock</span>
+                          Locked (Paid)
+                        </span>
+                      ) : ['inwarded', 'qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) ? (
                         <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
                           <span className="material-symbols-outlined text-xs">check_circle</span>
                           Received @ Delhi Hub
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     <p className="text-xs text-[#0E1F38]/70">
                       Verify incoming domestic merchant parcel (Myntra/Amazon/Ajio) against customer locker ID.
                     </p>
-                    {!['inwarded', 'qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
+                    {!isShipmentFullyPaid(selectedShipment) && !['inwarded', 'qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
                       <button
                         onClick={() => handleMarkInwarded(selectedShipment.id)}
                         disabled={updating}
@@ -1415,18 +1746,23 @@ export default function WarehouseOpsPortal() {
                   </div>
 
                   {/* Step 2: Customer Listing Match & QC Photo */}
-                  <div className="p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-4">
+                  <div className={`p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-4 ${isShipmentFullyPaid(selectedShipment) ? 'opacity-85' : ''}`}>
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">2</span>
                         Match Customer Item Listing (QC)
                       </h3>
-                      {['qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
+                      {isShipmentFullyPaid(selectedShipment) ? (
+                        <span className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">lock</span>
+                          Locked (QC Matched &amp; Paid)
+                        </span>
+                      ) : ['qc_verified', 'repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) ? (
                         <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
                           <span className="material-symbols-outlined text-xs">check_circle</span>
                           QC Matched
                         </span>
-                      )}
+                      ) : null}
                     </div>
 
                     <div className="space-y-2">
@@ -1463,26 +1799,28 @@ export default function WarehouseOpsPortal() {
                         <p className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">
                           Unboxing Photos ({uploadedPhotos.length}):
                         </p>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={openCameraModal}
-                            className="text-[10px] bg-[#8BC34A] hover:bg-[#9ccc65] text-[#1B250F] font-black px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-xs"
-                          >
-                            <span className="material-symbols-outlined text-xs">photo_camera</span>
-                            Open Camera
-                          </button>
-                          <label className="text-[10px] bg-white border border-black/10 hover:border-black/20 text-[#0E1F38] font-bold px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs">
-                            <span className="material-symbols-outlined text-xs">upload_file</span>
-                            Upload
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={e => handleCapturePhoto(e, 'unboxed')}
-                            />
-                          </label>
-                        </div>
+                        {!isShipmentFullyPaid(selectedShipment) && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={openCameraModal}
+                              className="text-[10px] bg-[#8BC34A] hover:bg-[#9ccc65] text-[#1B250F] font-black px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                            >
+                              <span className="material-symbols-outlined text-xs">photo_camera</span>
+                              Open Camera
+                            </button>
+                            <label className="text-[10px] bg-white border border-black/10 hover:border-black/20 text-[#0E1F38] font-bold px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs">
+                              <span className="material-symbols-outlined text-xs">upload_file</span>
+                              Upload
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={e => handleCapturePhoto(e, 'unboxed')}
+                              />
+                            </label>
+                          </div>
+                        )}
                       </div>
 
                       {uploadedPhotos.length > 0 ? (
@@ -1503,7 +1841,7 @@ export default function WarehouseOpsPortal() {
                       )}
                     </div>
 
-                    {selectedShipment.status === 'inwarded' && (
+                    {!isShipmentFullyPaid(selectedShipment) && selectedShipment.status === 'inwarded' && (
                       <button
                         onClick={() => handleMarkQCVerified(selectedShipment.id)}
                         disabled={updating}
@@ -1516,18 +1854,23 @@ export default function WarehouseOpsPortal() {
                   </div>
 
                   {/* Step 3: Layo SOP Repack */}
-                  <div className="p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-4">
+                  <div className={`p-4 bg-[#FAF8EE] rounded-2xl border border-black/5 space-y-4 ${isShipmentFullyPaid(selectedShipment) ? 'opacity-90' : ''}`}>
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-black uppercase tracking-wider text-[#0E1F38] flex items-center gap-1.5">
                         <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">3</span>
                         {selectedShipment.isCombinedGroup ? 'Layo SOP Combined Repack & Scale Weighing' : 'Layo SOP Repack & Digital Scale Weighing'}
                       </h3>
-                      {['repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) && (
+                      {isShipmentFullyPaid(selectedShipment) ? (
+                        <span className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">lock</span>
+                          Locked (Weight &amp; Balance Settled)
+                        </span>
+                      ) : ['repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(selectedShipment.status) ? (
                         <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
                           <span className="material-symbols-outlined text-xs">check_circle</span>
                           Repacked in Layo Green Box
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     <p className="text-xs text-[#0E1F38]/70">
                       {selectedShipment.isCombinedGroup
@@ -1542,21 +1885,23 @@ export default function WarehouseOpsPortal() {
                           type="number"
                           step="0.01"
                           placeholder="e.g. 2.45"
+                          disabled={isShipmentFullyPaid(selectedShipment)}
                           value={grossWeightInput}
                           onChange={e => setGrossWeightInput(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-black/10 rounded-xl text-xs font-mono font-bold text-[#0E1F38] focus:border-[#8BC34A] focus:outline-none"
+                          className="w-full p-2.5 bg-white border border-black/10 rounded-xl text-xs font-mono font-bold text-[#0E1F38] focus:border-[#8BC34A] focus:outline-none disabled:bg-gray-100 disabled:text-gray-600 disabled:cursor-not-allowed"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/60">Standard Layo Box Size</label>
                         <select
+                          disabled={isShipmentFullyPaid(selectedShipment)}
                           onChange={e => {
                             const val = e.target.value;
                             if (val === 'S') setBoxDimensions({ length: 25, width: 20, height: 15 });
                             if (val === 'M') setBoxDimensions({ length: 35, width: 25, height: 20 });
                             if (val === 'L') setBoxDimensions({ length: 45, width: 35, height: 25 });
                           }}
-                          className="w-full p-2.5 bg-white border border-black/10 rounded-xl text-xs font-bold text-[#0E1F38] focus:border-[#8BC34A] focus:outline-none cursor-pointer"
+                          className="w-full p-2.5 bg-white border border-black/10 rounded-xl text-xs font-bold text-[#0E1F38] focus:border-[#8BC34A] focus:outline-none cursor-pointer disabled:bg-gray-100 disabled:text-gray-600 disabled:cursor-not-allowed"
                         >
                           <option value="S">Layo Box S (25 x 20 x 15 cm)</option>
                           <option value="M" selected>Layo Box M (35 x 25 x 20 cm)</option>
@@ -1592,35 +1937,49 @@ export default function WarehouseOpsPortal() {
                           </div>
                           <div className="flex justify-between items-center font-bold text-[#FF5A65] pt-1 border-t border-black/5">
                             <span>Remaining Customer Balance Due:</span>
-                            <span className="font-black text-sm">${remainingBalanceCAD.toFixed(2)} CAD</span>
+                            <span className="font-black text-sm">
+                              {isShipmentFullyPaid(selectedShipment) ? '$0.00 CAD (Paid in Full ✓)' : `$${remainingBalanceCAD.toFixed(2)} CAD`}
+                            </span>
                           </div>
                         </div>
                       );
                     })()}
 
-                    {(selectedShipment.status === 'qc_verified' || selectedShipment.status === 'repacked' || (selectedShipment.isCombinedGroup && (selectedShipment.hasQcVerified || selectedShipment.allRepacked || selectedShipment.allQcMatched || selectedShipment.status === 'repacked' || selectedShipment.status === 'qc_verified'))) && (
-                      <div className="space-y-2">
-                        <button
-                          onClick={() => handleCompleteRepack(selectedShipment.id)}
-                          disabled={updating || !grossWeightInput}
-                          className="w-full py-3.5 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
-                        >
-                          <span className="material-symbols-outlined text-base">scale</span>
-                          {selectedShipment.status === 'repacked'
-                            ? (selectedShipment.isCombinedGroup
-                                ? `Update Combined Scale Weight & Recalculate Balance (${parseFloat(grossWeightInput) || selectedShipment.actual_weight || selectedShipment.total_weight || 1.0} kg)`
-                                : `Update Scale Weight & Recalculate Balance (${parseFloat(grossWeightInput) || selectedShipment.actual_weight || selectedShipment.total_weight || 1.0} kg)`)
-                            : (selectedShipment.isCombinedGroup
-                                ? `Seal Combined Layo Green Box & Record Weight (${parseFloat(grossWeightInput) || selectedShipment.total_weight || 1.0} kg)`
-                                : 'Seal Layo Green Box & Record Weight')}
-                        </button>
-                        {selectedShipment.status === 'repacked' && (
-                          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-2.5 rounded-xl text-center text-xs font-semibold flex items-center justify-center gap-1.5">
-                            <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
-                            <span>Scale weight confirmed ({selectedShipment.actual_weight || selectedShipment.total_weight} kg). Customer payment balance unlocked.</span>
-                          </div>
-                        )}
+                    {isShipmentFullyPaid(selectedShipment) ? (
+                      <div className="bg-emerald-50 border border-emerald-300 text-emerald-950 p-4 rounded-xl space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs font-black text-emerald-900 uppercase tracking-wider">
+                          <span className="material-symbols-outlined text-base text-emerald-700">lock</span>
+                          Step 3 Locked — Final Scale Weight Confirmed ({selectedShipment.actual_weight || selectedShipment.total_weight} kg)
+                        </div>
+                        <p className="text-[11px] text-emerald-800">
+                          Final balance payment has been settled. Weight cannot be altered. <strong>Only Steps 5 &amp; 6 are open to edit below.</strong>
+                        </p>
                       </div>
+                    ) : (
+                      (selectedShipment.status === 'qc_verified' || selectedShipment.status === 'repacked' || (selectedShipment.isCombinedGroup && (selectedShipment.hasQcVerified || selectedShipment.allRepacked || selectedShipment.allQcMatched || selectedShipment.status === 'repacked' || selectedShipment.status === 'qc_verified'))) && (
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => handleCompleteRepack(selectedShipment.id)}
+                            disabled={updating || !grossWeightInput}
+                            className="w-full py-3.5 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                          >
+                            <span className="material-symbols-outlined text-base">scale</span>
+                            {selectedShipment.status === 'repacked'
+                              ? (selectedShipment.isCombinedGroup
+                                  ? `Update Combined Scale Weight & Recalculate Balance (${parseFloat(grossWeightInput) || selectedShipment.actual_weight || selectedShipment.total_weight || 1.0} kg)`
+                                  : `Update Scale Weight & Recalculate Balance (${parseFloat(grossWeightInput) || selectedShipment.actual_weight || selectedShipment.total_weight || 1.0} kg)`)
+                              : (selectedShipment.isCombinedGroup
+                                  ? `Seal Combined Layo Green Box & Record Weight (${parseFloat(grossWeightInput) || selectedShipment.total_weight || 1.0} kg)`
+                                  : 'Seal Layo Green Box & Record Weight')}
+                          </button>
+                          {selectedShipment.status === 'repacked' && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-900 p-2.5 rounded-xl text-center text-xs font-semibold flex items-center justify-center gap-1.5">
+                              <span className="material-symbols-outlined text-sm text-amber-700">hourglass_top</span>
+                              <span>Scale weight confirmed ({selectedShipment.actual_weight || selectedShipment.total_weight} kg). Customer payment balance unlocked. Steps 5 &amp; 6 will unlock once customer pays.</span>
+                            </div>
+                          )}
+                        </div>
+                      )
                     )}
                   </div>
 
@@ -1652,7 +2011,7 @@ export default function WarehouseOpsPortal() {
                       />
                     </div>
 
-                    {selectedShipment.status === 'repacked' && (
+                    {(selectedShipment.status === 'repacked' || selectedShipment.status === 'bulk_consolidated') && (
                       <button
                         onClick={() => handleAssignMasterBox(selectedShipment.id)}
                         disabled={updating || !masterBoxId}
@@ -1671,10 +2030,20 @@ export default function WarehouseOpsPortal() {
                         <span className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-[10px]">5</span>
                         Airfreight Dispatch — India to Customer (Canada)
                       </h3>
-                      {['in_transit', 'shipped', 'delivered'].includes(selectedShipment.status) && (
+                      {['in_transit', 'shipped', 'delivered'].includes(selectedShipment.status) ? (
                         <span className="text-[10px] text-emerald-700 font-black flex items-center gap-1">
                           <span className="material-symbols-outlined text-xs">check_circle</span>
                           Dispatched ✈
+                        </span>
+                      ) : isShipmentFullyPaid(selectedShipment) ? (
+                        <span className="text-[10px] text-emerald-800 font-black flex items-center gap-1 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 shadow-2xs">
+                          <span className="material-symbols-outlined text-xs text-emerald-700">lock_open</span>
+                          Open to Edit (Paid ✓)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-amber-800 font-black flex items-center gap-1 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300">
+                          <span className="material-symbols-outlined text-xs text-amber-700">lock</span>
+                          Locked (Payment Required)
                         </span>
                       )}
                     </div>
@@ -1682,49 +2051,71 @@ export default function WarehouseOpsPortal() {
                       Enter airfreight carrier and AWB tracking number. Package ships directly from Delhi hub to customer's Canadian address.
                     </p>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-emerald-950/60">Airfreight Carrier</label>
-                        <select
-                          value={canadaCarrier}
-                          onChange={e => setCanadaCarrier(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-emerald-950 focus:border-emerald-500 focus:outline-none cursor-pointer"
-                        >
-                          <option value="FedEx International Priority">FedEx International Priority</option>
-                          <option value="DHL Express Worldwide">DHL Express Worldwide</option>
-                          <option value="UPS Worldwide Expedited">UPS Worldwide Expedited</option>
-                          <option value="Air India Cargo">Air India Cargo</option>
-                          <option value="IndiGo Cargo">IndiGo Cargo</option>
-                        </select>
+                    {!isShipmentFullyPaid(selectedShipment) ? (
+                      /* 🔒 LOCKED UNTIL FINAL PAYMENT */
+                      <div className="bg-amber-50 border border-amber-300 text-amber-950 p-4 rounded-xl space-y-2">
+                        <div className="flex items-center gap-2 font-black text-xs text-amber-900 uppercase tracking-wider">
+                          <span className="material-symbols-outlined text-base text-amber-700">lock</span>
+                          Step 5 Locked: Awaiting Final Balance Payment
+                        </div>
+                        <p className="text-xs text-amber-800 leading-relaxed">
+                          Customer balance payment is pending ($
+                          {selectedShipment.remaining_balance_cad !== undefined
+                            ? Number(selectedShipment.remaining_balance_cad).toFixed(2)
+                            : '27.59'}{' '}
+                          CAD). Airfreight dispatch (Step 5) and delivery confirmation (Step 6) will unlock automatically as soon as the customer completes payment in their dashboard.
+                        </p>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-emerald-950/60">Airfreight AWB Tracking No.</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. FX-9918283746IN"
-                          value={canadaAWB}
-                          onChange={e => setCanadaAWB(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-xs font-mono font-bold text-emerald-950 focus:border-emerald-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
+                    ) : (
+                      /* 🚀 OPEN TO EDIT: Customer paid in full! */
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-emerald-950/60">Airfreight Carrier</label>
+                            <select
+                              value={canadaCarrier}
+                              onChange={e => setCanadaCarrier(e.target.value)}
+                              disabled={['in_transit', 'shipped', 'delivered'].includes(selectedShipment.status)}
+                              className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-emerald-950 focus:border-emerald-500 focus:outline-none cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            >
+                              <option value="FedEx International Priority">FedEx International Priority</option>
+                              <option value="DHL Express Worldwide">DHL Express Worldwide</option>
+                              <option value="UPS Worldwide Expedited">UPS Worldwide Expedited</option>
+                              <option value="Air India Cargo">Air India Cargo</option>
+                              <option value="IndiGo Cargo">IndiGo Cargo</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-emerald-950/60">Airfreight AWB Tracking No.</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. FX-9918283746IN"
+                              value={canadaAWB}
+                              onChange={e => setCanadaAWB(e.target.value)}
+                              disabled={['in_transit', 'shipped', 'delivered'].includes(selectedShipment.status)}
+                              className="w-full p-2.5 bg-white border border-emerald-200 rounded-xl text-xs font-mono font-bold text-emerald-950 focus:border-emerald-500 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                        </div>
 
-                    {selectedShipment.status === 'bulk_consolidated' && (
-                      <button
-                        onClick={() => handleAirfreightDispatch(selectedShipment.id)}
-                        disabled={updating || !canadaAWB}
-                        className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
-                      >
-                        <span className="material-symbols-outlined text-base">flight_takeoff</span>
-                        Dispatch via {canadaCarrier}
-                      </button>
-                    )}
+                        {!['in_transit', 'shipped', 'delivered'].includes(selectedShipment.status) && (
+                          <button
+                            onClick={() => handleAirfreightDispatch(selectedShipment.id)}
+                            disabled={updating || !canadaAWB.trim()}
+                            className="w-full py-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                          >
+                            <span className="material-symbols-outlined text-base">flight_takeoff</span>
+                            Dispatch Overseas via {canadaCarrier}
+                          </button>
+                        )}
 
-                    {selectedShipment.canada_local_awb && (
-                      <div className="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-emerald-200 text-xs">
-                        <span className="material-symbols-outlined text-sm text-emerald-600">flight</span>
-                        <span className="font-bold text-emerald-900">{selectedShipment.canada_local_carrier}</span>
-                        <span className="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{selectedShipment.canada_local_awb}</span>
+                        {selectedShipment.canada_local_awb && (
+                          <div className="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-emerald-200 text-xs">
+                            <span className="material-symbols-outlined text-sm text-emerald-600">flight</span>
+                            <span className="font-bold text-emerald-900">{selectedShipment.canada_local_carrier || canadaCarrier}</span>
+                            <span className="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{selectedShipment.canada_local_awb}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1736,15 +2127,25 @@ export default function WarehouseOpsPortal() {
                         <span className="w-5 h-5 rounded-full bg-[#1B250F] text-white flex items-center justify-center text-[10px]">6</span>
                         Confirm Delivered to Customer (Canada)
                       </h3>
-                      {selectedShipment.status === 'delivered' && (
+                      {selectedShipment.status === 'delivered' ? (
                         <span className="text-[10px] text-[#2E7D32] font-black flex items-center gap-1">
                           <span className="material-symbols-outlined text-xs">check_circle</span>
                           Delivered ✅
                         </span>
+                      ) : ['in_transit', 'shipped'].includes(selectedShipment.status) ? (
+                        <span className="text-[10px] text-emerald-800 font-black flex items-center gap-1 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                          <span className="material-symbols-outlined text-xs text-emerald-700">lock_open</span>
+                          Open to Edit
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-gray-500 font-bold flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs">lock</span>
+                          Locked (Dispatch Required First)
+                        </span>
                       )}
                     </div>
                     <p className="text-xs text-[#0E1F38]/70">
-                      Mark as delivered once customer confirms receipt or carrier shows delivery scan.
+                      Mark as delivered once customer confirms receipt or carrier tracking shows delivery scan in Canada.
                     </p>
                     {(selectedShipment.status === 'in_transit' || selectedShipment.status === 'shipped') && (
                       <button
@@ -1753,8 +2154,14 @@ export default function WarehouseOpsPortal() {
                         className="w-full py-3 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <span className="material-symbols-outlined text-base">done_all</span>
-                        Confirm Delivered to Customer
+                        Confirm Delivered to Customer in Canada
                       </button>
+                    )}
+                    {selectedShipment.status === 'delivered' && (
+                      <div className="bg-green-50 border border-green-200 text-green-800 p-2.5 rounded-xl text-center text-xs font-bold flex items-center justify-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm">verified</span>
+                        <span>Package successfully delivered to customer in Canada. Workflow complete!</span>
+                      </div>
                     )}
                   </div>
 
