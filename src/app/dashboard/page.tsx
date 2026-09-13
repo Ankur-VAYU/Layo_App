@@ -1290,29 +1290,6 @@ export default function Dashboard() {
         ? (holdOptionMode === 'existing' && selectedHoldGroupId ? selectedHoldGroupId : `HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`)
         : null;
 
-      // Save to dedicated draft_estimates database table
-      await saveDraftEstimate({
-        id: editingDraftId || undefined,
-        user_id: user?.id,
-        customer_email: user?.email,
-        mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
-        destination_city: destinationCity || 'Toronto (GTA)',
-        destination_address: destinationAddress || 'Draft Address',
-        india_warehouse: selectedWarehouse || null,
-        external_order_id: orderNumber || null,
-        total_weight: totals.totalWeightKg,
-        total_cost: totals.totalPriceINR,
-        estimated_cost_cad: totals.totalPriceCAD,
-        advance_pct: 20,
-        advance_amount_cad: advanceCAD,
-        remaining_balance_cad: remainingCAD,
-        items: itemsPayload,
-        warehouse_action: warehouseAction || 'ship',
-        expected_packages: morePackages || 1,
-        hold_group_id: resolvedHoldGroupId,
-        status: 'Draft Estimate',
-      });
-
       if (editingDraftId) {
         const updatePayload = {
           destination_city: destinationCity || 'Draft City',
