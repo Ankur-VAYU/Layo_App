@@ -343,7 +343,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
     localStorage.setItem('layo_pending_shipment', JSON.stringify(payload));
     localStorage.removeItem('layo_anon_draft');
     onClose();
-    router.push('/dashboard');
+    router.push('/dashboard?tab=new');
   };
 
   if (!isOpen) return null;

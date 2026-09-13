@@ -276,6 +276,15 @@ export default function Home() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Clear in-progress order flow state when customer visits Home so next order starts at Step 1
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('layo_dashboard_flow_state');
+      } catch (e) {}
+    }
+  }, []);
+
   const userInitial = user
     ? (user.user_metadata?.full_name?.charAt(0) || user.email?.charAt(0) || 'U').toUpperCase()
     : null;
@@ -536,7 +545,14 @@ export default function Home() {
           {/* Action Buttons */}
           <div className="pt-4 flex flex-col items-center gap-4">
             <Link
-              href="/dashboard"
+              href="/dashboard?tab=new"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  try {
+                    localStorage.removeItem('layo_dashboard_flow_state');
+                  } catch (e) {}
+                }
+              }}
               className="inline-block px-10 py-5 bg-[#FF5A65] text-white font-bold text-base md:text-lg rounded-full hover:bg-[#E24550] transition-colors shadow-lg shadow-[#FF5A65]/15 cursor-pointer text-center"
             >
               Start Shipping with Layo

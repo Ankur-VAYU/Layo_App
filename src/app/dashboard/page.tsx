@@ -266,14 +266,26 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'new' | 'drafts' | 'hold' | 'dues' | 'history'>('new');
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab');
-      if (tabParam === 'drafts') setActiveTab('drafts');
-      else if (tabParam === 'hold') setActiveTab('hold');
-      else if (tabParam === 'dues' || tabParam === 'remaining' || tabParam === 'payment_dues') setActiveTab('dues');
-      else if (tabParam === 'history') setActiveTab('history');
-    }
+    const handleUrlTab = () => {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get('tab');
+        if (tabParam === 'drafts') setActiveTab('drafts');
+        else if (tabParam === 'hold') setActiveTab('hold');
+        else if (tabParam === 'dues' || tabParam === 'remaining' || tabParam === 'payment_dues') setActiveTab('dues');
+        else if (tabParam === 'history') setActiveTab('history');
+        else if (tabParam === 'new') {
+          setActiveTab('new');
+          setCurrentStep(1);
+          try {
+            localStorage.removeItem('layo_dashboard_flow_state');
+          } catch (e) {}
+        }
+      }
+    };
+    handleUrlTab();
+    window.addEventListener('popstate', handleUrlTab);
+    return () => window.removeEventListener('popstate', handleUrlTab);
   }, []);
   const [currentStep, setCurrentStep] = useState(1);
   const [isFetching, setIsFetching] = useState(true);
@@ -452,6 +464,16 @@ export default function Dashboard() {
   // Load saved flow state from localStorage if exists
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') === 'new') {
+        try {
+          localStorage.removeItem('layo_dashboard_flow_state');
+        } catch (e) {}
+        setCurrentStep(1);
+        setActiveTab('new');
+        return;
+      }
+
       // Prioritize fresh estimator modal drafts over previous flow state
       const hasFreshModalDraft = localStorage.getItem('layo_pending_shipment_draft');
       if (hasFreshModalDraft) {
@@ -1794,19 +1816,9 @@ export default function Dashboard() {
     }
   };
 
-  // Intercepting click on Logo to offer Draft Saving
+  // Intercepting click on Logo to cleanly reset order flow to Step 1
   const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    const hasProgress =
-      activeItems.length > 0 ||
-      selectedWarehouse ||
-      destinationAddress ||
-      storeName ||
-      senderName;
-
-    if (hasProgress) {
-      e.preventDefault();
-      setShowDraftModal(true);
-    }
+    handleStartNewOrder();
   };
 
   // Edit existing draft
@@ -2073,7 +2085,11 @@ export default function Dashboard() {
               Create New Account
             </Link>
           </div>
-          <Link href="/" className="block text-xs text-[#0E1F38]/60 hover:text-[#0E1F38] pt-2">
+          <Link 
+            href="/" 
+            onClick={() => handleStartNewOrder()}
+            className="block text-xs text-[#0E1F38]/60 hover:text-[#0E1F38] pt-2"
+          >
             ← Return to Home
           </Link>
         </div>
@@ -2093,7 +2109,13 @@ export default function Dashboard() {
           <Logo showTagline={false} darkText={true} onClick={handleLogoClick} />
         </div>
         <div className="flex items-center gap-3 sm:gap-6">
-          <Link href="/" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-xs sm:text-sm font-semibold">Home</Link>
+          <Link 
+            href="/" 
+            onClick={() => handleStartNewOrder()}
+            className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-xs sm:text-sm font-semibold"
+          >
+            Home
+          </Link>
           {['admin@layo.com', 'ankur@layo.com'].includes(user?.email || '') && (
             <Link href="/admin" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-xs sm:text-sm font-semibold">Admin</Link>
           )}
@@ -4204,6 +4226,7 @@ export default function Dashboard() {
                 onClick={() => {
                   handleStartNewOrder();
                   setShowDraftModal(false);
+                  router.push('/');
                 }}
                 className="flex-1 py-3.5 border border-red-200 text-red-600 hover:bg-red-50 font-bold text-xs uppercase tracking-widest rounded-2xl transition-all cursor-pointer"
               >
@@ -4918,15 +4941,21 @@ export default function Dashboard() {
 
       {/* ── Mobile representation Bottom Nav Bar ── */}
       <footer className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 bg-[#FAF8EE]/95 backdrop-blur border-t border-black/10 rounded-t-2xl shadow-lg">
-        <button onClick={() => router.push('/')} className="flex flex-col items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38]">
+        <button 
+          onClick={() => {
+            handleStartNewOrder();
+            router.push('/');
+          }} 
+          className="flex flex-col items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38] cursor-pointer"
+        >
           <span className="material-symbols-outlined">home</span>
           <span className="text-[9px] mt-0.5 font-medium">Home</span>
         </button>
-        <button onClick={() => { setActiveTab('new'); setCurrentStep(1); }} className="flex flex-col items-center justify-center text-[#FF5A65]">
+        <button onClick={handleStartNewOrder} className="flex flex-col items-center justify-center text-[#FF5A65] cursor-pointer">
           <span className="material-symbols-outlined">calculate</span>
           <span className="text-[9px] mt-0.5 font-bold">Calculate</span>
         </button>
-        <button onClick={() => router.push('/')} className="flex flex-col items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38]">
+        <button onClick={() => router.push('/')} className="flex flex-col items-center justify-center text-[#0E1F38]/70 hover:text-[#0E1F38] cursor-pointer">
           <span className="material-symbols-outlined">person</span>
           <span className="text-[9px] mt-0.5 font-medium">Profile</span>
         </button>
