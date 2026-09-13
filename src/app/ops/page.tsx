@@ -377,10 +377,21 @@ export default function WarehouseOpsPortal() {
         operatorUser,
         'Hold package arrived at India Hub'
       );
-      if (!result.error) {
-        setShipments(prev => prev.map(s =>
-          s.id === shipmentId ? { ...s, status: 'hold_arrived', stage_timestamps: result.updatedTimestamps } : s
-        ));
+
+      const updatedTimestamps = result.updatedTimestamps || { ...(current?.stage_timestamps || {}), hold_arrived: new Date().toISOString() };
+
+      setShipments(prev => {
+        const nextList = prev.map(s =>
+          s.id === shipmentId ? { ...s, status: 'hold_arrived', stage_timestamps: updatedTimestamps } : s
+        );
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
+      if (selectedShipment?.id === shipmentId) {
+        setSelectedShipment((prev: any) => ({ ...prev, status: 'hold_arrived', stage_timestamps: updatedTimestamps }));
       }
     } catch (err) {
       console.error('Failed to mark hold arrived', err);
@@ -395,6 +406,8 @@ export default function WarehouseOpsPortal() {
     setUpdating(true);
     try {
       const combinedBoxId = `HOLD-${Date.now().toString(36).toUpperCase()}`;
+      const nowIso = new Date().toISOString();
+
       for (const s of groupShipments) {
         await updateShipmentStage(
           s.id,
@@ -405,8 +418,29 @@ export default function WarehouseOpsPortal() {
           `Combined into group box ${combinedBoxId}`
         );
       }
+
+      const groupIds = new Set(groupShipments.map(s => s.id));
+
+      setShipments(prev => {
+        const nextList = prev.map(s => {
+          if (groupIds.has(s.id)) {
+            return {
+              ...s,
+              status: 'qc_verified',
+              master_box_id: combinedBoxId,
+              stage_timestamps: { ...(s.stage_timestamps || {}), qc_verified: nowIso }
+            };
+          }
+          return s;
+        });
+        try {
+          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+        } catch (e) {}
+        return nextList;
+      });
+
       await loadOpsData();
-      alert(`✅ Combined! All ${groupShipments.length} packages assigned to box ${combinedBoxId} and moved to Repack queue.`);
+      alert(`✅ Combined! All ${groupShipments.length} packages assigned to box ${combinedBoxId} and moved to QC/Repack queue.`);
     } catch (err) {
       console.error('Failed to combine packages', err);
       alert('Failed to combine packages. Please try again.');
@@ -866,32 +900,32 @@ export default function WarehouseOpsPortal() {
                       </div>
                       {/* Individual packages */}
                       <div className="divide-y divide-black/5">
-                        {group.shipments.map((s: any) => (
-                          <div key={s.id} className="px-4 py-3 flex items-center justify-between">
+                        {group.shipments.map((s: any, pIdx: number) => (
+                          <div key={s.id || pIdx} className="px-4 py-3 flex items-center justify-between hover:bg-black/5 transition-all">
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className="font-mono text-[10px] font-black bg-[#FAF8EE] px-2 py-0.5 rounded border border-black/5">
-                                  #{s.id.slice(0, 8).toUpperCase()}
+                                <span className="font-mono text-[10px] font-black bg-[#FAF8EE] px-2 py-0.5 rounded border border-black/5 text-[#0E1F38]">
+                                  Package {pIdx + 1}: #{s.external_order_id || (s.id ? s.id.slice(0, 8).toUpperCase() : 'SHIPMENT')}
                                 </span>
                                 {getStatusBadge(s.status)}
                               </div>
                               <p className="text-[11px] text-[#0E1F38]/60 mt-1">
                                 {Array.isArray(s.items) ? s.items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0) : 0} items · {s.total_weight || 1.0} kg
-                                {s.external_order_id && ` · Order: ${s.external_order_id}`}
+                                {s.external_order_id && ` · Merchant Order: #${s.external_order_id}`}
                               </p>
                             </div>
-                            {s.status !== 'hold_arrived' && s.status !== 'inwarded' && (
+                            {s.status !== 'hold_arrived' && s.status !== 'inwarded' && s.status !== 'qc_verified' && (
                               <button
                                 onClick={() => handleMarkHoldArrived(s.id)}
                                 disabled={updating}
-                                className="text-[10px] font-black bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 px-3 py-1.5 rounded-xl transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                                className="text-[10px] font-black bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 px-3 py-1.5 rounded-xl transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1 shadow-xs"
                               >
                                 <span className="material-symbols-outlined text-sm">check_circle</span>
                                 Mark Arrived
                               </button>
                             )}
-                            {(s.status === 'hold_arrived' || s.status === 'inwarded') && (
-                              <span className="text-[10px] font-black text-green-700 flex items-center gap-1">
+                            {(s.status === 'hold_arrived' || s.status === 'inwarded' || s.status === 'qc_verified') && (
+                              <span className="text-[10px] font-black text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-xl flex items-center gap-1">
                                 <span className="material-symbols-outlined text-sm">done_all</span>
                                 At Hub
                               </span>
