@@ -371,11 +371,11 @@ export async function updateShipmentStage(
 
   // List of columns that strictly exist in Postgres shipments table schema
   const ALLOWED_COLUMNS = new Set([
-    'id', 'user_id', 'layo_number', 'mode', 'status', 'destination_city',
-    'destination_address', 'india_warehouse', 'external_order_id', 'external_tracking',
-    'total_weight', 'total_cost', 'payment_method', 'items', 'stage_timestamps',
-    'stage_history', 'master_box_id', 'canada_local_carrier', 'canada_local_awb',
-    'warehouse_action', 'expected_packages', 'hold_group_id', 'box_dimensions', 'created_at', 'updated_at'
+    'id', 'created_at', 'mode', 'destination_city', 'destination_address',
+    'total_weight', 'total_cost', 'items', 'status', 'payment_method',
+    'user_id', 'india_warehouse', 'external_order_id', 'external_tracking',
+    'stage_timestamps', 'master_box_id', 'canada_local_carrier', 'canada_local_awb',
+    'updated_at', 'warehouse_action', 'expected_packages', 'hold_group_id', 'stage_history'
   ]);
 
   const rawHoldId = extraFields?.hold_group_id ? String(extraFields.hold_group_id).trim() : (existingItemsObj.raw_hold_group_id || null);

@@ -1598,17 +1598,29 @@ export default function WarehouseOpsPortal() {
                       );
                     })()}
 
-                    {selectedShipment.status === 'qc_verified' && (
-                      <button
-                        onClick={() => handleCompleteRepack(selectedShipment.id)}
-                        disabled={updating || !grossWeightInput}
-                        className="w-full py-3.5 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
-                      >
-                        <span className="material-symbols-outlined text-base">inventory_2</span>
-                        {selectedShipment.isCombinedGroup
-                          ? `Seal Combined Layo Green Box & Record Weight (${parseFloat(grossWeightInput) || selectedShipment.total_weight || 1.0} kg)`
-                          : 'Seal Layo Green Box & Record Weight'}
-                      </button>
+                    {(selectedShipment.status === 'qc_verified' || selectedShipment.status === 'repacked' || (selectedShipment.isCombinedGroup && (selectedShipment.hasQcVerified || selectedShipment.allRepacked || selectedShipment.allQcMatched || selectedShipment.status === 'repacked' || selectedShipment.status === 'qc_verified'))) && (
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => handleCompleteRepack(selectedShipment.id)}
+                          disabled={updating || !grossWeightInput}
+                          className="w-full py-3.5 bg-[#8BC34A] text-[#1B250F] font-black text-xs uppercase tracking-widest rounded-xl hover:bg-[#9ccc65] transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
+                        >
+                          <span className="material-symbols-outlined text-base">scale</span>
+                          {selectedShipment.status === 'repacked'
+                            ? (selectedShipment.isCombinedGroup
+                                ? `Update Combined Scale Weight & Recalculate Balance (${parseFloat(grossWeightInput) || selectedShipment.actual_weight || selectedShipment.total_weight || 1.0} kg)`
+                                : `Update Scale Weight & Recalculate Balance (${parseFloat(grossWeightInput) || selectedShipment.actual_weight || selectedShipment.total_weight || 1.0} kg)`)
+                            : (selectedShipment.isCombinedGroup
+                                ? `Seal Combined Layo Green Box & Record Weight (${parseFloat(grossWeightInput) || selectedShipment.total_weight || 1.0} kg)`
+                                : 'Seal Layo Green Box & Record Weight')}
+                        </button>
+                        {selectedShipment.status === 'repacked' && (
+                          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-2.5 rounded-xl text-center text-xs font-semibold flex items-center justify-center gap-1.5">
+                            <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
+                            <span>Scale weight confirmed ({selectedShipment.actual_weight || selectedShipment.total_weight} kg). Customer payment balance unlocked.</span>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 

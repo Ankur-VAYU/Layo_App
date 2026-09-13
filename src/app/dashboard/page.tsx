@@ -550,7 +550,8 @@ export default function Dashboard() {
       if (st === 'draft' || st === 'draft estimate' || st === 'cancelled' || st === 'delivered' || st === 'shipped') return false;
       const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
       if (!isHold) return false;
-      if (paySt === 'awaiting_balance' || st === 'repacked') return false;
+      const isPostRepack = st === 'repacked' || st === 'bulk_consolidated' || st === 'in_transit' || st === 'received_canada' || st === 'out_for_delivery' || paySt === 'awaiting_balance' || Number(s.actual_weight || 0) > 0 || Boolean(s.stage_timestamps?.repacked);
+      if (isPostRepack) return false;
       return true;
     });
 
@@ -614,8 +615,10 @@ export default function Dashboard() {
       if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
       if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') return false;
 
+      const isPostRepack = st === 'repacked' || st === 'bulk_consolidated' || st === 'in_transit' || st === 'received_canada' || st === 'out_for_delivery' || st === 'delivered' || paySt === 'awaiting_balance' || Number(s.actual_weight || 0) > 0 || Boolean(s.stage_timestamps?.repacked);
+
       const isHold = s.warehouse_action === 'hold' || st === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
-      if (isHold && paySt !== 'awaiting_balance' && st !== 'repacked') {
+      if (isHold && !isPostRepack) {
         const holdKey = getHoldGroupKey(s);
         const groupPackages = shipments.filter(x => x && getHoldGroupKey(x) === holdKey);
         const expectedMore = groupPackages.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
@@ -624,7 +627,7 @@ export default function Dashboard() {
         if (!isHoldFullyLinked) return false; // Still waiting for packages in Hold & Consolidation tab!
       }
 
-      return paySt === 'awaiting_balance' || st === 'repacked' || st === 'paid' || st === 'advance_paid' || st === 'holding' || st === 'inwarded' || st === 'qc_verified' || Number(s.remaining_balance_cad) > 0;
+      return paySt === 'awaiting_balance' || isPostRepack || st === 'paid' || st === 'advance_paid' || st === 'holding' || st === 'inwarded' || st === 'qc_verified' || Number(s.remaining_balance_cad) > 0;
     });
 
     // 2. Group by hold group key or individual shipment ID
@@ -640,7 +643,15 @@ export default function Dashboard() {
     return Array.from(map.entries()).map(([groupKey, items]) => {
       const primary = items[0];
       const isHoldGroup = groupKey.startsWith('HOLD-') || items.length > 1;
-      const isRepackDone = items.some(it => String(it.status || '').toLowerCase() === 'repacked' || String(it.payment_status || '').toLowerCase() === 'awaiting_balance');
+
+      const isRepackDone = items.some(it => {
+        const st = String(it.status || '').toLowerCase();
+        const paySt = String(it.payment_status || '').toLowerCase();
+        const hasWeight = Number(it.actual_weight || 0) > 0;
+        const hasRepackTimestamp = Boolean(it.stage_timestamps?.repacked);
+        const isPostRepackStage = ['repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(st);
+        return isPostRepackStage || paySt === 'awaiting_balance' || (hasWeight && Number(it.final_cost_cad || 0) > 0) || hasRepackTimestamp;
+      });
 
       const combinedActualWeight = isRepackDone
         ? (items.reduce((max, it) => Math.max(max, Number(it.actual_weight || 0)), 0) || items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0))
@@ -656,7 +667,7 @@ export default function Dashboard() {
       let combinedFinalCost = 0;
       if (isRepackDone) {
         combinedFinalCost = items.reduce((max, it) => Math.max(max, Number(it.final_cost_cad || 0)), 0);
-        if (!combinedFinalCost) {
+        if (!combinedFinalCost || combinedFinalCost <= 0) {
           const calc = calculateLayoDeliveryCost({ weightKg: combinedActualWeight, deliveryType: 'normal' });
           combinedFinalCost = calc.finalPriceCAD;
         }
@@ -666,8 +677,7 @@ export default function Dashboard() {
 
       let combinedRemainingBalance = 0;
       if (isRepackDone) {
-        const storedRemaining = items.reduce((max, it) => Math.max(max, Number(it.remaining_balance_cad || 0)), 0);
-        combinedRemainingBalance = storedRemaining > 0 ? storedRemaining : Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
+        combinedRemainingBalance = Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
       } else {
         combinedRemainingBalance = Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
       }
@@ -768,6 +778,74 @@ export default function Dashboard() {
     } catch (err: any) {
       console.error('Pay group balance error:', err);
       alert('Payment error: ' + (err.message || 'Please try again'));
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const handleSimulateRemainingBalancePayment = async (grp: any) => {
+    setIsProcessingPayment(true);
+    try {
+      const targetId = grp.groupKey || (grp.items && grp.items[0]?.id);
+      const normalizedTargetKey = normalizeHoldGroupId(targetId);
+      const matchingShips = shipments.filter(s => (normalizedTargetKey && getHoldGroupKey(s) === normalizedTargetKey) || s.hold_group_id === targetId || s.id === targetId || formatShipmentId(s.id) === formatShipmentId(targetId));
+      
+      const dueCAD = grp.combinedRemainingBalance || 0;
+      const shipsToUpdate = matchingShips.length > 0 ? matchingShips : (grp.items || []);
+      
+      for (const ship of shipsToUpdate) {
+        await updateShipmentStage(
+          ship.id,
+          'repacked',
+          ship.stage_timestamps,
+          {
+            payment_status: 'completed',
+            remaining_balance_cad: 0,
+          },
+          { id: user?.id || null, email: user?.email || null, role: 'customer' },
+          `Remaining balance payment of $${dueCAD.toFixed(2)} CAD completed via Demo Simulation`
+        );
+      }
+
+      // Update local storage shipments list
+      try {
+        const rawLocal = localStorage.getItem('layo_local_shipments');
+        if (rawLocal) {
+          const allLocal = JSON.parse(rawLocal);
+          const targetIds = new Set(shipsToUpdate.map((s: any) => s.id));
+          const updated = allLocal.map((s: any) => targetIds.has(s.id) ? { ...s, payment_status: 'completed', remaining_balance_cad: 0 } : s);
+          localStorage.setItem('layo_local_shipments', JSON.stringify(updated));
+        }
+      } catch (e) {}
+
+      // Record transaction
+      if (shipsToUpdate[0]) {
+        await supabase.from('transactions').insert({
+          shipment_id: shipsToUpdate[0].id,
+          user_id: user?.id || null,
+          amount_cad: dueCAD,
+          amount_inr: Math.round(dueCAD * (cadToInrRate || 61)),
+          currency: 'CAD',
+          exchange_rate: cadToInrRate || 61,
+          payment_method: 'demo_simulated',
+          status: 'completed',
+          customer_email: user?.email || null,
+          customer_name: user?.email || null,
+          description: `Layo demo balance payment — ${grp.isHoldGroup ? 'Hold Group #' + targetId : 'Locker #' + formatShipmentId(shipsToUpdate[0].id)}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      setPaymentBanner({
+        type: 'success',
+        message: `Simulated balance payment of $${dueCAD.toFixed(2)} CAD completed! Package is fully paid and queued for airfreight dispatch.`
+      });
+      setActiveTab('history');
+      if (user?.id) fetchDashboardData(user.id);
+    } catch (err: any) {
+      console.error('Demo balance payment error:', err);
+      alert('Error: ' + (err.message || 'Failed to simulate payment'));
     } finally {
       setIsProcessingPayment(false);
     }
@@ -1003,6 +1081,24 @@ export default function Dashboard() {
     }
   }, [user, loading, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-sync polling every 6 seconds when dashboard tab is visible, plus on window focus
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchDashboardData(user.id);
+      }
+    }, 6000);
+    const onFocus = () => {
+      if (user?.id) fetchDashboardData(user.id);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Data Fetching ───────────────────────────────────────────────────────
   const fetchDashboardData = async (userId?: string) => {
     setIsFetching(true);
@@ -1036,6 +1132,10 @@ export default function Dashboard() {
       );
 
       setShipments(mergedList);
+      try {
+        localStorage.setItem('layo_local_shipments', JSON.stringify(mergedList));
+      } catch (e) {}
+
       const hasFlowState = typeof window !== 'undefined' ? localStorage.getItem('layo_dashboard_flow_state') : null;
       const hasProgress = currentStep > 1 || selectedCategories.length > 0 || storeName || senderName || orderNumber || destinationAddress || promoQty > 0 || hasFlowState;
       if (mergedList.length > 0 && !hasProgress) {
@@ -2418,14 +2518,24 @@ export default function Dashboard() {
 
                       {/* Pay Action Button */}
                       {isRepackDone ? (
-                        <button
-                          onClick={() => handlePayRemainingBalanceGroup(grp)}
-                          disabled={isProcessingPayment}
-                          className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-sm">lock</span>
-                          <span>Pay Remaining Balance (${(Number(grp.combinedRemainingBalance) || 0).toFixed(2)} CAD)</span>
-                        </button>
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => handlePayRemainingBalanceGroup(grp)}
+                            disabled={isProcessingPayment}
+                            className="w-full py-4 bg-[#FF5A65] hover:bg-[#e24550] text-white font-bold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-md shadow-[#FF5A65]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-sm">lock_open</span>
+                            <span>Pay Remaining Balance (${(Number(grp.combinedRemainingBalance) || 0).toFixed(2)} CAD)</span>
+                          </button>
+                          <button
+                            onClick={() => handleSimulateRemainingBalancePayment(grp)}
+                            disabled={isProcessingPayment}
+                            className="w-full py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-amber-500/20 active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <span className="material-symbols-outlined text-xs text-amber-700">science</span>
+                            <span>🧪 Demo Mode: Simulate Balance Payment (Bypass Stripe for Testing)</span>
+                          </button>
+                        </div>
                       ) : (
                         <button
                           disabled={true}
