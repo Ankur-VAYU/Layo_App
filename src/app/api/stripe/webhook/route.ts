@@ -46,11 +46,59 @@ export async function POST(request: NextRequest) {
           .maybeSingle();
 
         const isAdvance = session.metadata?.is_advance !== 'false' && session.metadata?.payment_type !== 'balance';
-        
-        if (isAdvance) {
-          const isHoldShipment = currentShipment?.warehouse_action === 'hold';
-          const targetStatus = isHoldShipment ? 'holding' : 'paid';
+        const amountTotal = session.amount_total ? session.amount_total / 100 : 0;
+        const isHoldShipment = session.metadata?.warehouse_action === 'hold' || currentShipment?.warehouse_action === 'hold';
+        const targetStatus = isAdvance ? (isHoldShipment ? 'holding' : 'paid') : 'paid';
 
+        if (!currentShipment) {
+          // Shipment does not exist yet! Insert it immediately from Stripe metadata so customer orders are never lost
+          const totalWeight = parseFloat(session.metadata?.total_weight_kg || '1.0') || 1.0;
+          const totalCadMeta = parseFloat(session.metadata?.total_cad || '0');
+          const estCostCAD = totalCadMeta > 0 ? totalCadMeta : (isAdvance ? Math.round(amountTotal * 5 * 100) / 100 : amountTotal);
+          const remainingCAD = isAdvance ? Math.max(0, Math.round((estCostCAD - amountTotal) * 100) / 100) : 0;
+
+          await supabase.from('shipments').insert({
+            id: shipmentId,
+            user_id: userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId) ? userId : null,
+            mode: 'Online Retailer',
+            status: targetStatus,
+            destination_city: session.metadata?.destination_city || 'Toronto (GTA)',
+            destination_address: session.metadata?.destination_address || 'Canada',
+            total_weight: totalWeight,
+            total_cost: Math.round(estCostCAD * 70.4),
+            payment_method: 'stripe',
+            warehouse_action: isHoldShipment ? 'hold' : 'ship',
+            expected_packages: 1,
+            items: {
+              items: [],
+              advance_pct: 20,
+              advance_amount_cad: isAdvance ? amountTotal : Math.round(estCostCAD * 0.2 * 100) / 100,
+              estimated_weight: totalWeight,
+              estimated_cost_cad: estCostCAD,
+              remaining_balance_cad: remainingCAD,
+              payment_status: isAdvance ? 'advance_paid' : 'completed',
+              items_summary: session.metadata?.items_summary || null,
+            },
+            stage_timestamps: {
+              [targetStatus]: nowIso,
+              paid: nowIso,
+              ...(isAdvance ? { advance_paid: nowIso } : { completed: nowIso }),
+            },
+            stage_history: [
+              {
+                stage: targetStatus,
+                status_label: isHoldShipment ? 'Hold & Consolidation' : (isAdvance ? '20% Advance Paid • Awaiting Warehouse Arrival' : 'Full Payment Settled'),
+                timestamp: nowIso,
+                done_by_user_id: userId || null,
+                done_by_email: session.customer_details?.email || session.customer_email || null,
+                done_by_role: 'customer',
+                notes: `${isAdvance ? '20% Advance deposit' : 'Remaining balance payment'} of $${amountTotal.toFixed(2)} CAD confirmed via Stripe webhook`,
+              }
+            ],
+            created_at: nowIso,
+            updated_at: nowIso,
+          });
+        } else if (isAdvance) {
           await supabase
             .from('shipments')
             .update({
@@ -82,23 +130,10 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 2. Look up customer_id
-        let customerId: string | null = null;
-        if (userId) {
-          const { data: custRow } = await supabase
-            .from('customers')
-            .select('id')
-            .eq('user_id', userId)
-            .maybeSingle();
-          customerId = custRow?.id || null;
-        }
-
-        // 3. Record transaction
-        const amountTotal = session.amount_total ? session.amount_total / 100 : 0;
+        // 2. Record transaction
         await supabase.from('transactions').insert({
           shipment_id: shipmentId,
-          customer_id: customerId,
-          user_id: userId || null,
+          user_id: userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId) ? userId : null,
           amount_cad: amountTotal,
           amount_inr: Math.round(amountTotal * 70.4),
           currency: session.currency?.toUpperCase() || 'CAD',
@@ -114,11 +149,11 @@ export async function POST(request: NextRequest) {
           updated_at: nowIso,
         });
 
-        // 4. Log to shipment_activity_logs
+        // 3. Log to shipment_activity_logs
         await supabase.from('shipment_activity_logs').insert({
           shipment_id: shipmentId,
-          stage: 'paid',
-          status_label: 'Payment Completed via Stripe',
+          stage: targetStatus,
+          status_label: isAdvance ? '20% Advance Paid • Awaiting Warehouse Arrival' : 'Payment Completed via Stripe',
           done_by_user_id: userId || null,
           done_by_email: session.customer_details?.email || session.customer_email || null,
           done_by_role: 'customer',

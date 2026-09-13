@@ -218,6 +218,21 @@ export async function insertShipment(payload: ShipmentPayload, operatorUser?: Op
     .insert([insertPayload])
     .select();
 
+  if (initialStatus === 'Draft Estimate') {
+    try {
+      await saveDraftEstimate({
+        ...payload,
+        id: insertPayload.id,
+        user_id: validUserId,
+        customer_email: operatorUser?.email || null,
+        external_order_id: payload.external_order_id || insertPayload.id,
+        created_at: nowIso,
+      });
+    } catch (draftErr) {
+      console.warn('Dual-write to draft_estimates failed:', draftErr);
+    }
+  }
+
   if (error) {
     console.error('insertShipment error:', error);
     const fallbackRow = parseShipment({ ...insertPayload });
@@ -496,15 +511,18 @@ export async function fetchShipments(userId?: string) {
 
 export async function saveDraftEstimate(payload: any) {
   const nowIso = new Date().toISOString();
-  const draftRow = {
-    id: payload.id || undefined,
-    user_id: payload.user_id || null,
+  const validDraftId = isValidUuid(payload.id) ? payload.id : undefined;
+  const validUserId = isValidUuid(payload.user_id) ? payload.user_id : null;
+  const externalRef = payload.external_order_id || (payload.id && !isValidUuid(payload.id) ? payload.id : null);
+
+  const draftRow: any = {
+    user_id: validUserId,
     customer_email: payload.customer_email || null,
     mode: payload.mode || 'Online Retailer',
     destination_city: payload.destination_city || 'Toronto (GTA)',
     destination_address: payload.destination_address || '',
     india_warehouse: payload.india_warehouse || null,
-    external_order_id: payload.external_order_id || null,
+    external_order_id: externalRef,
     total_weight: payload.total_weight || 1.0,
     total_cost: payload.total_cost || 0,
     estimated_cost_cad: payload.estimated_cost_cad || 0,
@@ -519,13 +537,17 @@ export async function saveDraftEstimate(payload: any) {
     updated_at: nowIso,
   };
 
+  if (validDraftId) {
+    draftRow.id = validDraftId;
+  }
+
   try {
     const { data, error } = await supabase
       .from('draft_estimates')
       .upsert([draftRow])
       .select();
     if (error) {
-      console.warn('draft_estimates upsert notice (fallback to shipments):', error.message);
+      console.warn('draft_estimates upsert notice:', error.message);
     }
     return { data, error };
   } catch (err: any) {
@@ -541,7 +563,7 @@ export async function fetchDraftEstimates(userId?: string) {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (userId) {
+    if (userId && isValidUuid(userId)) {
       query = query.eq('user_id', userId);
     }
 
@@ -557,11 +579,19 @@ export async function fetchDraftEstimates(userId?: string) {
 
 export async function deleteDraftEstimate(id: string) {
   try {
-    const { error } = await supabase
-      .from('draft_estimates')
-      .delete()
-      .eq('id', id);
-    return { error };
+    if (isValidUuid(id)) {
+      const { error } = await supabase
+        .from('draft_estimates')
+        .delete()
+        .eq('id', id);
+      return { error };
+    } else {
+      const { error } = await supabase
+        .from('draft_estimates')
+        .delete()
+        .eq('external_order_id', id);
+      return { error };
+    }
   } catch (err) {
     return { error: err };
   }

@@ -20,11 +20,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing shipmentId' }, { status: 400 });
     }
 
-    // Delete by shipmentId using service role admin client
+    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(shipmentId);
+
+    // Delete by shipmentId using service role admin client from shipments
     const { error } = await supabaseAdmin
       .from('shipments')
       .delete()
       .eq('id', shipmentId);
+
+    // Also delete from draft_estimates table
+    try {
+      if (isValidUuid) {
+        await supabaseAdmin.from('draft_estimates').delete().eq('id', shipmentId);
+      }
+      await supabaseAdmin.from('draft_estimates').delete().eq('external_order_id', shipmentId);
+    } catch (e) {
+      console.warn('draft_estimates deletion notice:', e);
+    }
+
+    // Also clean up activity logs
+    try {
+      await supabaseAdmin.from('shipment_activity_logs').delete().eq('shipment_id', shipmentId);
+    } catch (e) {}
 
     if (error) {
       console.error('Failed to delete shipment in Supabase:', error);

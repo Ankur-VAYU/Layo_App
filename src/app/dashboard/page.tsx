@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession, saveDraftEstimate, deleteDraftEstimate, fetchDraftEstimates } from '@/lib/supabase';
+import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession, saveDraftEstimate, deleteDraftEstimate, fetchDraftEstimates, stringToUuid } from '@/lib/supabase';
 import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 import { formatShipmentId, formatTransactionId, formatUserId, formatWarehouseId } from '@/lib/idGenerator';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
@@ -1036,30 +1036,70 @@ export default function Dashboard() {
 
               if (bookingTargetId) {
                 const { data: currentShip } = await supabase.from('shipments').select('*').eq('id', bookingTargetId).maybeSingle();
-                const isHold = currentShip?.warehouse_action === 'hold' || currentShip?.status === 'holding';
+                const isHold = currentShip?.warehouse_action === 'hold' || currentShip?.status === 'holding' || data.metadata?.warehouse_action === 'hold';
                 const nextStatus = isHold ? 'holding' : 'paid';
 
-                await updateShipmentStage(
-                  bookingTargetId,
-                  nextStatus,
-                  currentShip?.stage_timestamps,
-                  {
-                    payment_status: 'advance_paid',
-                    payment_method: 'stripe',
-                  },
-                  { id: user?.id || null, email: user?.email || data.customerEmail || null, role: 'customer' },
-                  `20% Advance booking deposit of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed via Stripe`
-                );
+                if (!currentShip) {
+                  // Fallback creation if client or webhook didn't insert shipment before return
+                  const totalWeight = parseFloat(data.metadata?.total_weight_kg || '1.0') || 1.0;
+                  const amountTotal = data.amountTotal || 0;
+                  const totalCadMeta = parseFloat(data.metadata?.total_cad || '0');
+                  const estCostCAD = totalCadMeta > 0 ? totalCadMeta : Math.round(amountTotal * 5 * 100) / 100;
+                  const remainingCAD = Math.max(0, Math.round((estCostCAD - amountTotal) * 100) / 100);
 
-                // Look up customer_id for proper FK linkage
-                let customerId: string | null = null;
-                if (user?.id) {
-                  const { data: custRow } = await supabase
-                    .from('customers')
-                    .select('id')
-                    .eq('user_id', user.id)
-                    .maybeSingle();
-                  customerId = custRow?.id || null;
+                  await supabase.from('shipments').insert({
+                    id: bookingTargetId,
+                    user_id: user?.id || null,
+                    mode: 'Online Retailer',
+                    status: nextStatus,
+                    destination_city: data.metadata?.destination_city || destinationCity || 'Toronto (GTA)',
+                    destination_address: data.metadata?.destination_address || destinationAddress || 'Canada',
+                    india_warehouse: selectedWarehouse || null,
+                    total_weight: totalWeight,
+                    total_cost: Math.round(estCostCAD * (cadToInrRate || 70.4)),
+                    payment_method: 'stripe',
+                    warehouse_action: isHold ? 'hold' : 'ship',
+                    expected_packages: 1,
+                    items: {
+                      items: [],
+                      advance_pct: 20,
+                      advance_amount_cad: amountTotal,
+                      estimated_weight: totalWeight,
+                      estimated_cost_cad: estCostCAD,
+                      remaining_balance_cad: remainingCAD,
+                      payment_status: 'advance_paid',
+                    },
+                    stage_timestamps: {
+                      [nextStatus]: new Date().toISOString(),
+                      paid: new Date().toISOString(),
+                      advance_paid: new Date().toISOString(),
+                    },
+                    stage_history: [
+                      {
+                        stage: nextStatus,
+                        status_label: isHold ? 'Hold & Consolidation' : '20% Advance Paid • Awaiting Warehouse Arrival',
+                        timestamp: new Date().toISOString(),
+                        done_by_user_id: user?.id || null,
+                        done_by_email: user?.email || data.customerEmail || null,
+                        done_by_role: 'customer',
+                        notes: `20% Advance booking deposit of $${amountTotal.toFixed(2)} CAD confirmed via Stripe`,
+                      }
+                    ],
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  });
+                } else {
+                  await updateShipmentStage(
+                    bookingTargetId,
+                    nextStatus,
+                    currentShip?.stage_timestamps,
+                    {
+                      payment_status: 'advance_paid',
+                      payment_method: 'stripe',
+                    },
+                    { id: user?.id || null, email: user?.email || data.customerEmail || null, role: 'customer' },
+                    `20% Advance booking deposit of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed via Stripe`
+                  );
                 }
 
                 await supabase.from('transactions').insert({
@@ -1090,7 +1130,7 @@ export default function Dashboard() {
                     ? `20% Advance deposit of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed! Package linked to Hold & Combine group.`
                     : `20% Advance deposit of $${data.amountTotal ? data.amountTotal.toFixed(2) : ''} CAD confirmed! Locker space booked.`
                 });
-                setActiveTab(isHold ? 'hold' : 'history');
+                setActiveTab(isHold ? 'hold' : 'dues');
                 if (user?.id) fetchDashboardData(user.id);
                 return;
               }
@@ -1190,12 +1230,23 @@ export default function Dashboard() {
       setIsFetching(true);
     }
     try {
-      const [shipsResult, whs] = await Promise.all([
+      const [shipsResult, draftsResult, whs] = await Promise.all([
         fetchShipments(userId),
+        fetchDraftEstimates(userId),
         supabase.from('warehouses').select('*')
       ]);
 
       const dbShips = shipsResult.data ?? [];
+      const dbDrafts = (draftsResult.data ?? []).map((d: any) => parseShipment({
+        ...d,
+        id: d.id || d.external_order_id,
+        status: 'Draft Estimate',
+        payment_status: 'draft',
+        total_weight: d.total_weight || 1.0,
+        total_cost: d.total_cost || 0,
+        estimated_cost_cad: d.estimated_cost_cad || 0,
+        items: d.items || [],
+      }));
 
       // Merge local storage drafts — only include drafts belonging to this user
       let localShips: any[] = [];
@@ -1203,20 +1254,31 @@ export default function Dashboard() {
         const rawLocal = localStorage.getItem('layo_local_shipments');
         if (rawLocal) {
           const allLocal = JSON.parse(rawLocal);
-          // Only keep local drafts for this specific user
           localShips = allLocal.filter((s: any) => !userId || !s.user_id || s.user_id === userId);
         }
       } catch (e) {}
 
       // Dual-sync merge: DB records take precedence, local backups fill any gaps
-      // Run local shipments through parseShipment so they always have normalized fields
       const mergedMap = new Map();
       localShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, parseShipment(s) || s); });
+      dbDrafts.forEach((d: any) => { if (d && d.id) mergedMap.set(d.id, d); });
       dbShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
 
       const mergedList = Array.from(mergedMap.values()).sort(
         (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
       );
+
+      // Auto-sync any local drafts not in Supabase up to draft_estimates table
+      if (userId && localShips.length > 0) {
+        const existingDbIds = new Set([...dbShips.map(s => s.id), ...dbDrafts.map((d: any) => d.id)]);
+        localShips.forEach(async (ls) => {
+          if (ls && ls.id && !existingDbIds.has(ls.id) && (ls.status === 'Draft Estimate' || ls.status === 'draft')) {
+            try {
+              await saveDraftEstimate({ ...ls, user_id: userId });
+            } catch (e) {}
+          }
+        });
+      }
 
       setShipments(mergedList);
       try {
@@ -1226,7 +1288,49 @@ export default function Dashboard() {
       const hasFlowState = typeof window !== 'undefined' ? localStorage.getItem('layo_dashboard_flow_state') : null;
       const hasProgress = currentStep > 1 || selectedCategories.length > 0 || storeName || senderName || orderNumber || destinationAddress || promoQty > 0 || hasFlowState;
       if (isInitial && mergedList.length > 0 && !hasProgress) {
-        setActiveTab('history');
+        const settled = mergedList.filter((s: any) => {
+          if (!s) return false;
+          const st = String(s.status || '').toLowerCase();
+          const paySt = String(s.payment_status || '').toLowerCase();
+          const remaining = Number(s.remaining_balance_cad ?? 0);
+          if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
+          if (remaining > 0) return false;
+          if (paySt === 'awaiting_balance' || paySt === 'advance_pending' || paySt === 'pending') return false;
+          return paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full' || ['repacked', 'bulk_consolidated', 'in_transit', 'shipped', 'received_canada', 'out_for_delivery', 'delivered'].includes(st);
+        });
+
+        const pendingDues = mergedList.filter((s: any) => {
+          if (!s) return false;
+          const st = String(s.status || '').toLowerCase();
+          const paySt = String(s.payment_status || '').toLowerCase();
+          if (st === 'draft' || st === 'draft estimate' || st === 'cancelled') return false;
+          if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') return false;
+          return paySt === 'awaiting_balance' || st === 'repacked' || st === 'paid' || st === 'advance_paid' || st === 'holding' || st === 'inwarded' || st === 'qc_verified' || Number(s.remaining_balance_cad) > 0;
+        });
+
+        const holds = mergedList.filter((s: any) => {
+          if (!s) return false;
+          const st = String(s.status || '').toLowerCase();
+          return s.warehouse_action === 'hold' || st === 'holding';
+        });
+
+        const drafts = mergedList.filter((s: any) => {
+          if (!s) return false;
+          const st = String(s.status || '').toLowerCase();
+          return st === 'draft' || st === 'draft estimate';
+        });
+
+        if (settled.length > 0) {
+          setActiveTab('history');
+        } else if (pendingDues.length > 0) {
+          setActiveTab('dues');
+        } else if (holds.length > 0) {
+          setActiveTab('hold');
+        } else if (drafts.length > 0) {
+          setActiveTab('drafts');
+        } else {
+          setActiveTab('new');
+        }
       }
 
       if (whs.data && whs.data.length > 0) {
@@ -1945,21 +2049,49 @@ export default function Dashboard() {
       const advanceCAD = Math.round(totals.totalPriceCAD * 0.20 * 100) / 100;
       const remainingCAD = Math.round((totals.totalPriceCAD - advanceCAD) * 100) / 100;
       const advanceINR = Math.round(totals.totalPriceINR * 0.20);
-      const resolvedHoldGroupId = warehouseAction === 'hold'
+      const rawHoldGroupId = warehouseAction === 'hold'
         ? (holdOptionMode === 'existing' && selectedHoldGroupId ? normalizeHoldGroupId(selectedHoldGroupId) : normalizeHoldGroupId(`HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`))
         : null;
+      const uuidHoldGroupId = stringToUuid(rawHoldGroupId);
 
       let groupExpectedPackages = morePackages || 1;
-      if (warehouseAction === 'hold' && holdOptionMode === 'existing' && resolvedHoldGroupId) {
-        const existingGroup = activeHoldGroups.find(g => g.group_id === resolvedHoldGroupId || g.groupKey === resolvedHoldGroupId);
+      if (warehouseAction === 'hold' && holdOptionMode === 'existing' && rawHoldGroupId) {
+        const existingGroup = activeHoldGroups.find(g => g.group_id === rawHoldGroupId || g.groupKey === rawHoldGroupId);
         if (existingGroup) {
           groupExpectedPackages = existingGroup.expectedPackages;
         } else {
-          const groupShips = shipments.filter(s => getHoldGroupKey(s) === resolvedHoldGroupId);
+          const groupShips = shipments.filter(s => getHoldGroupKey(s) === rawHoldGroupId);
           groupExpectedPackages = groupShips.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
         }
       }
 
+      // 1. Dual-write to draft_estimates table in Supabase
+      try {
+        await saveDraftEstimate({
+          id: editingDraftId,
+          user_id: user?.id || null,
+          customer_email: user?.email || null,
+          mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
+          destination_city: destinationCity || 'Toronto (GTA)',
+          destination_address: destinationAddress || '',
+          india_warehouse: selectedWarehouse || null,
+          external_order_id: orderNumber || editingDraftId || null,
+          total_weight: totals.totalWeightKg,
+          total_cost: totals.totalPriceINR,
+          estimated_cost_cad: totals.totalPriceCAD,
+          advance_pct: 20,
+          advance_amount_cad: advanceCAD,
+          remaining_balance_cad: remainingCAD,
+          items: itemsPayload,
+          warehouse_action: warehouseAction || 'ship',
+          expected_packages: groupExpectedPackages,
+          status: 'Draft Estimate',
+        });
+      } catch (errDraft) {
+        console.warn('saveDraftEstimate notice:', errDraft);
+      }
+
+      // 2. Also save to shipments table in Supabase
       if (editingDraftId) {
         const updatePayload = {
           destination_city: destinationCity || 'Draft City',
@@ -1976,7 +2108,7 @@ export default function Dashboard() {
           status: 'Draft Estimate',
           warehouse_action: warehouseAction || 'ship',
           expected_packages: groupExpectedPackages,
-          hold_group_id: resolvedHoldGroupId,
+          hold_group_id: uuidHoldGroupId,
           updated_at: new Date().toISOString()
         };
 
@@ -2021,7 +2153,7 @@ export default function Dashboard() {
           payment_method: 'draft',
           warehouse_action: warehouseAction || 'ship',
           expected_packages: groupExpectedPackages,
-          hold_group_id: resolvedHoldGroupId,
+          hold_group_id: uuidHoldGroupId,
         }, { id: user?.id, email: user?.email, role: 'customer' });
         if (data && data[0]) {
           const parsed = parseShipment(data[0]);
@@ -2045,7 +2177,7 @@ export default function Dashboard() {
       localStorage.removeItem('layo_dashboard_flow_state');
       handleStartNewOrder();
       setShowDraftModal(false);
-      setActiveTab('history');
+      setActiveTab('drafts');
     }
   };
 
@@ -2212,7 +2344,7 @@ export default function Dashboard() {
               activeTab === 'dues' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
           >
-            <span>💳 Payment Dues</span>
+            <span>💳 Active Orders &amp; Dues</span>
             {groupedPendingDues.length > 0 && (
               <span className="bg-[#FF5A65] text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
                 {groupedPendingDues.length}
@@ -2556,16 +2688,16 @@ export default function Dashboard() {
           <div className="space-y-6">
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 sm:p-8 space-y-3">
               <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-amber-600 text-3xl">payments</span>
+                <span className="material-symbols-outlined text-amber-600 text-3xl">local_shipping</span>
                 <div>
-                  <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38]">Final Remaining Payment Dues</h2>
+                  <h2 className="text-xl sm:text-2xl font-black text-[#0E1F38]">Active Orders &amp; Balance Dues</h2>
                   <p className="text-xs sm:text-sm text-[#0E1F38]/70 font-medium">
-                    Verified Digital Scale Weight &amp; Layo SOP Repack Statement
+                    Track in-progress hub arrivals, SOP repack, digital scale inspection, and settle final payments
                   </p>
                 </div>
               </div>
               <p className="text-xs sm:text-sm text-[#0E1F38]/70 font-light leading-relaxed">
-                Once our India Hub Ops team strips merchant cardboard boxes, folds items into standard Layo Green Boxes, and records actual digital scale weight (Step 3), final 80% remaining balance payment is unlocked here for international airfreight dispatch to Canada.
+                Orders with confirmed 20% advance booking are tracked here while traveling to our India Hub. Once our team strips merchant packaging, seals items into standard Layo Green Boxes, and records actual digital scale weight (Step 3), final 80% remaining balance payment unlocks here for international airfreight dispatch to Canada.
               </p>
             </div>
 
@@ -2653,14 +2785,53 @@ export default function Dashboard() {
                             </div>
                           </div>
                         ) : (
-                          <div className="bg-blue-50/80 rounded-2xl p-4 border border-blue-100 space-y-2 text-xs text-blue-950">
+                          <div className="bg-blue-50/80 rounded-2xl p-4 border border-blue-100 space-y-3 text-xs text-blue-950">
                             <div className="flex items-center gap-2 font-bold text-blue-900">
-                              <span className="material-symbols-outlined text-sm">schedule</span>
-                              <span>Awaiting India Hub SOP Repack &amp; Digital Scale Weighing</span>
+                              <span className="material-symbols-outlined text-sm text-amber-600">schedule</span>
+                              <span>Awaiting India Hub Arrival, Repack &amp; Digital Scale Weighing</span>
                             </div>
                             <p className="text-[11px] text-blue-900/80 leading-relaxed font-light">
-                              Your 20% advance booking is confirmed! Once our India Hub Ops team strips merchant packaging, seals items into standard Layo Green Box, and inputs scale weight (Step 3), final 80% balance payment will unlock right here.
+                              Your 20% advance booking is confirmed! Once our India Hub team inspects arrival, repacks into standard Layo Green Boxes, and weighs on a digital scale (Step 3), final balance payment will unlock right here.
                             </p>
+
+                            {/* Destination & Assigned Locker Address */}
+                            <div className="pt-2 border-t border-blue-200/60 space-y-2 text-[11px]">
+                              <div className="flex justify-between items-start">
+                                <span className="text-blue-900/70 font-medium">Destination:</span>
+                                <span className="font-bold text-blue-950 text-right max-w-[240px]">
+                                  {typeof primary?.destination_city === 'string' ? primary.destination_city : 'Toronto (GTA)'}
+                                  {primary?.destination_address ? ` • ${primary.destination_address}` : ''}
+                                </span>
+                              </div>
+                              {(() => {
+                                const whId = primary?.india_warehouse;
+                                const wh = warehouses.find(w => w.id === whId || w.city?.toLowerCase() === String(whId || '').toLowerCase()) || warehouses[0];
+                                if (!wh) return null;
+                                const fullWh = `${wh.address || wh.city}, Pincode: ${wh.pincode || '110077'}${wh.contact ? ', Contact: ' + wh.contact : ''}`;
+                                return (
+                                  <div className="bg-white/90 p-3 rounded-xl border border-blue-200/80 space-y-1 mt-1 shadow-2xs">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-900 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-xs text-[#FF5A65]">warehouse</span>
+                                        Layo {wh.city || 'India'} Hub Locker Address:
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(fullWh);
+                                          alert('Locker Hub Address copied to clipboard!');
+                                        }}
+                                        className="text-[10px] font-bold text-[#FF5A65] hover:underline cursor-pointer flex items-center gap-0.5"
+                                      >
+                                        <span className="material-symbols-outlined text-xs">content_copy</span>
+                                        Copy Address
+                                      </button>
+                                    </div>
+                                    <p className="text-[10px] text-[#0E1F38]/90 font-mono leading-relaxed">{fullWh}</p>
+                                  </div>
+                                );
+                              })()}
+                            </div>
                           </div>
                         )}
 
@@ -2766,19 +2937,50 @@ export default function Dashboard() {
               </button>
             </div>
             {myShipmentsList.length === 0 ? (
-              <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
-                <span className="material-symbols-outlined text-6xl text-[#0E1F38]/30">inventory_2</span>
-                <h3 className="text-lg font-bold text-[#0E1F38]">No shipments yet</h3>
-                <p className="text-[#0E1F38]/60 text-sm max-w-sm mx-auto font-light">
-                  Start generating quotes and book your first virtual locker address to begin international tracking.
-                </p>
-                <button
-                  onClick={handleStartNewOrder}
-                  className="bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#e24550] active:scale-95 transition-all shadow-md shadow-[#FF5A65]/20 mt-2 cursor-pointer"
-                >
-                  Book New Shipment
-                </button>
-              </div>
+              groupedPendingDues.length > 0 ? (
+                <div className="bg-white border-2 border-blue-200 rounded-3xl p-8 sm:p-12 text-center space-y-5 shadow-sm">
+                  <div className="w-16 h-16 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center mx-auto text-blue-600">
+                    <span className="material-symbols-outlined text-3xl">local_shipping</span>
+                  </div>
+                  <div className="space-y-2 max-w-lg mx-auto">
+                    <h3 className="text-xl font-black text-[#0E1F38]">
+                      You have {groupedPendingDues.length} active order{groupedPendingDues.length > 1 ? 's' : ''} in progress!
+                    </h3>
+                    <p className="text-[#0E1F38]/70 text-sm font-light leading-relaxed">
+                      Your booking is active and being processed at our India Hub. Once packages are verified, repacked, and final balance payment is settled, full overseas dispatch tracking moves here.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => setActiveTab('dues')}
+                      className="bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#e24550] active:scale-95 transition-all shadow-md shadow-[#FF5A65]/20 cursor-pointer flex items-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">visibility</span>
+                      <span>View Active Order{groupedPendingDues.length > 1 ? 's' : ''} ({groupedPendingDues.length})</span>
+                    </button>
+                    <button
+                      onClick={handleStartNewOrder}
+                      className="border border-black/15 text-[#0E1F38] hover:bg-black/5 font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl transition-all cursor-pointer"
+                    >
+                      Book Another Shipment
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white border border-black/5 rounded-3xl p-12 text-center space-y-4 shadow-sm">
+                  <span className="material-symbols-outlined text-6xl text-[#0E1F38]/30">inventory_2</span>
+                  <h3 className="text-lg font-bold text-[#0E1F38]">No shipments yet</h3>
+                  <p className="text-[#0E1F38]/60 text-sm max-w-sm mx-auto font-light">
+                    Start generating quotes and book your first virtual locker address to begin international tracking.
+                  </p>
+                  <button
+                    onClick={handleStartNewOrder}
+                    className="bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest px-6 py-3.5 rounded-2xl hover:bg-[#e24550] active:scale-95 transition-all shadow-md shadow-[#FF5A65]/20 mt-2 cursor-pointer"
+                  >
+                    Book New Shipment
+                  </button>
+                </div>
+              )
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {myShipmentsList.map(s => {
