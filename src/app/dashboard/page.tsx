@@ -41,6 +41,34 @@ export const formatBoxDimensions = (raw: any): string => {
   return 'Standard Layo Green Box';
 };
 
+export const getShipmentEstimatedWeight = (s: any): number => {
+  if (!s) return 1.0;
+  if (Array.isArray(s.shipments) && s.shipments.length > 0) {
+    const groupSum = s.shipments.reduce((sum: number, it: any) => sum + getShipmentEstimatedWeight(it), 0);
+    if (groupSum > 0) return Number(groupSum.toFixed(2));
+  }
+  const itemMeta = !Array.isArray(s.items) && typeof s.items === 'object' && s.items !== null ? s.items : null;
+  const itemsList = Array.isArray(s.items) ? s.items : (Array.isArray(itemMeta?.items) ? itemMeta.items : []);
+  if (itemsList.length > 0) {
+    const declaredSum = itemsList.reduce((sum: number, it: any) => {
+      const w = Number(it.weight) || 0;
+      const q = Number(it.quantity) || 1;
+      return sum + (w * q);
+    }, 0);
+    if (declaredSum > 0) return Number(declaredSum.toFixed(2));
+  }
+  if (itemMeta && itemMeta.estimated_weight !== undefined && itemMeta.estimated_weight !== null && Number(itemMeta.estimated_weight) > 0) {
+    return Number(Number(itemMeta.estimated_weight).toFixed(2));
+  }
+  if (s.estimated_weight !== undefined && s.estimated_weight !== null && Number(s.estimated_weight) > 0) {
+    return Number(Number(s.estimated_weight).toFixed(2));
+  }
+  if (s.total_weight !== undefined && s.total_weight !== null && Number(s.total_weight) > 0) {
+    return Number(Number(s.total_weight).toFixed(2));
+  }
+  return 1.0;
+};
+
 export const getHoldGroupKey = (s: any): string | null => {
   if (!s) return null;
   const st = String(s.status || '').toLowerCase();
@@ -743,7 +771,7 @@ export default function Dashboard() {
         return isPostRepackStage || (hasWeight && Number(it.final_cost_cad || 0) > 0) || hasRepackTimestamp;
       });
 
-      const combinedEstimatedWeight = items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0);
+      const combinedEstimatedWeight = items.reduce((sum, it) => sum + getShipmentEstimatedWeight(it), 0);
       const opsActualWeight = items.reduce((max, it) => Math.max(max, Number(it.actual_weight || 0)), 0);
       const isWeightVerified = Boolean(isRepackDone && opsActualWeight > 0);
       const combinedActualWeight = isWeightVerified ? opsActualWeight : null;
@@ -849,8 +877,9 @@ export default function Dashboard() {
           };
         }
 
+        const combinedEstimatedWeight = items.reduce((sum, it) => sum + getShipmentEstimatedWeight(it), 0);
         const combinedActualWeight = items.reduce((max, it) => Math.max(max, Number(it.actual_weight || 0)), 0)
-          || items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0);
+          || combinedEstimatedWeight;
 
         const combinedCost = items.reduce((max, it) => Math.max(max, Number(it.final_cost_cad || 0)), 0)
           || items.reduce((sum, it) => sum + Number(it.total_cost ? it.total_cost / (cadToInrRate || 68.0) : 25.0), 0);
@@ -867,7 +896,8 @@ export default function Dashboard() {
           itemsCount: items.length,
           allPackages: items,
           actual_weight: combinedActualWeight,
-          total_weight: combinedActualWeight,
+          total_weight: combinedEstimatedWeight,
+          estimated_weight: combinedEstimatedWeight,
           final_cost_cad: combinedCost,
           amount_cad: combinedCost,
           remaining_balance_cad: 0,
@@ -2358,7 +2388,7 @@ export default function Dashboard() {
                           </div>
                           <div className="flex justify-between items-center font-semibold">
                             <span className="text-[#0E1F38]/60">Est. Package Weight:</span>
-                            <span className="text-[#0E1F38] font-bold">{s.total_weight || 1.0} kg</span>
+                            <span className="text-[#0E1F38] font-bold">{getShipmentEstimatedWeight(s).toFixed(2)} kg</span>
                           </div>
                           <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
                             <span className="text-[#0E1F38]/60">Destination:</span>
@@ -2568,7 +2598,7 @@ export default function Dashboard() {
                         <button
                           type="button"
                           onClick={() => {
-                            const groupEstimatedWeight = grp.shipments.reduce((sum: number, s: any) => sum + Number(s.total_weight || 1.0), 0);
+                            const groupEstimatedWeight = grp.shipments.reduce((sum: number, s: any) => sum + getShipmentEstimatedWeight(s), 0);
                             const groupOpsWeight = grp.shipments.reduce((max: number, s: any) => Math.max(max, Number(s.actual_weight || 0)), 0);
                             const groupRepacked = grp.shipments.some((s: any) => ['repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(String(s.status || '').toLowerCase()) || Boolean(s.stage_timestamps?.repacked));
                             const groupWeightVerified = groupRepacked && groupOpsWeight > 0;
@@ -3279,8 +3309,8 @@ export default function Dashboard() {
                                   <h3 className="font-black text-sm text-[#0E1F38] mt-0.5">✈ {s.destination_city || 'Toronto (GTA)'}</h3>
                                   <p className="text-[11px] text-[#0E1F38]/60 font-medium">
                                     {s.actual_weight && Number(s.actual_weight) > 0 
-                                      ? `${Number(s.actual_weight).toFixed(2)} kg verified scale weight (Declared: ${Number(s.total_weight || 1.0).toFixed(2)} kg)` 
-                                      : `${Number(s.total_weight || 1.0).toFixed(2)} kg declared weight`}
+                                      ? `${Number(s.actual_weight).toFixed(2)} kg verified scale weight (Declared: ${getShipmentEstimatedWeight(s).toFixed(2)} kg)` 
+                                      : `${getShipmentEstimatedWeight(s).toFixed(2)} kg declared weight`}
                                     {s.box_dimensions ? ` · Box: ${formatBoxDimensions(s.box_dimensions)}` : ''}
                                   </p>
                                 </div>
@@ -4412,13 +4442,9 @@ export default function Dashboard() {
         const balanceDueCAD = remainingDue > 0 ? remainingDue : Math.max(0, Number((totalCAD - advanceCAD).toFixed(2)));
 
         // Strict Weight & Ops Verification Calculation:
-        const rawEstimatedWeight = Number(
-          selectedOrderDetails.estimated_weight ||
-          (selectedOrderDetails.shipments && selectedOrderDetails.shipments.length > 0
-            ? selectedOrderDetails.shipments.reduce((sum: number, it: any) => sum + Number(it.total_weight || 1.0), 0)
-            : selectedOrderDetails.total_weight) ||
-          1.0
-        );
+        const rawEstimatedWeight = selectedOrderDetails.shipments && selectedOrderDetails.shipments.length > 0
+          ? selectedOrderDetails.shipments.reduce((sum: number, it: any) => sum + getShipmentEstimatedWeight(it), 0)
+          : getShipmentEstimatedWeight(selectedOrderDetails);
         const estimatedWeight = Math.max(0.1, Number(rawEstimatedWeight.toFixed(2)));
 
         const rawActualWeight = selectedOrderDetails.actual_weight !== undefined && selectedOrderDetails.actual_weight !== null && Number(selectedOrderDetails.actual_weight) > 0
@@ -4932,7 +4958,7 @@ export default function Dashboard() {
                   </div>
                   <div className="space-y-1.5">
                     {selectedOrderDetails.shipments.map((pkg: any, pIdx: number) => {
-                      const pkgEstWeight = Number(pkg.total_weight || 1.0);
+                      const pkgEstWeight = getShipmentEstimatedWeight(pkg);
                       const pkgActWeight = pkg.actual_weight && Number(pkg.actual_weight) > 0 ? Number(pkg.actual_weight) : null;
                       return (
                         <div key={pkg.id || pIdx} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-black/5">

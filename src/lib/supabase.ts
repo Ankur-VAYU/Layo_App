@@ -337,7 +337,19 @@ export function parseShipment(raw: any) {
     advance_pct: raw.advance_pct ?? itemMeta.advance_pct ?? 20,
     advance_amount_cad: raw.advance_amount_cad ?? itemMeta.advance_amount_cad ?? 0,
     advance_paid_inr: raw.advance_paid_inr ?? itemMeta.advance_paid_inr ?? 0,
-    estimated_weight: raw.estimated_weight ?? itemMeta.estimated_weight ?? raw.total_weight ?? 1.0,
+    estimated_weight: (() => {
+      if (Array.isArray(itemsArray) && itemsArray.length > 0) {
+        const sum = itemsArray.reduce((acc: number, it: any) => acc + (Number(it.weight) || 0) * (Number(it.quantity) || 1), 0);
+        if (sum > 0) return Number(sum.toFixed(2));
+      }
+      if (itemMeta.estimated_weight !== undefined && itemMeta.estimated_weight !== null && Number(itemMeta.estimated_weight) > 0) {
+        return Number(Number(itemMeta.estimated_weight).toFixed(2));
+      }
+      if (raw.estimated_weight !== undefined && raw.estimated_weight !== null && Number(raw.estimated_weight) > 0) {
+        return Number(Number(raw.estimated_weight).toFixed(2));
+      }
+      return Number(Number(raw.total_weight || 1.0).toFixed(2));
+    })(),
     estimated_cost_cad: raw.estimated_cost_cad ?? itemMeta.estimated_cost_cad ?? raw.total_cost ?? 0,
     actual_weight: raw.actual_weight ?? itemMeta.actual_weight ?? null,
     final_cost_cad: raw.final_cost_cad ?? itemMeta.final_cost_cad ?? null,

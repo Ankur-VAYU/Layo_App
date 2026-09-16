@@ -634,7 +634,6 @@ export default function WarehouseOpsPortal() {
           'repacked',
           ship.stage_timestamps,
           { 
-            total_weight: verifiedWeight, 
             actual_weight: verifiedWeight,
             final_cost_cad: finalCostCAD,
             remaining_balance_cad: remainingBalanceCAD,
@@ -652,7 +651,6 @@ export default function WarehouseOpsPortal() {
         const nextList = prev.map(s => targetIds.has(s.id) ? { 
           ...s, 
           status: 'repacked', 
-          total_weight: verifiedWeight, 
           actual_weight: verifiedWeight,
           final_cost_cad: finalCostCAD,
           remaining_balance_cad: remainingBalanceCAD,
@@ -673,7 +671,6 @@ export default function WarehouseOpsPortal() {
             return {
               ...prev,
               status: 'repacked',
-              total_weight: verifiedWeight,
               actual_weight: verifiedWeight,
               final_cost_cad: finalCostCAD,
               remaining_balance_cad: remainingBalanceCAD,
@@ -684,7 +681,6 @@ export default function WarehouseOpsPortal() {
               shipments: prev.shipments ? prev.shipments.map((s: any) => ({
                 ...s,
                 status: 'repacked',
-                total_weight: verifiedWeight,
                 actual_weight: verifiedWeight,
                 final_cost_cad: finalCostCAD,
                 remaining_balance_cad: remainingBalanceCAD,
@@ -697,7 +693,6 @@ export default function WarehouseOpsPortal() {
           return {
             ...prev,
             status: 'repacked',
-            total_weight: verifiedWeight,
             actual_weight: verifiedWeight,
             final_cost_cad: finalCostCAD,
             remaining_balance_cad: remainingBalanceCAD,
