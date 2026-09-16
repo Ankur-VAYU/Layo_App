@@ -14,42 +14,60 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 
 export async function POST(request: NextRequest) {
   try {
-    const { shipmentId } = await request.json();
+    const { shipmentId, externalOrderId, rawDraftId, userId } = await request.json();
 
-    if (!shipmentId) {
-      return NextResponse.json({ error: 'Missing shipmentId' }, { status: 400 });
+    if (!shipmentId && !externalOrderId && !rawDraftId) {
+      return NextResponse.json({ error: 'Missing shipmentId or externalOrderId' }, { status: 400 });
     }
 
-    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(shipmentId);
+    const candidateIds = Array.from(
+      new Set([shipmentId, externalOrderId, rawDraftId].filter(Boolean).map(s => String(s).trim()))
+    );
 
-    // Delete by shipmentId using service role admin client from shipments
-    const { error } = await supabaseAdmin
-      .from('shipments')
-      .delete()
-      .eq('id', shipmentId);
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-    // Also delete from draft_estimates table
-    try {
-      if (isValidUuid) {
-        await supabaseAdmin.from('draft_estimates').delete().eq('id', shipmentId);
+    // 1. Delete from draft_estimates by ID (if UUID) or by external_order_id
+    for (const cid of candidateIds) {
+      try {
+        if (uuidRegex.test(cid)) {
+          await supabaseAdmin.from('draft_estimates').delete().eq('id', cid);
+        }
+        await supabaseAdmin.from('draft_estimates').delete().eq('external_order_id', cid);
+      } catch (e) {
+        console.warn('draft_estimates deletion error:', e);
       }
-      await supabaseAdmin.from('draft_estimates').delete().eq('external_order_id', shipmentId);
-    } catch (e) {
-      console.warn('draft_estimates deletion notice:', e);
     }
 
-    // Also clean up activity logs
-    try {
-      await supabaseAdmin.from('shipment_activity_logs').delete().eq('shipment_id', shipmentId);
-    } catch (e) {}
-
-    if (error) {
-      console.error('Failed to delete shipment in Supabase:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    // If userId provided and externalOrderId exists, delete matching user drafts
+    if (userId && externalOrderId) {
+      try {
+        await supabaseAdmin
+          .from('draft_estimates')
+          .delete()
+          .eq('user_id', userId)
+          .eq('external_order_id', String(externalOrderId).trim());
+      } catch (e) {}
     }
 
-    return NextResponse.json({ success: true, deletedId: shipmentId });
-  } catch (err: any  ) {
+    // 2. Delete from shipments table by ID or external_order_id
+    for (const cid of candidateIds) {
+      try {
+        await supabaseAdmin.from('shipments').delete().eq('id', cid);
+        await supabaseAdmin.from('shipments').delete().eq('external_order_id', cid);
+      } catch (e) {
+        console.warn('shipments deletion error:', e);
+      }
+    }
+
+    // 3. Delete from shipment_activity_logs
+    for (const cid of candidateIds) {
+      try {
+        await supabaseAdmin.from('shipment_activity_logs').delete().eq('shipment_id', cid);
+      } catch (e) {}
+    }
+
+    return NextResponse.json({ success: true, deletedCandidates: candidateIds });
+  } catch (err: any) {
     console.error('Delete shipment API error:', err);
     return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
   }

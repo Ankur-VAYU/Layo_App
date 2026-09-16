@@ -570,13 +570,14 @@ export async function saveDraftEstimate(payload: any) {
     draftRow.id = validDraftId;
   } else if (externalRef) {
     try {
-      const { data: existing } = await supabase
+      const { data: existingRows } = await supabase
         .from('draft_estimates')
         .select('id')
         .eq('external_order_id', externalRef)
-        .maybeSingle();
-      if (existing?.id) {
-        draftRow.id = existing.id;
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (existingRows && existingRows[0]?.id) {
+        draftRow.id = existingRows[0].id;
       }
     } catch (e) {}
   }
@@ -622,19 +623,20 @@ export async function fetchDraftEstimates(userId?: string, options?: { requireUs
   }
 }
 
-export async function deleteDraftEstimate(id: string) {
+export async function deleteDraftEstimate(idOrRef: string) {
   try {
-    if (isValidUuid(id)) {
+    if (!idOrRef) return { error: null };
+    if (isValidUuid(idOrRef)) {
       const { error } = await supabase
         .from('draft_estimates')
         .delete()
-        .eq('id', id);
+        .eq('id', idOrRef);
       return { error };
     } else {
       const { error } = await supabase
         .from('draft_estimates')
         .delete()
-        .eq('external_order_id', id);
+        .eq('external_order_id', idOrRef);
       return { error };
     }
   } catch (err) {

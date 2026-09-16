@@ -1276,6 +1276,8 @@ export default function Dashboard() {
         })
         .map((d: any) => parseShipment({
           ...d,
+          raw_draft_id: d.id,
+          external_order_id: d.external_order_id || null,
           id: d.external_order_id ? formatShipmentId(d.external_order_id) : d.id,
           status: 'Draft Estimate',
           payment_status: 'draft',
@@ -1900,20 +1902,30 @@ export default function Dashboard() {
   };
 
   // Delete draft or shipment
-  const handleDeleteDraft = async (shipmentId: string) => {
-    if (!confirm('Are you sure you want to delete this shipment?')) return;
+  const handleDeleteDraft = async (shipmentId: string, externalOrderId?: string, rawDraftId?: string) => {
+    if (!confirm('Are you sure you want to delete this draft estimate?')) return;
     try {
       // 1. Delete via server endpoint to guarantee database deletion
       await fetch('/api/shipments/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shipmentId, userId: user?.id })
+        body: JSON.stringify({
+          shipmentId,
+          externalOrderId: externalOrderId || null,
+          rawDraftId: rawDraftId || null,
+          userId: user?.id || null,
+        })
       });
 
       // 2. Also try client-side cleanup
       try {
-        await deleteDraftEstimate(shipmentId);
+        if (rawDraftId) await deleteDraftEstimate(rawDraftId);
+        if (externalOrderId) await deleteDraftEstimate(externalOrderId);
+        if (shipmentId) await deleteDraftEstimate(shipmentId);
         await supabase.from('shipments').delete().eq('id', shipmentId);
+        if (externalOrderId) {
+          await supabase.from('shipments').delete().eq('external_order_id', externalOrderId);
+        }
       } catch (e) {}
 
       // 3. Remove from local storage drafts cache
@@ -1922,17 +1934,26 @@ export default function Dashboard() {
         const rawLocal = localStorage.getItem(localKey) || localStorage.getItem('layo_local_shipments');
         if (rawLocal) {
           const parsed = JSON.parse(rawLocal);
-          const filtered = parsed.filter((s: any) => s && s.id !== shipmentId);
+          const filtered = parsed.filter((s: any) =>
+            s &&
+            s.id !== shipmentId &&
+            (!rawDraftId || s.id !== rawDraftId) &&
+            (!externalOrderId || s.external_order_id !== externalOrderId)
+          );
           localStorage.setItem(localKey, JSON.stringify(filtered));
           localStorage.removeItem('layo_local_shipments');
         }
       } catch (e) {}
 
       // 4. Remove from local React state immediately
-      setShipments(prev => prev.filter(s => s.id !== shipmentId));
+      setShipments(prev => prev.filter(s =>
+        s.id !== shipmentId &&
+        (!rawDraftId || s.id !== rawDraftId) &&
+        (!externalOrderId || s.external_order_id !== externalOrderId)
+      ));
 
       // 5. Reset form wizard if this draft was being edited
-      if (editingDraftId === shipmentId) {
+      if (editingDraftId === shipmentId || (rawDraftId && editingDraftId === rawDraftId)) {
         handleStartNewOrder();
       }
 
@@ -1947,7 +1968,7 @@ export default function Dashboard() {
       }
     } catch (err: any) {
       console.error('Delete shipment error:', err);
-      alert(`Failed to delete shipment: ${err.message}`);
+      alert(`Failed to delete draft: ${err.message}`);
     }
   };
 
@@ -2435,7 +2456,7 @@ export default function Dashboard() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeleteDraft(s.id)}
+                            onClick={() => handleDeleteDraft(s.id, s.external_order_id, s.raw_draft_id)}
                             className="py-2.5 px-3 bg-black/5 hover:bg-red-50 text-black/60 hover:text-red-600 font-bold rounded-xl border border-black/5 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
                             title="Delete Draft"
                           >
