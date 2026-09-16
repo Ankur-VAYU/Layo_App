@@ -30,25 +30,29 @@ interface ProfileData {
 
 const GENDERS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'];
 
-const STORAGE_KEY = 'layo_profile';
+const getStorageKey = (userId?: string) => userId ? `layo_profile_${userId}` : 'layo_profile';
+const getAddressesKey = (userId?: string) => userId ? `layo_saved_addresses_${userId}` : 'layo_saved_addresses';
 
-function loadProfile(email: string): ProfileData {
+function loadProfile(userId: string, email: string): ProfileData {
   if (typeof window === 'undefined') return { fullName: '', phone: '', alternatePhone: '', gender: '', email, addresses: [] };
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(getStorageKey(userId)) || localStorage.getItem('layo_profile');
     const parsed = raw ? JSON.parse(raw) : { fullName: '', phone: '', alternatePhone: '', gender: '', email, addresses: [] };
     if ((!parsed.addresses || parsed.addresses.length === 0) && typeof window !== 'undefined') {
-      const saved = localStorage.getItem('layo_saved_addresses');
+      const saved = localStorage.getItem(getAddressesKey(userId)) || localStorage.getItem('layo_saved_addresses');
       if (saved) parsed.addresses = JSON.parse(saved);
     }
     return parsed;
   } catch { return { fullName: '', phone: '', alternatePhone: '', gender: '', email, addresses: [] }; }
 }
 
-function saveProfile(p: ProfileData) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+function saveProfile(p: ProfileData, userId?: string) {
+  if (typeof window === 'undefined') return;
+  const profileKey = getStorageKey(userId);
+  const addressesKey = getAddressesKey(userId);
+  localStorage.setItem(profileKey, JSON.stringify(p));
   if (p.addresses) {
-    localStorage.setItem('layo_saved_addresses', JSON.stringify(p.addresses));
+    localStorage.setItem(addressesKey, JSON.stringify(p.addresses));
   }
 }
 
@@ -72,11 +76,10 @@ export default function ProfilePage() {
       const fetchAllAddresses = async () => {
         let profileAddrs: any[] = [];
         let savedAddrs: any[] = [];
-        let localShipments: any[] = [];
         let dbShipments: any[] = [];
 
         try {
-          const rawProfile = localStorage.getItem(STORAGE_KEY);
+          const rawProfile = localStorage.getItem(getStorageKey(user.id)) || localStorage.getItem('layo_profile');
           if (rawProfile) {
             const parsed = JSON.parse(rawProfile);
             if (Array.isArray(parsed.addresses)) profileAddrs = parsed.addresses;
@@ -84,13 +87,8 @@ export default function ProfilePage() {
         } catch (e) {}
 
         try {
-          const rawSaved = localStorage.getItem('layo_saved_addresses');
+          const rawSaved = localStorage.getItem(getAddressesKey(user.id)) || localStorage.getItem('layo_saved_addresses');
           if (rawSaved) savedAddrs = JSON.parse(rawSaved);
-        } catch (e) {}
-
-        try {
-          const rawLocal = localStorage.getItem('layo_local_shipments');
-          if (rawLocal) localShipments = JSON.parse(rawLocal);
         } catch (e) {}
 
         try {
@@ -124,16 +122,16 @@ export default function ProfilePage() {
 
         profileAddrs.forEach(a => add(a.id, a.label, a.line1, a.city, a.province, a.postal, a.country, a.isDefault));
         savedAddrs.forEach(a => add(a.id, a.label, a.line1 || a.fullAddress, a.city, a.province, a.postal, a.country, a.isDefault));
-        localShipments.forEach(s => { if (s.destination_address) add('', '', s.destination_address, s.destination_city || 'Toronto (GTA)'); });
+        // Only include destination addresses from this specific authenticated user's shipments
         dbShipments.forEach(s => { if (s.destination_address) add('', '', s.destination_address, s.destination_city || 'Toronto (GTA)'); });
 
         const allAddresses = Array.from(map.values());
-        const p = loadProfile(user.email ?? '');
+        const p = loadProfile(user.id, user.email ?? '');
         p.addresses = allAddresses;
         if (!p.fullName) p.fullName = user.user_metadata?.full_name ?? '';
         if (!p.email) p.email = user.email ?? '';
         setProfile(p);
-        saveProfile(p);
+        saveProfile(p, user.id);
       };
 
       fetchAllAddresses();
@@ -149,7 +147,7 @@ export default function ProfilePage() {
   const saveEdit = () => {
     const updated = { ...profile, ...draft };
     setProfile(updated);
-    saveProfile(updated);
+    saveProfile(updated, user?.id);
     setEditing(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -183,7 +181,7 @@ export default function ProfilePage() {
     if (addr.isDefault) addresses = addresses.map(a => ({ ...a, isDefault: a.id === addr.id }));
     const updated = { ...profile, addresses };
     setProfile(updated);
-    saveProfile(updated);
+    saveProfile(updated, user?.id);
     setShowAddAddress(false);
     setAddressDraft({});
     setEditAddressId(null);
@@ -193,14 +191,14 @@ export default function ProfilePage() {
     const addresses = profile.addresses.filter(a => a.id !== id);
     const updated = { ...profile, addresses };
     setProfile(updated);
-    saveProfile(updated);
+    saveProfile(updated, user?.id);
   };
 
   const setDefault = (id: string) => {
     const addresses = profile.addresses.map(a => ({ ...a, isDefault: a.id === id }));
     const updated = { ...profile, addresses };
     setProfile(updated);
-    saveProfile(updated);
+    saveProfile(updated, user?.id);
   };
 
   return (

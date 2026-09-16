@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
-import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession, saveDraftEstimate, deleteDraftEstimate, fetchDraftEstimates, stringToUuid } from '@/lib/supabase';
+import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession, saveDraftEstimate, deleteDraftEstimate, fetchDraftEstimates, stringToUuid, isValidUuid } from '@/lib/supabase';
 import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
 import { formatShipmentId, formatTransactionId, formatUserId, formatWarehouseId } from '@/lib/idGenerator';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
@@ -338,17 +338,25 @@ export default function Dashboard() {
   const [newAddrLine1, setNewAddrLine1] = useState<string>('');
   const [newAddrCity, setNewAddrCity] = useState<string>('Toronto (GTA)');
 
-  const loadSavedAddresses = () => {
+  const getStorageKey = (uid?: string) => uid ? `layo_profile_${uid}` : 'layo_profile';
+  const getAddressesKey = (uid?: string) => uid ? `layo_saved_addresses_${uid}` : 'layo_saved_addresses';
+  const getLocalShipmentsKey = (uid?: string) => uid ? `layo_customer_shipments_${uid}` : 'layo_local_shipments';
+
+  const loadSavedAddresses = (uid?: string) => {
     if (typeof window === 'undefined') return;
     try {
       let addrs: any[] = [];
-      const rawProfile = localStorage.getItem('layo_profile');
+      const currentUid = uid || user?.id;
+      const profileKey = getStorageKey(currentUid);
+      const addressesKey = getAddressesKey(currentUid);
+
+      const rawProfile = localStorage.getItem(profileKey) || (currentUid ? null : localStorage.getItem('layo_profile'));
       if (rawProfile) {
         const parsed = JSON.parse(rawProfile);
         if (Array.isArray(parsed.addresses)) addrs = parsed.addresses;
       }
       if (addrs.length === 0) {
-        const rawSaved = localStorage.getItem('layo_saved_addresses');
+        const rawSaved = localStorage.getItem(addressesKey) || (currentUid ? null : localStorage.getItem('layo_saved_addresses'));
         if (rawSaved) {
           const parsed = JSON.parse(rawSaved);
           if (Array.isArray(parsed)) addrs = parsed;
@@ -361,8 +369,10 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    loadSavedAddresses();
-  }, []);
+    if (user?.id) {
+      loadSavedAddresses(user.id);
+    }
+  }, [user?.id]);
 
   const autoSaveAddress = (city: string, fullAddress: string) => {
     if (!fullAddress || !fullAddress.trim()) return;
@@ -370,7 +380,9 @@ export default function Dashboard() {
     const trimmedCity = city ? city.trim() : 'Toronto (GTA)';
 
     try {
-      const rawProfile = localStorage.getItem('layo_profile');
+      const profileKey = getStorageKey(user?.id);
+      const addressesKey = getAddressesKey(user?.id);
+      const rawProfile = localStorage.getItem(profileKey) || (user?.id ? null : localStorage.getItem('layo_profile'));
       let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
       if (!profileData.addresses) profileData.addresses = [];
 
@@ -390,8 +402,8 @@ export default function Dashboard() {
           isDefault: profileData.addresses.length === 0,
         };
         profileData.addresses.push(newAddr);
-        localStorage.setItem('layo_profile', JSON.stringify(profileData));
-        localStorage.setItem('layo_saved_addresses', JSON.stringify(profileData.addresses));
+        localStorage.setItem(profileKey, JSON.stringify(profileData));
+        localStorage.setItem(addressesKey, JSON.stringify(profileData.addresses));
         setSavedAddresses(profileData.addresses);
       }
     } catch (err) {
@@ -402,7 +414,9 @@ export default function Dashboard() {
   const handleAddNewSavedAddress = () => {
     if (!newAddrLine1 || !newAddrLine1.trim()) return;
     try {
-      const rawProfile = localStorage.getItem('layo_profile');
+      const profileKey = getStorageKey(user?.id);
+      const addressesKey = getAddressesKey(user?.id);
+      const rawProfile = localStorage.getItem(profileKey) || (user?.id ? null : localStorage.getItem('layo_profile'));
       let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
       if (!profileData.addresses) profileData.addresses = [];
 
@@ -416,8 +430,8 @@ export default function Dashboard() {
       };
 
       profileData.addresses.push(newAddr);
-      localStorage.setItem('layo_profile', JSON.stringify(profileData));
-      localStorage.setItem('layo_saved_addresses', JSON.stringify(profileData.addresses));
+      localStorage.setItem(profileKey, JSON.stringify(profileData));
+      localStorage.setItem(addressesKey, JSON.stringify(profileData.addresses));
       setSavedAddresses(profileData.addresses);
       setNewAddrLabel('');
       setNewAddrLine1('');
@@ -428,12 +442,14 @@ export default function Dashboard() {
 
   const handleDeleteSavedAddress = (id: string) => {
     try {
-      const rawProfile = localStorage.getItem('layo_profile');
+      const profileKey = getStorageKey(user?.id);
+      const addressesKey = getAddressesKey(user?.id);
+      const rawProfile = localStorage.getItem(profileKey) || (user?.id ? null : localStorage.getItem('layo_profile'));
       let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
       if (profileData.addresses) {
         profileData.addresses = profileData.addresses.filter((a: any) => a.id !== id);
-        localStorage.setItem('layo_profile', JSON.stringify(profileData));
-        localStorage.setItem('layo_saved_addresses', JSON.stringify(profileData.addresses));
+        localStorage.setItem(profileKey, JSON.stringify(profileData));
+        localStorage.setItem(addressesKey, JSON.stringify(profileData.addresses));
         setSavedAddresses(profileData.addresses);
       }
     } catch (err) {
@@ -485,6 +501,11 @@ export default function Dashboard() {
       if (saved) {
         try {
           const stateObj = JSON.parse(saved);
+          // If flow state belonged to a different user, ignore and clear it
+          if (stateObj.userId && user?.id && stateObj.userId !== user.id) {
+            localStorage.removeItem('layo_dashboard_flow_state');
+            return;
+          }
           if (stateObj.currentStep) setCurrentStep(stateObj.currentStep);
           if (stateObj.originType) setOriginType(stateObj.originType);
           if (stateObj.storeName !== undefined) setStoreName(stateObj.storeName);
@@ -507,7 +528,7 @@ export default function Dashboard() {
         }
       }
     }
-  }, []);
+  }, [user?.id]);
 
   // Auto-save dashboard step flow state to localStorage
   useEffect(() => {
@@ -515,6 +536,7 @@ export default function Dashboard() {
     const hasProgress = currentStep > 1 || selectedCategories.length > 0 || storeName || senderName || orderNumber || destinationAddress || hasItems;
     if (hasProgress) {
       const stateObj = {
+        userId: user?.id || null,
         currentStep,
         originType,
         storeName,
@@ -668,16 +690,16 @@ export default function Dashboard() {
 
       const isRepackDone = items.some(it => {
         const st = String(it.status || '').toLowerCase();
-        const paySt = String(it.payment_status || '').toLowerCase();
         const hasWeight = Number(it.actual_weight || 0) > 0;
         const hasRepackTimestamp = Boolean(it.stage_timestamps?.repacked);
         const isPostRepackStage = ['repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(st);
-        return isPostRepackStage || paySt === 'awaiting_balance' || (hasWeight && Number(it.final_cost_cad || 0) > 0) || hasRepackTimestamp;
+        return isPostRepackStage || (hasWeight && Number(it.final_cost_cad || 0) > 0) || hasRepackTimestamp;
       });
 
-      const combinedActualWeight = isRepackDone
-        ? (items.reduce((max, it) => Math.max(max, Number(it.actual_weight || 0)), 0) || items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0))
-        : items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0);
+      const combinedEstimatedWeight = items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0);
+      const opsActualWeight = items.reduce((max, it) => Math.max(max, Number(it.actual_weight || 0)), 0);
+      const isWeightVerified = Boolean(isRepackDone && opsActualWeight > 0);
+      const combinedActualWeight = isWeightVerified ? opsActualWeight : null;
 
       const combinedAdvancePaid = items.reduce((sum, it) => {
         const adv = Number(it.advance_amount_cad || 0);
@@ -687,22 +709,18 @@ export default function Dashboard() {
       }, 0);
 
       let combinedFinalCost = 0;
-      if (isRepackDone) {
+      if (isWeightVerified && combinedActualWeight) {
         combinedFinalCost = items.reduce((max, it) => Math.max(max, Number(it.final_cost_cad || 0)), 0);
         if (!combinedFinalCost || combinedFinalCost <= 0) {
           const calc = calculateLayoDeliveryCost({ weightKg: combinedActualWeight, deliveryType: 'normal' });
           combinedFinalCost = calc.finalPriceCAD;
         }
       } else {
-        combinedFinalCost = items.reduce((sum, it) => sum + Number(it.estimated_cost_cad || (it.total_cost ? it.total_cost / 70.4 : 25.0)), 0);
+        const calc = calculateLayoDeliveryCost({ weightKg: combinedEstimatedWeight, deliveryType: 'normal' });
+        combinedFinalCost = calc.finalPriceCAD;
       }
 
-      let combinedRemainingBalance = 0;
-      if (isRepackDone) {
-        combinedRemainingBalance = Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
-      } else {
-        combinedRemainingBalance = Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
-      }
+      const combinedRemainingBalance = Math.max(0, Math.round((combinedFinalCost - combinedAdvancePaid) * 100) / 100);
 
       const boxDimensions = formatBoxDimensions(items.find(it => it.box_dimensions)?.box_dimensions);
 
@@ -712,6 +730,8 @@ export default function Dashboard() {
         items,
         primary,
         isRepackDone,
+        isWeightVerified,
+        combinedEstimatedWeight,
         combinedActualWeight,
         combinedFinalCost,
         combinedAdvancePaid,
@@ -912,12 +932,13 @@ export default function Dashboard() {
 
       // Update local storage shipments list
       try {
-        const rawLocal = localStorage.getItem('layo_local_shipments');
+        const localKey = getLocalShipmentsKey(user?.id);
+        const rawLocal = localStorage.getItem(localKey) || localStorage.getItem('layo_local_shipments');
         if (rawLocal) {
           const allLocal = JSON.parse(rawLocal);
           const targetIds = new Set(shipsToUpdate.map((s: any) => s.id));
           const updated = allLocal.map((s: any) => targetIds.has(s.id) ? { ...s, payment_status: 'completed', remaining_balance_cad: 0 } : s);
-          localStorage.setItem('layo_local_shipments', JSON.stringify(updated));
+          localStorage.setItem(localKey, JSON.stringify(updated));
         }
       } catch (e) {}
 
@@ -991,12 +1012,13 @@ export default function Dashboard() {
 
                   // Update local storage shipments list
                   try {
-                    const rawLocal = localStorage.getItem('layo_local_shipments');
+                    const localKey = getLocalShipmentsKey(user?.id);
+                    const rawLocal = localStorage.getItem(localKey) || localStorage.getItem('layo_local_shipments');
                     if (rawLocal) {
                       const allLocal = JSON.parse(rawLocal);
                       const targetIds = new Set(matchingShips.map(s => s.id));
                       const updated = allLocal.map((s: any) => targetIds.has(s.id) ? { ...s, payment_status: 'completed', remaining_balance_cad: 0 } : s);
-                      localStorage.setItem('layo_local_shipments', JSON.stringify(updated));
+                      localStorage.setItem(localKey, JSON.stringify(updated));
                     }
                   } catch (e) {}
 
@@ -1229,10 +1251,16 @@ export default function Dashboard() {
     if (isInitial) {
       setIsFetching(true);
     }
+    // Strict guard: Customer dashboard must only fetch if a valid user UUID is present
+    if (!userId || !isValidUuid(userId)) {
+      setShipments([]);
+      if (isInitial) setIsFetching(false);
+      return;
+    }
     try {
       const [shipsResult, draftsResult, whs] = await Promise.all([
-        fetchShipments(userId),
-        fetchDraftEstimates(userId),
+        fetchShipments(userId, { requireUserId: true }),
+        fetchDraftEstimates(userId, { requireUserId: true }),
         supabase.from('warehouses').select('*')
       ]);
 
@@ -1248,13 +1276,16 @@ export default function Dashboard() {
         items: d.items || [],
       }));
 
-      // Merge local storage drafts — only include drafts belonging to this user
+      // Merge user-scoped local storage drafts — strictly only include shipments belonging to this user
+      const userLocalKey = getLocalShipmentsKey(userId);
       let localShips: any[] = [];
       try {
-        const rawLocal = localStorage.getItem('layo_local_shipments');
+        const rawLocal = localStorage.getItem(userLocalKey) || localStorage.getItem('layo_local_shipments');
         if (rawLocal) {
           const allLocal = JSON.parse(rawLocal);
-          localShips = allLocal.filter((s: any) => !userId || !s.user_id || s.user_id === userId);
+          if (Array.isArray(allLocal)) {
+            localShips = allLocal.filter((s: any) => s && s.user_id === userId);
+          }
         }
       } catch (e) {}
 
@@ -1264,15 +1295,17 @@ export default function Dashboard() {
       dbDrafts.forEach((d: any) => { if (d && d.id) mergedMap.set(d.id, d); });
       dbShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
 
-      const mergedList = Array.from(mergedMap.values()).sort(
-        (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-      );
+      const mergedList = Array.from(mergedMap.values())
+        .filter((s: any) => s && (!s.user_id || s.user_id === userId))
+        .sort(
+          (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
 
-      // Auto-sync any local drafts not in Supabase up to draft_estimates table
+      // Auto-sync any local drafts belonging strictly to this user up to draft_estimates table
       if (userId && localShips.length > 0) {
         const existingDbIds = new Set([...dbShips.map(s => s.id), ...dbDrafts.map((d: any) => d.id)]);
         localShips.forEach(async (ls) => {
-          if (ls && ls.id && !existingDbIds.has(ls.id) && (ls.status === 'Draft Estimate' || ls.status === 'draft')) {
+          if (ls && ls.id && ls.user_id === userId && !existingDbIds.has(ls.id) && (ls.status === 'Draft Estimate' || ls.status === 'draft')) {
             try {
               await saveDraftEstimate({ ...ls, user_id: userId });
             } catch (e) {}
@@ -1282,7 +1315,8 @@ export default function Dashboard() {
 
       setShipments(mergedList);
       try {
-        localStorage.setItem('layo_local_shipments', JSON.stringify(mergedList));
+        localStorage.setItem(userLocalKey, JSON.stringify(mergedList));
+        localStorage.removeItem('layo_local_shipments');
       } catch (e) {}
 
       const hasFlowState = typeof window !== 'undefined' ? localStorage.getItem('layo_dashboard_flow_state') : null;
@@ -1377,8 +1411,19 @@ export default function Dashboard() {
     setSenderName('');
     setOriginCity('');
     setSelectedWarehouse('');
-    setDestinationCity('');
-    setDestinationAddress('');
+
+    // Preselect verified default address if exists, otherwise clear
+    const defaultAddr = savedAddresses.find(a => a.isDefault);
+    if (defaultAddr) {
+      setDestinationCity(defaultAddr.city || 'Toronto (GTA)');
+      setDestinationAddress(defaultAddr.line1 || '');
+      setSelectedSavedAddressId(defaultAddr.id);
+    } else {
+      setDestinationCity('');
+      setDestinationAddress('');
+      setSelectedSavedAddressId('');
+    }
+
     setSelectedCategories([]);
     setQtyState({});
     setActiveDemoState({});
@@ -1855,7 +1900,7 @@ export default function Dashboard() {
         setShipments(prev => {
           const nextList = [newOrUpdatedShipment, ...prev.filter(x => x.id !== newOrUpdatedShipment.id)];
           try {
-            localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+            localStorage.setItem(getLocalShipmentsKey(user?.id), JSON.stringify(nextList));
           } catch (e) {}
           return nextList;
         });
@@ -1870,7 +1915,7 @@ export default function Dashboard() {
         localStorage.removeItem('layo_dashboard_flow_state');
       }
       handleStartNewOrder();
-      fetchDashboardData(user?.id);
+      if (user?.id) fetchDashboardData(user.id);
     } catch (err) {
       console.error('Demo payment simulation failed:', err);
     } finally {
@@ -1992,11 +2037,13 @@ export default function Dashboard() {
 
       // 3. Remove from local storage drafts cache
       try {
-        const rawLocal = localStorage.getItem('layo_local_shipments');
+        const localKey = getLocalShipmentsKey(user?.id);
+        const rawLocal = localStorage.getItem(localKey) || localStorage.getItem('layo_local_shipments');
         if (rawLocal) {
           const parsed = JSON.parse(rawLocal);
           const filtered = parsed.filter((s: any) => s && s.id !== shipmentId);
-          localStorage.setItem('layo_local_shipments', JSON.stringify(filtered));
+          localStorage.setItem(localKey, JSON.stringify(filtered));
+          localStorage.removeItem('layo_local_shipments');
         }
       } catch (e) {}
 
@@ -2124,7 +2171,7 @@ export default function Dashboard() {
               : s
           );
           try {
-            localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+            localStorage.setItem(getLocalShipmentsKey(user?.id), JSON.stringify(nextList));
           } catch (e) {}
           return nextList;
         });
@@ -2160,7 +2207,7 @@ export default function Dashboard() {
           setShipments(prev => {
             const nextList = [parsed, ...prev.filter(x => x.id !== parsed.id)];
             try {
-              localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+              localStorage.setItem(getLocalShipmentsKey(user?.id), JSON.stringify(nextList));
             } catch (e) {}
             return nextList;
           });
@@ -2634,14 +2681,22 @@ export default function Dashboard() {
                         <button
                           type="button"
                           onClick={() => {
+                            const groupEstimatedWeight = grp.shipments.reduce((sum: number, s: any) => sum + Number(s.total_weight || 1.0), 0);
+                            const groupOpsWeight = grp.shipments.reduce((max: number, s: any) => Math.max(max, Number(s.actual_weight || 0)), 0);
+                            const groupRepacked = grp.shipments.some((s: any) => ['repacked', 'bulk_consolidated', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'].includes(String(s.status || '').toLowerCase()) || Boolean(s.stage_timestamps?.repacked));
+                            const groupWeightVerified = groupRepacked && groupOpsWeight > 0;
                             const composite = {
                               ...(grp.primaryShipment || grp.shipments[0] || {}),
                               id: grp.group_id,
                               isHoldGroup: true,
-                              status: 'holding',
+                              status: groupRepacked ? 'repacked' : 'holding',
                               hold_group_id: grp.group_id,
                               items: grp.shipments.flatMap((s: any) => s.items || []),
-                              total_weight: grp.shipments.reduce((sum: number, s: any) => sum + Number(s.total_weight || 1.0), 0),
+                              estimated_weight: groupEstimatedWeight,
+                              total_weight: groupEstimatedWeight,
+                              actual_weight: groupWeightVerified ? groupOpsWeight : null,
+                              isWeightVerified: groupWeightVerified,
+                              isRepackDone: groupRepacked,
                               total_cost: grp.shipments.reduce((sum: number, s: any) => sum + Number(s.total_cost || 0), 0),
                               advance_amount_cad: grp.shipments.reduce((sum: number, s: any) => sum + Number(s.advance_amount_cad || 0), 0),
                               shipments: grp.shipments,
@@ -2740,9 +2795,9 @@ export default function Dashboard() {
                             </h3>
                           </div>
                           <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
-                            isRepackDone ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-blue-100 text-blue-800 border-blue-300'
+                            grp.isRepackDone && grp.isWeightVerified ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-blue-100 text-blue-800 border-blue-300'
                           }`}>
-                            {isRepackDone ? 'Repacked & Scale Verified' : 'Step 1-3: India Hub In Progress'}
+                            {grp.isRepackDone && grp.isWeightVerified ? 'Repacked & Scale Verified' : 'Step 1-3: India Hub In Progress'}
                           </span>
                         </div>
 
@@ -2760,21 +2815,23 @@ export default function Dashboard() {
                         )}
 
                         {/* Ops Repack & Scale Inspection Result */}
-                        {isRepackDone ? (
+                        {grp.isRepackDone && grp.isWeightVerified ? (
                           <div className="bg-[#FAF8EE] rounded-2xl p-4 border border-black/5 space-y-2 text-xs text-[#0E1F38]">
                             <div className="flex justify-between items-center font-semibold">
                               <span className="text-[#0E1F38]/60">Standard Layo Box Size:</span>
                               <span className="text-[#0E1F38] font-bold">{formatBoxDimensions(grp.boxDimensions)}</span>
                             </div>
                             <div className="flex justify-between items-center font-semibold">
+                              <span className="text-[#0E1F38]/60">Estimated Declared Weight:</span>
+                              <span className="text-[#0E1F38] font-bold">{grp.combinedEstimatedWeight.toFixed(2)} kg</span>
+                            </div>
+                            <div className="flex justify-between items-center font-semibold">
                               <span className="text-[#0E1F38]/60">Digital Scale Gross Weight:</span>
                               <span className="text-emerald-700 font-black text-sm flex items-center gap-1.5">
                                 {(Number(grp.combinedActualWeight) || 1.0).toFixed(2)} kg
-                                {grp.isHoldGroup && (
-                                  <span className="text-[10px] font-bold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200">
-                                    Combined Box Weight
-                                  </span>
-                                )}
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
+                                  Verified by Ops ✓
+                                </span>
                               </span>
                             </div>
                             <div className="flex justify-between items-center font-semibold pt-1 border-t border-black/5">
@@ -2789,6 +2846,19 @@ export default function Dashboard() {
                             <div className="flex items-center gap-2 font-bold text-blue-900">
                               <span className="material-symbols-outlined text-sm text-amber-600">schedule</span>
                               <span>Awaiting India Hub Arrival, Repack &amp; Digital Scale Weighing</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 bg-white/80 p-2.5 rounded-xl border border-blue-200/60 font-mono text-[11px]">
+                              <div>
+                                <span className="text-[#0E1F38]/60 block text-[10px] uppercase">Estimated Weight</span>
+                                <span className="font-bold text-[#0E1F38]">{grp.combinedEstimatedWeight.toFixed(2)} kg</span>
+                              </div>
+                              <div>
+                                <span className="text-[#0E1F38]/60 block text-[10px] uppercase">Actual Weight (Ops)</span>
+                                <span className="font-bold text-amber-700 flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-xs">schedule</span>
+                                  Pending Step 3
+                                </span>
+                              </div>
                             </div>
                             <p className="text-[11px] text-blue-900/80 leading-relaxed font-light">
                               Your 20% advance booking is confirmed! Once our India Hub team inspects arrival, repacks into standard Layo Green Boxes, and weighs on a digital scale (Step 3), final balance payment will unlock right here.
@@ -2839,7 +2909,7 @@ export default function Dashboard() {
                         <div className="bg-white border border-amber-200 rounded-2xl p-4 space-y-2">
                           <div className="flex justify-between items-center text-xs">
                             <span className="text-[#0E1F38]/70 font-medium">
-                              {isRepackDone ? 'Verified Shipping Cost:' : 'Estimated Shipping Cost:'}
+                              {grp.isRepackDone && grp.isWeightVerified ? 'Verified Shipping Cost:' : 'Estimated Shipping Cost:'}
                             </span>
                             <span className="font-bold text-[#0E1F38]">${(Number(grp.combinedFinalCost) || 0).toFixed(2)} CAD</span>
                           </div>
@@ -2866,10 +2936,13 @@ export default function Dashboard() {
                               ...(primary || {}),
                               id: grp.isHoldGroup ? grp.groupKey : primary?.id,
                               isHoldGroup: grp.isHoldGroup,
-                              status: grp.isRepackDone ? 'repacked' : (primary?.status || 'inwarded'),
-                              payment_status: 'awaiting_balance',
+                              isRepackDone: grp.isRepackDone,
+                              isWeightVerified: grp.isWeightVerified,
+                              status: grp.isRepackDone ? 'repacked' : (primary?.status || 'holding'),
+                              payment_status: grp.isRepackDone ? 'awaiting_balance' : (primary?.payment_status || 'paid'),
+                              estimated_weight: grp.combinedEstimatedWeight,
                               actual_weight: grp.combinedActualWeight,
-                              total_weight: grp.combinedActualWeight,
+                              total_weight: grp.combinedEstimatedWeight,
                               box_dimensions: grp.boxDimensions,
                               final_cost_cad: grp.combinedFinalCost,
                               amount_cad: grp.combinedFinalCost,
@@ -3326,7 +3399,9 @@ export default function Dashboard() {
                                   <span className="text-[10px] font-bold text-[#0E1F38]/50 uppercase tracking-wider">Destination</span>
                                   <h3 className="font-black text-sm text-[#0E1F38] mt-0.5">✈ {s.destination_city || 'Toronto (GTA)'}</h3>
                                   <p className="text-[11px] text-[#0E1F38]/60 font-medium">
-                                    {s.actual_weight ? `${Number(s.actual_weight).toFixed(2)} kg verified weight` : `${s.total_weight || 1.0} kg weight`}
+                                    {s.actual_weight && Number(s.actual_weight) > 0 
+                                      ? `${Number(s.actual_weight).toFixed(2)} kg verified scale weight (Declared: ${Number(s.total_weight || 1.0).toFixed(2)} kg)` 
+                                      : `${Number(s.total_weight || 1.0).toFixed(2)} kg declared weight`}
                                     {s.box_dimensions ? ` · Box: ${formatBoxDimensions(s.box_dimensions)}` : ''}
                                   </p>
                                 </div>
@@ -4467,6 +4542,39 @@ export default function Dashboard() {
 
         const balanceDueCAD = remainingDue > 0 ? remainingDue : Math.max(0, Number((totalCAD - advanceCAD).toFixed(2)));
 
+        // Strict Weight & Ops Verification Calculation:
+        const rawEstimatedWeight = Number(
+          selectedOrderDetails.estimated_weight ||
+          (selectedOrderDetails.shipments && selectedOrderDetails.shipments.length > 0
+            ? selectedOrderDetails.shipments.reduce((sum: number, it: any) => sum + Number(it.total_weight || 1.0), 0)
+            : selectedOrderDetails.total_weight) ||
+          1.0
+        );
+        const estimatedWeight = Math.max(0.1, Number(rawEstimatedWeight.toFixed(2)));
+
+        const rawActualWeight = selectedOrderDetails.actual_weight !== undefined && selectedOrderDetails.actual_weight !== null && Number(selectedOrderDetails.actual_weight) > 0
+          ? Number(selectedOrderDetails.actual_weight)
+          : (selectedOrderDetails.shipments && selectedOrderDetails.shipments.length > 0
+            ? selectedOrderDetails.shipments.reduce((max: number, it: any) => Math.max(max, Number(it.actual_weight || 0)), 0)
+            : 0);
+
+        const isPostRepackStage = [
+          'repacked',
+          'bulk_consolidated',
+          'in_transit',
+          'shipped',
+          'received_canada',
+          'out_for_delivery',
+          'delivered'
+        ].includes(statusNormalized) || Boolean(selectedOrderDetails.stage_timestamps?.repacked);
+
+        // Verification condition: Ops has recorded actual weight AND the package has reached/passed repack stage
+        const isWeightVerified = Boolean(
+          rawActualWeight > 0 && (isPostRepackStage || selectedOrderDetails.isWeightVerified || selectedOrderDetails.isRepackDone)
+        );
+
+        const actualWeight = isWeightVerified ? Number(rawActualWeight.toFixed(2)) : null;
+
         // Stage mapping
         const STEPS = ['paid', 'inwarded', 'repacked', 'in_transit', 'received_canada', 'out_for_delivery', 'delivered'];
         const STEP_LABELS = ['Paid', 'India Hub', 'SOP Repack', 'Airfreight', 'Canada Hub', 'Local Dispatch', 'Delivered'];
@@ -4511,7 +4619,7 @@ export default function Dashboard() {
               border: '#e2e8f0'
             };
           }
-          if (statusNormalized === 'holding' || (isHold && !selectedOrderDetails.actual_weight && statusNormalized !== 'repacked')) {
+          if (statusNormalized === 'holding' || (isHold && !isWeightVerified && statusNormalized !== 'repacked')) {
             return {
               title: 'India Hub Consolidation Hold Active',
               desc: 'Your parcel is stored safely at our India Hub locker. We are holding dispatch until all expected packages arrive for combined packing.',
@@ -4747,7 +4855,7 @@ export default function Dashboard() {
                     </div>
                     <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
                       <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Est. Weight</span>
-                      <p className="text-lg font-black text-[#0E1F38] font-mono">{selectedOrderDetails.total_weight || 1.0} kg</p>
+                      <p className="text-lg font-black text-[#0E1F38] font-mono">{estimatedWeight.toFixed(2)} kg</p>
                       <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Estimated Gross</span>
                     </div>
                   </>
@@ -4756,12 +4864,18 @@ export default function Dashboard() {
                     <div className="bg-white p-3.5 rounded-2xl border-2 border-amber-400 space-y-0.5">
                       <span className="text-[9px] font-black uppercase tracking-wider text-[#FF5A65] block">80% Balance Due</span>
                       <p className="text-lg font-black text-[#FF5A65] font-mono">${balanceDueCAD.toFixed(2)}</p>
-                      <span className="text-[9px] text-amber-800 font-bold block">Action Required</span>
+                      <span className="text-[9px] text-amber-800 font-bold block">
+                        {isWeightVerified ? 'Action Required' : 'Billed after Step 3 Weighing'}
+                      </span>
                     </div>
                     <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Total Verified Fee</span>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">
+                        {isWeightVerified ? 'Total Verified Fee' : 'Est. Total Fee'}
+                      </span>
                       <p className="text-lg font-black text-[#0E1F38] font-mono">${totalCAD.toFixed(2)} CAD</p>
-                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">≈ ₹{Math.round(totalCAD * inrRate).toLocaleString()} INR</span>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">
+                        ≈ ₹{Math.round(totalCAD * inrRate).toLocaleString()} INR {isWeightVerified ? '· Scale Billed' : '· Est.'}
+                      </span>
                     </div>
                     <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
                       <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 block">20% Deposit Paid</span>
@@ -4769,11 +4883,15 @@ export default function Dashboard() {
                       <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Settled</span>
                     </div>
                     <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Scale Weight</span>
-                      <p className="text-lg font-black text-emerald-700 font-mono">
-                        {(Number(selectedOrderDetails.actual_weight || selectedOrderDetails.total_weight) || 1.0).toFixed(2)} kg
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">
+                        {isWeightVerified ? 'Scale Weight (Ops)' : 'Weight Overview'}
+                      </span>
+                      <p className={`text-lg font-black font-mono ${isWeightVerified ? 'text-emerald-700' : 'text-[#0E1F38]'}`}>
+                        {isWeightVerified ? `${actualWeight?.toFixed(2)} kg` : `${estimatedWeight.toFixed(2)} kg`}
                       </p>
-                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Verified at Hub</span>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">
+                        {isWeightVerified ? `Verified by Ops (Est: ${estimatedWeight.toFixed(2)} kg)` : 'Est. · Awaiting Ops Weighing'}
+                      </span>
                     </div>
                   </>
                 ) : (
@@ -4789,11 +4907,15 @@ export default function Dashboard() {
                       <span className="text-[9px] text-emerald-600 font-bold block">100% Cleared ✓</span>
                     </div>
                     <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Gross Weight</span>
-                      <p className="text-lg font-black text-[#0E1F38] font-mono">
-                        {(Number(selectedOrderDetails.actual_weight || selectedOrderDetails.total_weight) || 1.0).toFixed(2)} kg
+                      <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">
+                        {isWeightVerified ? 'Actual Scale Weight' : 'Gross Weight'}
+                      </span>
+                      <p className={`text-lg font-black font-mono ${isWeightVerified ? 'text-emerald-700' : 'text-[#0E1F38]'}`}>
+                        {(actualWeight ?? estimatedWeight).toFixed(2)} kg
                       </p>
-                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">Scale Verified</span>
+                      <span className="text-[9px] text-[#0E1F38]/60 font-medium block">
+                        {isWeightVerified ? 'Verified by Ops' : 'Customer Declared'}
+                      </span>
                     </div>
                     <div className="bg-white p-3.5 rounded-2xl border border-black/5 space-y-0.5">
                       <span className="text-[9px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Payment State</span>
@@ -4807,29 +4929,76 @@ export default function Dashboard() {
               </div>
 
               {/* SOP Box Dimensions & Scale Verification Callout */}
-              {(selectedOrderDetails.box_dimensions || selectedOrderDetails.actual_weight || statusNormalized === 'repacked') && (
-                <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 text-xs space-y-2">
-                  <div className="flex items-center justify-between text-emerald-950 font-bold">
-                    <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-black">
-                      <span className="material-symbols-outlined text-emerald-700 text-sm">inventory_2</span>
+              {(selectedOrderDetails.box_dimensions || selectedOrderDetails.actual_weight || selectedOrderDetails.isHoldGroup || !isDraft) && (
+                <div className={`p-4 rounded-2xl border text-xs space-y-2.5 ${
+                  isWeightVerified ? 'bg-emerald-50/70 border-emerald-200' : 'bg-amber-50/70 border-amber-200'
+                }`}>
+                  <div className="flex items-center justify-between font-bold">
+                    <span className={`flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-black ${
+                      isWeightVerified ? 'text-emerald-950' : 'text-amber-950'
+                    }`}>
+                      <span className={`material-symbols-outlined text-sm ${isWeightVerified ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        inventory_2
+                      </span>
                       Layo SOP Repack Specification
                     </span>
-                    <span className="bg-emerald-200/80 text-emerald-900 text-[10px] font-black px-2 py-0.5 rounded-full">
-                      Verified
-                    </span>
+                    {isWeightVerified ? (
+                      <span className="bg-emerald-200 text-emerald-900 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs text-emerald-700">verified</span>
+                        Verified by Ops
+                      </span>
+                    ) : (
+                      <span className="bg-amber-200/80 text-amber-900 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs text-amber-700">schedule</span>
+                        Awaiting Ops Weighing (Step 3)
+                      </span>
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-white/90 p-3 rounded-xl border border-emerald-200/60 font-mono">
+
+                  {/* Both Estimated Weight and Actual Weight (Filled by Ops) displayed clearly */}
+                  <div className={`grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-xl border font-mono bg-white/95 ${
+                    isWeightVerified ? 'border-emerald-200/60' : 'border-amber-200/60'
+                  }`}>
                     <div>
                       <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Standard Box Size</span>
-                      <span className="font-bold text-[#0E1F38]">{formatBoxDimensions(selectedOrderDetails.box_dimensions)}</span>
+                      <span className="font-bold text-[#0E1F38] text-xs">
+                        {formatBoxDimensions(selectedOrderDetails.box_dimensions)}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Digital Scale Gross</span>
-                      <span className="font-bold text-emerald-700">{(Number(selectedOrderDetails.actual_weight || selectedOrderDetails.total_weight) || 1.0).toFixed(2)} kg</span>
+                      <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Estimated Weight</span>
+                      <span className="font-bold text-[#0E1F38] text-xs">
+                        {estimatedWeight.toFixed(2)} kg
+                      </span>
+                      <span className="text-[9px] text-[#0E1F38]/50 block font-sans">Customer Declared</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Actual Weight (Ops)</span>
+                      {isWeightVerified ? (
+                        <div>
+                          <span className="font-black text-emerald-700 text-xs">
+                            {actualWeight?.toFixed(2)} kg
+                          </span>
+                          <span className="text-[9px] text-emerald-600 block font-sans font-bold">
+                            ✓ Digital Scale Gross
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="font-bold text-amber-700 text-xs flex items-center gap-0.5">
+                            <span className="material-symbols-outlined text-xs">schedule</span> Pending Ops
+                          </span>
+                          <span className="text-[9px] text-amber-600/80 block font-sans">
+                            Weighed at Hub
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <span className="text-[10px] text-[#0E1F38]/60 block uppercase">Merchant Waste Stripped</span>
-                      <span className="font-bold text-[#0E1F38]">Yes (Zero Waste)</span>
+                      <span className="font-bold text-[#0E1F38] text-xs">
+                        {isWeightVerified ? 'Yes (Zero Waste)' : 'Scheduled during Repack'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -4884,21 +5053,44 @@ export default function Dashboard() {
               {/* Hold Group Breakdown */}
               {Array.isArray(selectedOrderDetails.shipments) && selectedOrderDetails.shipments.length > 1 && (
                 <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-200 space-y-2 text-xs">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-900 block">
-                    📦 Consolidated Packages in this Hold Group ({selectedOrderDetails.shipments.length})
-                  </span>
+                  <div className="flex items-center justify-between text-indigo-900">
+                    <span className="text-[10px] font-black uppercase tracking-wider block">
+                      📦 Consolidated Packages in this Hold Group ({selectedOrderDetails.shipments.length})
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-indigo-700">
+                      Total Est: {estimatedWeight.toFixed(2)} kg
+                    </span>
+                  </div>
                   <div className="space-y-1.5">
-                    {selectedOrderDetails.shipments.map((pkg: any, pIdx: number) => (
-                      <div key={pkg.id || pIdx} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-black/5">
-                        <div>
-                          <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(pkg.id)}</span>
-                          <span className="text-[#0E1F38]/70 font-medium ml-2">{pkg.external_order_id ? `Ref: #${pkg.external_order_id}` : `Package ${pIdx + 1}`}</span>
+                    {selectedOrderDetails.shipments.map((pkg: any, pIdx: number) => {
+                      const pkgEstWeight = Number(pkg.total_weight || 1.0);
+                      const pkgActWeight = pkg.actual_weight && Number(pkg.actual_weight) > 0 ? Number(pkg.actual_weight) : null;
+                      return (
+                        <div key={pkg.id || pIdx} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-xl border border-black/5">
+                          <div>
+                            <span className="font-mono font-bold text-[#0E1F38]">#{formatShipmentId(pkg.id)}</span>
+                            <span className="text-[#0E1F38]/70 font-medium ml-2">{pkg.external_order_id ? `Ref: #${pkg.external_order_id}` : `Package ${pIdx + 1}`}</span>
+                          </div>
+                          <div className="text-right font-mono text-[11px]">
+                            <div className="text-[#0E1F38]/70">
+                              Est: <span className="font-bold text-[#0E1F38]">{pkgEstWeight.toFixed(2)} kg</span>
+                            </div>
+                            <div className="text-[10px]">
+                              {pkgActWeight ? (
+                                <span className="text-emerald-700 font-bold flex items-center justify-end gap-0.5">
+                                  Actual: {pkgActWeight.toFixed(2)} kg ✓
+                                </span>
+                              ) : (
+                                <span className="text-amber-700 font-medium flex items-center justify-end gap-0.5">
+                                  <span className="material-symbols-outlined text-[11px]">schedule</span>
+                                  Actual (Ops): Pending
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-[11px] font-mono text-[#0E1F38]/80 font-bold">
-                          {pkg.actual_weight || pkg.total_weight || 1.0} kg
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

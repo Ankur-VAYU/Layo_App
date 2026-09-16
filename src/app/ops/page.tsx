@@ -161,7 +161,7 @@ export default function WarehouseOpsPortal() {
 
       let localShips: any[] = [];
       try {
-        const rawLocal = localStorage.getItem('layo_local_shipments');
+        const rawLocal = localStorage.getItem('layo_ops_shipments');
         if (rawLocal) {
           localShips = JSON.parse(rawLocal);
         }
@@ -483,7 +483,7 @@ export default function WarehouseOpsPortal() {
       setShipments(prev => {
         const nextList = prev.map(s => s.id === shipmentId ? { ...s, status: 'inwarded', stage_timestamps: updatedTimestamps } : s);
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });
@@ -518,7 +518,7 @@ export default function WarehouseOpsPortal() {
       setShipments(prev => {
         const nextList = prev.map(s => s.id === shipmentId ? { ...s, status: 'qc_verified', stage_timestamps: updatedTimestamps, qc_photos: uploadedPhotos } : s);
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });
@@ -553,7 +553,7 @@ export default function WarehouseOpsPortal() {
       setShipments(prev => {
         const nextList = prev.map(s => s.id === selectedShipment.id ? { ...s, status: 'qc_discrepancy', discrepancy_note: discrepancyNote, stage_timestamps: updatedTimestamps } : s);
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });
@@ -631,7 +631,7 @@ export default function WarehouseOpsPortal() {
           stage_timestamps: { ...(s.stage_timestamps || {}), repacked: nowIso } 
         } : s);
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });
@@ -718,7 +718,7 @@ export default function WarehouseOpsPortal() {
           stage_timestamps: { ...(s.stage_timestamps || {}), bulk_consolidated: nowIso }
         } : s);
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });
@@ -760,7 +760,7 @@ export default function WarehouseOpsPortal() {
           s.id === shipmentId ? { ...s, status: 'hold_arrived', stage_timestamps: updatedTimestamps } : s
         );
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });
@@ -809,7 +809,7 @@ export default function WarehouseOpsPortal() {
           return s;
         });
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });
@@ -864,7 +864,7 @@ export default function WarehouseOpsPortal() {
           stage_timestamps: { ...(s.stage_timestamps || {}), in_transit: nowIso }
         } : s);
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });
@@ -922,7 +922,7 @@ export default function WarehouseOpsPortal() {
           stage_timestamps: { ...(s.stage_timestamps || {}), delivered: nowIso }
         } : s);
         try {
-          localStorage.setItem('layo_local_shipments', JSON.stringify(nextList));
+          localStorage.setItem('layo_ops_shipments', JSON.stringify(nextList));
         } catch (e) {}
         return nextList;
       });

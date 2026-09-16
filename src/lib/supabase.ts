@@ -48,6 +48,28 @@ export async function clearUserSession() {
     localStorage.removeItem('layo_mock_user');
     localStorage.removeItem('layo_ops_user');
     localStorage.removeItem('layo_admin_user');
+    localStorage.removeItem('layo_profile');
+    localStorage.removeItem('layo_saved_addresses');
+    localStorage.removeItem('layo_local_shipments');
+    localStorage.removeItem('layo_pending_shipment');
+    localStorage.removeItem('layo_pending_shipment_draft');
+    localStorage.removeItem('layo_dashboard_flow_state');
+
+    // Wipe any user-scoped storage keys
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (
+        k.startsWith('layo_profile_') ||
+        k.startsWith('layo_saved_addresses_') ||
+        k.startsWith('layo_customer_shipments_') ||
+        k.startsWith('layo_local_shipments_') ||
+        k.startsWith('layo_dashboard_flow_state_')
+      )) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
     sessionStorage.clear();
   }
   try {
@@ -484,17 +506,26 @@ export async function updateShipmentStage(
 
 /**
  * Fetches shipments ordered by creation date descending.
- * - When userId is provided (customer dashboard): returns only that user's shipments.
- * - When userId is omitted (admin/ops): returns all shipments.
+ * - When userId is provided: returns only that user's shipments.
+ * - When requireUserId is true: strictly returns [] if no valid user UUID is passed.
+ * - When userId is omitted and requireUserId is false: returns all shipments (admin/ops only).
  */
-export async function fetchShipments(userId?: string) {
+export async function fetchShipments(userId?: string, options?: { requireUserId?: boolean }) {
+  if (options?.requireUserId && (!userId || !isValidUuid(userId))) {
+    return { data: [], error: null };
+  }
+
   let query = supabase
     .from('shipments')
     .select('*')
     .order('created_at', { ascending: false });
 
   if (userId) {
-    query = query.eq('user_id', userId);
+    if (isValidUuid(userId)) {
+      query = query.eq('user_id', userId);
+    } else if (options?.requireUserId) {
+      return { data: [], error: null };
+    }
   }
 
   const { data, error } = await query;
@@ -556,7 +587,10 @@ export async function saveDraftEstimate(payload: any) {
   }
 }
 
-export async function fetchDraftEstimates(userId?: string) {
+export async function fetchDraftEstimates(userId?: string, options?: { requireUserId?: boolean }) {
+  if (options?.requireUserId && (!userId || !isValidUuid(userId))) {
+    return { data: [], error: null };
+  }
   try {
     let query = supabase
       .from('draft_estimates')
@@ -565,6 +599,8 @@ export async function fetchDraftEstimates(userId?: string) {
 
     if (userId && isValidUuid(userId)) {
       query = query.eq('user_id', userId);
+    } else if (options?.requireUserId) {
+      return { data: [], error: null };
     }
 
     const { data, error } = await query;
