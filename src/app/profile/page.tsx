@@ -73,68 +73,46 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user) {
-      const fetchAllAddresses = async () => {
-        let profileAddrs: any[] = [];
-        let savedAddrs: any[] = [];
-        let dbShipments: any[] = [];
+      const initProfile = () => {
+        // 1. Cloud user_metadata is the primary source of truth
+        const metaAddresses = user.user_metadata?.saved_addresses;
+        const metaProfile = user.user_metadata?.profile_data;
 
+        // 2. Local storage scoped to user.id as local cache/fallback
+        let localAddrs: Address[] = [];
         try {
-          const rawProfile = localStorage.getItem(getStorageKey(user.id)) || localStorage.getItem('layo_profile');
-          if (rawProfile) {
-            const parsed = JSON.parse(rawProfile);
-            if (Array.isArray(parsed.addresses)) profileAddrs = parsed.addresses;
+          const rawSaved = localStorage.getItem(getAddressesKey(user.id));
+          if (rawSaved) {
+            const parsed = JSON.parse(rawSaved);
+            if (Array.isArray(parsed)) localAddrs = parsed;
           }
         } catch (e) {}
 
+        let localProfile: any = null;
         try {
-          const rawSaved = localStorage.getItem(getAddressesKey(user.id)) || localStorage.getItem('layo_saved_addresses');
-          if (rawSaved) savedAddrs = JSON.parse(rawSaved);
+          const rawProfile = localStorage.getItem(getStorageKey(user.id));
+          if (rawProfile) localProfile = JSON.parse(rawProfile);
         } catch (e) {}
 
-        try {
-          const { data } = await supabase
-            .from('shipments')
-            .select('destination_address, destination_city')
-            .eq('user_id', user.id);
-          if (data) dbShipments = data;
-        } catch (e) {}
+        // Cloud metadata takes absolute precedence if defined (even if empty array [])
+        const addresses: Address[] = Array.isArray(metaAddresses)
+          ? metaAddresses
+          : (Array.isArray(localAddrs) && localAddrs.length > 0 ? localAddrs : (localProfile?.addresses || []));
 
-        const map = new Map<string, Address>();
-        const add = (id: string, label: string, line1: string, city: string, province = 'ON', postal = '', country = 'Canada', isDefault = false) => {
-          if (!line1 || !line1.trim()) return;
-          const cleanLine1 = line1.trim();
-          const cleanCity = city ? city.trim() : 'Toronto (GTA)';
-          const key = `${cleanLine1.toLowerCase()}|${cleanCity.toLowerCase()}`;
-          if (!map.has(key)) {
-            map.set(key, {
-              id: id || 'addr_' + Math.random().toString(36).substr(2, 9),
-              label: label || `Address ${map.size + 1}`,
-              line1: cleanLine1,
-              line2: '',
-              city: cleanCity,
-              province: province || 'ON',
-              postal: postal || '',
-              country: country || 'Canada',
-              isDefault: isDefault || map.size === 0,
-            });
-          }
+        const p: ProfileData = {
+          fullName: metaProfile?.fullName || user.user_metadata?.full_name || localProfile?.fullName || '',
+          phone: metaProfile?.phone || user.user_metadata?.phone || localProfile?.phone || '',
+          alternatePhone: metaProfile?.alternatePhone || user.user_metadata?.alternate_phone || localProfile?.alternatePhone || '',
+          gender: metaProfile?.gender || user.user_metadata?.gender || localProfile?.gender || '',
+          email: user.email || '',
+          addresses,
         };
 
-        profileAddrs.forEach(a => add(a.id, a.label, a.line1, a.city, a.province, a.postal, a.country, a.isDefault));
-        savedAddrs.forEach(a => add(a.id, a.label, a.line1 || a.fullAddress, a.city, a.province, a.postal, a.country, a.isDefault));
-        // Only include destination addresses from this specific authenticated user's shipments
-        dbShipments.forEach(s => { if (s.destination_address) add('', '', s.destination_address, s.destination_city || 'Toronto (GTA)'); });
-
-        const allAddresses = Array.from(map.values());
-        const p = loadProfile(user.id, user.email ?? '');
-        p.addresses = allAddresses;
-        if (!p.fullName) p.fullName = user.user_metadata?.full_name ?? '';
-        if (!p.email) p.email = user.email ?? '';
         setProfile(p);
         saveProfile(p, user.id);
       };
 
-      fetchAllAddresses();
+      initProfile();
     }
   }, [user]);
 
@@ -144,13 +122,29 @@ export default function ProfilePage() {
 
   const startEdit = () => { setDraft({ ...profile }); setEditing(true); };
   const cancelEdit = () => { setEditing(false); setDraft({}); };
-  const saveEdit = () => {
+  const saveEdit = async () => {
     const updated = { ...profile, ...draft };
     setProfile(updated);
     saveProfile(updated, user?.id);
     setEditing(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+
+    // Sync to Supabase user_metadata so it persists across all devices and relogins
+    try {
+      await supabase.auth.updateUser({
+        data: {
+          full_name: updated.fullName,
+          phone: updated.phone,
+          alternate_phone: updated.alternatePhone,
+          gender: updated.gender,
+          profile_data: updated,
+          saved_addresses: updated.addresses,
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to sync profile edit to Supabase user_metadata:', e);
+    }
   };
 
   const openAddAddress = (addr?: Address) => {
@@ -159,7 +153,7 @@ export default function ProfilePage() {
     setShowAddAddress(true);
   };
 
-  const saveAddress = () => {
+  const saveAddress = async () => {
     if (!addressDraft.line1 || !addressDraft.city) return;
     const addr: Address = {
       id: editAddressId ?? 'addr_' + Date.now(),
@@ -185,20 +179,55 @@ export default function ProfilePage() {
     setShowAddAddress(false);
     setAddressDraft({});
     setEditAddressId(null);
+
+    // Sync saved address to Supabase user_metadata
+    try {
+      await supabase.auth.updateUser({
+        data: {
+          saved_addresses: addresses,
+          profile_data: updated,
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to sync saved address to Supabase user_metadata:', e);
+    }
   };
 
-  const removeAddress = (id: string) => {
+  const removeAddress = async (id: string) => {
     const addresses = profile.addresses.filter(a => a.id !== id);
     const updated = { ...profile, addresses };
     setProfile(updated);
     saveProfile(updated, user?.id);
+
+    // Permanently sync deleted address to Supabase user_metadata so it NEVER comes back
+    try {
+      await supabase.auth.updateUser({
+        data: {
+          saved_addresses: addresses,
+          profile_data: updated,
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to sync removed address to Supabase user_metadata:', e);
+    }
   };
 
-  const setDefault = (id: string) => {
+  const setDefault = async (id: string) => {
     const addresses = profile.addresses.map(a => ({ ...a, isDefault: a.id === id }));
     const updated = { ...profile, addresses };
     setProfile(updated);
     saveProfile(updated, user?.id);
+
+    try {
+      await supabase.auth.updateUser({
+        data: {
+          saved_addresses: addresses,
+          profile_data: updated,
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to sync default address to Supabase user_metadata:', e);
+    }
   };
 
   return (

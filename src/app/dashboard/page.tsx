@@ -350,13 +350,18 @@ export default function Dashboard() {
       const profileKey = getStorageKey(currentUid);
       const addressesKey = getAddressesKey(currentUid);
 
-      const rawProfile = localStorage.getItem(profileKey) || (currentUid ? null : localStorage.getItem('layo_profile'));
-      if (rawProfile) {
-        const parsed = JSON.parse(rawProfile);
-        if (Array.isArray(parsed.addresses)) addrs = parsed.addresses;
+      if (user?.user_metadata?.saved_addresses && Array.isArray(user.user_metadata.saved_addresses)) {
+        addrs = user.user_metadata.saved_addresses;
       }
       if (addrs.length === 0) {
-        const rawSaved = localStorage.getItem(addressesKey) || (currentUid ? null : localStorage.getItem('layo_saved_addresses'));
+        const rawProfile = localStorage.getItem(profileKey);
+        if (rawProfile) {
+          const parsed = JSON.parse(rawProfile);
+          if (Array.isArray(parsed.addresses)) addrs = parsed.addresses;
+        }
+      }
+      if (addrs.length === 0) {
+        const rawSaved = localStorage.getItem(addressesKey);
         if (rawSaved) {
           const parsed = JSON.parse(rawSaved);
           if (Array.isArray(parsed)) addrs = parsed;
@@ -374,7 +379,7 @@ export default function Dashboard() {
     }
   }, [user?.id]);
 
-  const autoSaveAddress = (city: string, fullAddress: string) => {
+  const autoSaveAddress = async (city: string, fullAddress: string) => {
     if (!fullAddress || !fullAddress.trim()) return;
     const trimmedAddr = fullAddress.trim();
     const trimmedCity = city ? city.trim() : 'Toronto (GTA)';
@@ -382,7 +387,7 @@ export default function Dashboard() {
     try {
       const profileKey = getStorageKey(user?.id);
       const addressesKey = getAddressesKey(user?.id);
-      const rawProfile = localStorage.getItem(profileKey) || (user?.id ? null : localStorage.getItem('layo_profile'));
+      const rawProfile = localStorage.getItem(profileKey);
       let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
       if (!profileData.addresses) profileData.addresses = [];
 
@@ -405,18 +410,23 @@ export default function Dashboard() {
         localStorage.setItem(profileKey, JSON.stringify(profileData));
         localStorage.setItem(addressesKey, JSON.stringify(profileData.addresses));
         setSavedAddresses(profileData.addresses);
+        try {
+          await supabase.auth.updateUser({
+            data: { saved_addresses: profileData.addresses }
+          });
+        } catch (e) {}
       }
     } catch (err) {
       console.error('Failed to auto-save address:', err);
     }
   };
 
-  const handleAddNewSavedAddress = () => {
+  const handleAddNewSavedAddress = async () => {
     if (!newAddrLine1 || !newAddrLine1.trim()) return;
     try {
       const profileKey = getStorageKey(user?.id);
       const addressesKey = getAddressesKey(user?.id);
-      const rawProfile = localStorage.getItem(profileKey) || (user?.id ? null : localStorage.getItem('layo_profile'));
+      const rawProfile = localStorage.getItem(profileKey);
       let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
       if (!profileData.addresses) profileData.addresses = [];
 
@@ -435,22 +445,34 @@ export default function Dashboard() {
       setSavedAddresses(profileData.addresses);
       setNewAddrLabel('');
       setNewAddrLine1('');
+
+      try {
+        await supabase.auth.updateUser({
+          data: { saved_addresses: profileData.addresses }
+        });
+      } catch (e) {}
     } catch (err) {
       console.error('Failed to add saved address:', err);
     }
   };
 
-  const handleDeleteSavedAddress = (id: string) => {
+  const handleDeleteSavedAddress = async (id: string) => {
     try {
       const profileKey = getStorageKey(user?.id);
       const addressesKey = getAddressesKey(user?.id);
-      const rawProfile = localStorage.getItem(profileKey) || (user?.id ? null : localStorage.getItem('layo_profile'));
+      const rawProfile = localStorage.getItem(profileKey);
       let profileData: any = rawProfile ? JSON.parse(rawProfile) : { addresses: [] };
       if (profileData.addresses) {
         profileData.addresses = profileData.addresses.filter((a: any) => a.id !== id);
         localStorage.setItem(profileKey, JSON.stringify(profileData));
         localStorage.setItem(addressesKey, JSON.stringify(profileData.addresses));
         setSavedAddresses(profileData.addresses);
+
+        try {
+          await supabase.auth.updateUser({
+            data: { saved_addresses: profileData.addresses }
+          });
+        } catch (e) {}
       }
     } catch (err) {
       console.error('Failed to delete saved address:', err);

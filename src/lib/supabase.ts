@@ -55,13 +55,11 @@ export async function clearUserSession() {
     localStorage.removeItem('layo_pending_shipment_draft');
     localStorage.removeItem('layo_dashboard_flow_state');
 
-    // Wipe any user-scoped storage keys
+    // Wipe transient user-scoped shipment and flow state, while preserving saved address book
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && (
-        k.startsWith('layo_profile_') ||
-        k.startsWith('layo_saved_addresses_') ||
         k.startsWith('layo_customer_shipments_') ||
         k.startsWith('layo_local_shipments_') ||
         k.startsWith('layo_dashboard_flow_state_')
