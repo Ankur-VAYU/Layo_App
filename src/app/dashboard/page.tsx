@@ -6,6 +6,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
+import AuthModal from '@/components/AuthModal';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession, saveDraftEstimate, deleteDraftEstimate, fetchDraftEstimates, stringToUuid, isValidUuid } from '@/lib/supabase';
 import { calculateLayoDeliveryCost, getPricingSettings, fetchLiveCadToInrRate, getActiveConversionRate } from '@/lib/delhiveryRates';
@@ -256,11 +257,15 @@ export default function Dashboard() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    }
-  }, [user, loading, router]);
+  // Auth Pop-Out Modal State for Guest Checkout / Save Draft
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalAction, setAuthModalAction] = useState<'save_draft' | 'proceed_payment' | 'view_tab' | 'signin'>('signin');
+  const [authModalTitle, setAuthModalTitle] = useState('Save to Your Layo Locker');
+  const [authModalSubtitle, setAuthModalSubtitle] = useState('Sign in or create an account to save your draft shipment.');
+  const [targetTabAfterAuth, setTargetTabAfterAuth] = useState<'drafts' | 'hold' | 'dues' | 'history' | null>(null);
+
+  // Navigation and view tabs
+  const [activeTab, setActiveTab] = useState<'new' | 'drafts' | 'hold' | 'dues' | 'history'>('new');
 
   const [deliveryType, setDeliveryType] = useState<'normal' | 'express'>('normal');
 
@@ -288,10 +293,6 @@ export default function Dashboard() {
       console.warn("Failed to sync category matrix in dashboard:", e);
     }
   }, []);
-
-  // Navigation and view tabs
-  // ── State ────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'new' | 'drafts' | 'hold' | 'dues' | 'history'>('new');
 
   useEffect(() => {
     const handleUrlTab = () => {
@@ -1203,9 +1204,96 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      if (activeTab !== 'new') {
+        router.push('/login');
+      } else {
+        fetchDashboardData(undefined, true);
+
+        // Restore items from the EstimatorModal if user came via "Proceed to Book" as a guest
+        const raw = localStorage.getItem('layo_pending_shipment_draft');
+        if (raw) {
+          try {
+            const draft = JSON.parse(raw);
+            const modalQtys: Record<string, number> = draft.qtys || {};
+
+            const newQtyState: Record<string, number> = {};
+            const newActiveDemoState: Record<string, string> = {};
+            const catsWithItems = new Set<string>();
+
+            Object.entries(modalQtys).forEach(([key, qty]) => {
+              if (!qty || (qty as number) <= 0) return;
+
+              if (key.startsWith('promo-')) {
+                setPromoQty(qty as number);
+                return;
+              }
+
+              // key format: "catId-typeIdx-ageSuffix"
+              const firstDash  = key.indexOf('-');
+              const secondDash = key.indexOf('-', firstDash + 1);
+              if (firstDash === -1 || secondDash === -1) return;
+
+              const catId    = key.slice(0, firstDash);
+              const typeIdx  = key.slice(firstDash + 1, secondDash);
+              const ageSuffix = key.slice(secondDash + 1);
+
+              const dashSubIdx = MODAL_TO_DASH_SUB[`${catId}-${typeIdx}`];
+              if (dashSubIdx === undefined || !activeCategoryData[catId]) return;
+
+              const demo    = MODAL_AGE_TO_DEMO[ageSuffix] ?? 'Adult';
+              const rowKey  = `${catId}-${dashSubIdx}`;
+              const fullKey = `${rowKey}-${demo}`;
+
+              newQtyState[fullKey] = (newQtyState[fullKey] ?? 0) + (qty as number);
+              newActiveDemoState[catId] = demo;
+              catsWithItems.add(catId);
+            });
+
+            if (catsWithItems.size > 0) {
+              setQtyState(newQtyState);
+              setActiveDemoState(newActiveDemoState);
+              setSelectedCategories([...catsWithItems]);
+              if (draft.storeName)   setStoreName(draft.storeName);
+              if (draft.senderName)  setSenderName(draft.senderName);
+              if (draft.orderNumber) setOrderNumber(draft.orderNumber);
+              if (draft.origin)      setOriginType(draft.origin);
+              setCurrentStep(1);
+            }
+
+            localStorage.removeItem('layo_pending_shipment_draft');
+          } catch (e) {
+            console.error('Failed to restore estimator draft for guest', e);
+          }
+        }
+      }
     } else if (user) {
       fetchDashboardData(user.id, true);
+
+      // Auto-sync guest draft if user just registered/logged in
+      if (typeof window !== 'undefined') {
+        const pendingRaw = localStorage.getItem('layo_pending_guest_draft');
+        if (pendingRaw) {
+          try {
+            const pendingData = JSON.parse(pendingRaw);
+            localStorage.removeItem('layo_pending_guest_draft');
+            insertShipment({
+              ...pendingData,
+              user_id: user.id,
+            }, { id: user.id, email: user.email, role: 'customer' }).then(() => {
+              fetchDashboardData(user.id);
+              setPaymentBanner({
+                type: 'success',
+                message: '✓ Welcome to Layo! Your draft estimate has been saved to your locker.'
+              });
+              setActiveTab('drafts');
+            }).catch(err => {
+              console.warn('Failed to auto-save guest draft:', err);
+            });
+          } catch (e) {
+            console.warn('Failed to parse guest draft:', e);
+          }
+        }
+      }
 
       // Restore items from the EstimatorModal if user came via "Proceed to Book"
       const raw = localStorage.getItem('layo_pending_shipment_draft');
@@ -1273,9 +1361,25 @@ export default function Dashboard() {
     if (isInitial) {
       setIsFetching(true);
     }
-    // Strict guard: Customer dashboard must only fetch if a valid user UUID is present
+    // Strict guard: Customer dashboard must only fetch shipments if a valid user UUID is present
     if (!userId || !isValidUuid(userId)) {
       setShipments([]);
+      try {
+        const whs = await supabase.from('warehouses').select('*');
+        if (whs.data && whs.data.length > 0) {
+          setWarehouses(whs.data);
+        } else {
+          setWarehouses([
+            { id: 'wh1', city: 'Delhi', pincode: '110077', address: 'C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi', contact: '+91 9321852629' },
+            { id: 'wh2', city: 'Mumbai', pincode: '400001', address: 'Gala 5, Hub 2, Andheri East', contact: '+91 98200 54321' }
+          ]);
+        }
+      } catch (e) {
+        setWarehouses([
+          { id: 'wh1', city: 'Delhi', pincode: '110077', address: 'C-N-246, Bamnoli Village, Sector 28 Dwarka, Dwarka, New Delhi', contact: '+91 9321852629' },
+          { id: 'wh2', city: 'Mumbai', pincode: '400001', address: 'Gala 5, Hub 2, Andheri East', contact: '+91 98200 54321' }
+        ]);
+      }
       if (isInitial) setIsFetching(false);
       return;
     }
@@ -1688,9 +1792,83 @@ export default function Dashboard() {
     }
   }, [currentStep, activeHoldGroups, warehouseAction]);
 
+  const getGuestDraftPayload = () => {
+    const itemsPayload = activeItems.map(i => ({
+      category: i.category,
+      subcategory: i.subcategory,
+      quantity: i.qty,
+      demographic: i.demo,
+      weight: i.weightGrams / 1000,
+    }));
+
+    if (promoQty > 0) {
+      itemsPayload.push({
+        category: 'promo',
+        subcategory: 'Free light weight items (max 50 gm)',
+        quantity: promoQty,
+        demographic: null,
+        weight: 0,
+      });
+    }
+
+    const advanceCAD = Math.round(totals.totalPriceCAD * 0.20 * 100) / 100;
+    const remainingCAD = Math.round((totals.totalPriceCAD - advanceCAD) * 100) / 100;
+    const advanceINR = Math.round(totals.totalPriceINR * 0.20);
+    const rawHoldGroupId = warehouseAction === 'hold'
+      ? (holdOptionMode === 'existing' && selectedHoldGroupId ? normalizeHoldGroupId(selectedHoldGroupId) : normalizeHoldGroupId(`HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`))
+      : null;
+    const uuidHoldGroupId = stringToUuid(rawHoldGroupId);
+
+    return {
+      mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
+      destination_city: destinationCity || 'Toronto (GTA)',
+      destination_address: destinationAddress || 'Canada',
+      india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
+      external_order_id: orderNumber || null,
+      total_weight: totals.totalWeightKg,
+      total_cost: totals.totalPriceINR,
+      items: itemsPayload,
+      status: 'Draft Estimate',
+      advance_pct: 20,
+      advance_amount_cad: advanceCAD,
+      advance_paid_inr: advanceINR,
+      estimated_weight: totals.totalWeightKg,
+      estimated_cost_cad: totals.totalPriceCAD,
+      remaining_balance_cad: remainingCAD,
+      payment_method: 'draft',
+      warehouse_action: warehouseAction || 'ship',
+      expected_packages: morePackages || 1,
+      hold_group_id: uuidHoldGroupId,
+    };
+  };
+
+  const handleAuthSuccess = async (authenticatedUser: any) => {
+    setAuthModalOpen(false);
+    if (authModalAction === 'save_draft') {
+      await saveDraft(authenticatedUser);
+    } else if (authModalAction === 'proceed_payment') {
+      await handleProceedToCheckout(authenticatedUser);
+    } else if (authModalAction === 'view_tab' && targetTabAfterAuth) {
+      setActiveTab(targetTabAfterAuth);
+      setTargetTabAfterAuth(null);
+    }
+  };
+
   // Checkout & Direct Booking Logic via Stripe
-  const handleProceedToCheckout = async () => {
+  const handleProceedToCheckout = async (currentUser?: any) => {
     if (activeItems.length === 0 || !selectedWarehouse || !destinationAddress) {
+      return;
+    }
+
+    const activeUser = currentUser || user;
+    if (!activeUser) {
+      try {
+        localStorage.setItem('layo_pending_guest_draft', JSON.stringify(getGuestDraftPayload()));
+      } catch (e) {}
+      setAuthModalAction('proceed_payment');
+      setAuthModalTitle('Confirm Your Booking');
+      setAuthModalSubtitle('Sign in or create an account to authorize your 20% advance booking.');
+      setAuthModalOpen(true);
       return;
     }
 
@@ -1769,7 +1947,7 @@ export default function Dashboard() {
       } else {
         // Create draft shipment linked to this payment
         const { data } = await insertShipment({
-          user_id: user?.id,
+          user_id: activeUser?.id,
           mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
           destination_city: destinationCity || 'Toronto (GTA)',
           destination_address: destinationAddress || 'Canada',
@@ -1790,7 +1968,7 @@ export default function Dashboard() {
           warehouse_action: warehouseAction || 'ship',
           expected_packages: groupExpectedPackages,
           hold_group_id: resolvedHoldGroupId,
-        }, { id: user?.id, email: user?.email, role: 'customer' });
+        }, { id: activeUser?.id, email: activeUser?.email, role: 'customer' });
         if (data && data[0]) {
           targetShipmentId = data[0].id;
         }
@@ -1805,8 +1983,8 @@ export default function Dashboard() {
           totalCostCAD: totalCostCAD.toFixed(2),
           isAdvance: true,
           shipmentId: targetShipmentId,
-          userId: user?.id,
-          userEmail: user?.email,
+          userId: activeUser?.id,
+          userEmail: activeUser?.email,
           destinationCity: destinationCity || 'Canada',
           destinationAddress: destinationAddress || '',
           warehouseName: selectedWarehouseObject?.name || selectedWarehouse || 'Indian Locker Hub',
@@ -2003,7 +2181,19 @@ export default function Dashboard() {
   };
 
   // Save to drafts in DB
-  const saveDraft = async () => {
+  const saveDraft = async (currentUser?: any) => {
+    const activeUser = currentUser || user;
+    if (!activeUser) {
+      try {
+        localStorage.setItem('layo_pending_guest_draft', JSON.stringify(getGuestDraftPayload()));
+      } catch (e) {}
+      setAuthModalAction('save_draft');
+      setAuthModalTitle('Save to Your Layo Locker');
+      setAuthModalSubtitle('Sign in or create an account to save this draft estimate to your profile.');
+      setAuthModalOpen(true);
+      return;
+    }
+
     try {
       const itemsPayload = activeItems.map(i => ({
         category: i.category,
@@ -2074,8 +2264,8 @@ export default function Dashboard() {
           await saveDraftEstimate({
             ...updatePayload,
             id: editingDraftId,
-            user_id: user?.id || null,
-            customer_email: user?.email || null,
+            user_id: activeUser?.id || null,
+            customer_email: activeUser?.email || null,
             mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
             external_order_id: orderNumber || editingDraftId,
           });
@@ -2088,17 +2278,17 @@ export default function Dashboard() {
               : s
           );
           try {
-            localStorage.setItem(getLocalShipmentsKey(user?.id), JSON.stringify(nextList));
+            localStorage.setItem(getLocalShipmentsKey(activeUser?.id), JSON.stringify(nextList));
           } catch (e) {}
           return nextList;
         });
         setEditingDraftId(null);
-        if (user?.id) {
-          fetchDashboardData(user.id);
+        if (activeUser?.id) {
+          fetchDashboardData(activeUser.id);
         }
       } else {
         const { data } = await insertShipment({
-          user_id: user?.id,
+          user_id: activeUser?.id,
           mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
           destination_city: destinationCity || 'Draft City',
           destination_address: destinationAddress || 'Draft Address',
@@ -2118,19 +2308,19 @@ export default function Dashboard() {
           warehouse_action: warehouseAction || 'ship',
           expected_packages: groupExpectedPackages,
           hold_group_id: uuidHoldGroupId,
-        }, { id: user?.id, email: user?.email, role: 'customer' });
+        }, { id: activeUser?.id, email: activeUser?.email, role: 'customer' });
         if (data && data[0]) {
           const parsed = parseShipment(data[0]);
           setShipments(prev => {
             const nextList = [parsed, ...prev.filter(x => x.id !== parsed.id)];
             try {
-              localStorage.setItem(getLocalShipmentsKey(user?.id), JSON.stringify(nextList));
+              localStorage.setItem(getLocalShipmentsKey(activeUser?.id), JSON.stringify(nextList));
             } catch (e) {}
             return nextList;
           });
         }
-        if (user?.id) {
-          fetchDashboardData(user.id);
+        if (activeUser?.id) {
+          fetchDashboardData(activeUser.id);
         }
       }
     } catch (err) {
@@ -2154,7 +2344,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!user) {
+  if (!user && activeTab !== 'new') {
     return (
       <div className="bg-[#FAF8EE] text-[#0E1F38] min-h-screen flex flex-col items-center justify-center p-6 font-sans">
         <div className="bg-white border border-black/10 rounded-3xl w-full max-w-md p-8 shadow-xl space-y-6 text-center">
@@ -2168,27 +2358,46 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="space-y-3 pt-2">
-            <Link
-              href="/login"
-              className="block w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] transition-all text-center shadow-md shadow-[#FF5A65]/20"
+            <button
+              type="button"
+              onClick={() => {
+                setAuthModalAction('signin');
+                setAuthModalTitle('Sign In to Access Locker');
+                setAuthModalSubtitle('Access your shipments, forwarding addresses, and dues.');
+                setAuthModalOpen(true);
+              }}
+              className="block w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] transition-all text-center shadow-md shadow-[#FF5A65]/20 cursor-pointer"
             >
               Sign In to Access Locker
-            </Link>
-            <Link
-              href="/signup"
-              className="block w-full py-3.5 border border-black/10 text-[#0E1F38] font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-black/5 transition-all text-center"
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthModalAction('signin');
+                setAuthModalTitle('Create New Account');
+                setAuthModalSubtitle('Set up your free account to activate your virtual Indian locker.');
+                setAuthModalOpen(true);
+              }}
+              className="block w-full py-3.5 border border-black/10 text-[#0E1F38] font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-black/5 transition-all text-center cursor-pointer"
             >
               Create New Account
-            </Link>
+            </button>
           </div>
-          <Link 
-            href="/" 
+          <button 
+            type="button"
             onClick={() => handleStartNewOrder()}
-            className="block text-xs text-[#0E1F38]/60 hover:text-[#0E1F38] pt-2"
+            className="block text-xs text-[#0E1F38]/60 hover:text-[#0E1F38] pt-2 mx-auto cursor-pointer"
           >
-            ← Return to Home
-          </Link>
+            ← Calculate / Start New Order
+          </button>
         </div>
+        <AuthModal
+          isOpen={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          onSuccess={handleAuthSuccess}
+          title={authModalTitle}
+          subtitle={authModalSubtitle}
+        />
       </div>
     );
   }
@@ -2215,15 +2424,29 @@ export default function Dashboard() {
           {['admin@layo.com', 'ankur@layo.com'].includes(user?.email || '') && (
             <Link href="/admin" className="text-[#0E1F38]/70 hover:text-[#FF5A65] transition-colors text-xs sm:text-sm font-semibold">Admin</Link>
           )}
-          <button 
-            onClick={async () => {
-              await clearUserSession();
-              router.push('/login');
-            }} 
-            className="text-[#FF5A65] hover:bg-[#FF5A65] hover:text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider border border-[#FF5A65]/30 bg-white px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all shadow-sm cursor-pointer"
-          >
-            Sign Out
-          </button>
+          {user ? (
+            <button 
+              onClick={async () => {
+                await clearUserSession();
+                router.push('/login');
+              }} 
+              className="text-[#FF5A65] hover:bg-[#FF5A65] hover:text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider border border-[#FF5A65]/30 bg-white px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              Sign Out
+            </button>
+          ) : (
+            <button 
+              onClick={() => {
+                setAuthModalAction('signin');
+                setAuthModalTitle('Sign In to Your Locker');
+                setAuthModalSubtitle('Access your shipments, forwarding addresses, and dues.');
+                setAuthModalOpen(true);
+              }}
+              className="bg-[#FF5A65] hover:bg-[#e24550] text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all shadow-sm cursor-pointer"
+            >
+              Sign In / Register
+            </button>
+          )}
         </div>
       </header>
 
@@ -2275,7 +2498,17 @@ export default function Dashboard() {
           </button>
           
           <button
-            onClick={() => setActiveTab('drafts')}
+            onClick={() => {
+              if (!user) {
+                setAuthModalAction('view_tab');
+                setTargetTabAfterAuth('drafts');
+                setAuthModalTitle('Sign In to View Drafts');
+                setAuthModalSubtitle('Please sign in or create an account to view your saved draft estimates.');
+                setAuthModalOpen(true);
+                return;
+              }
+              setActiveTab('drafts');
+            }}
             className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'drafts' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
@@ -2289,7 +2522,17 @@ export default function Dashboard() {
           </button>
 
           <button
-            onClick={() => setActiveTab('hold')}
+            onClick={() => {
+              if (!user) {
+                setAuthModalAction('view_tab');
+                setTargetTabAfterAuth('hold');
+                setAuthModalTitle('Sign In to View Hold Shipments');
+                setAuthModalSubtitle('Please sign in or create an account to view your consolidated hold groups.');
+                setAuthModalOpen(true);
+                return;
+              }
+              setActiveTab('hold');
+            }}
             className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'hold' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
@@ -2303,7 +2546,17 @@ export default function Dashboard() {
           </button>
 
           <button
-            onClick={() => setActiveTab('dues')}
+            onClick={() => {
+              if (!user) {
+                setAuthModalAction('view_tab');
+                setTargetTabAfterAuth('dues');
+                setAuthModalTitle('Sign In to View Active Orders');
+                setAuthModalSubtitle('Please sign in or create an account to view your active shipments and dues.');
+                setAuthModalOpen(true);
+                return;
+              }
+              setActiveTab('dues');
+            }}
             className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'dues' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
@@ -2317,7 +2570,17 @@ export default function Dashboard() {
           </button>
 
           <button
-            onClick={() => setActiveTab('history')}
+            onClick={() => {
+              if (!user) {
+                setAuthModalAction('view_tab');
+                setTargetTabAfterAuth('history');
+                setAuthModalTitle('Sign In to View Shipments');
+                setAuthModalSubtitle('Please sign in or create an account to view your completed shipments.');
+                setAuthModalOpen(true);
+                return;
+              }
+              setActiveTab('history');
+            }}
             className={`py-3 px-3 sm:px-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
               activeTab === 'history' ? 'border-[#FF5A65] text-[#FF5A65]' : 'border-transparent text-[#0E1F38]/60 hover:text-[#0E1F38]'
             }`}
@@ -5249,6 +5512,15 @@ export default function Dashboard() {
           <span className="text-[9px] mt-0.5 font-medium">Profile</span>
         </button>
       </footer>
+
+      {/* ── Guest Auth Pop-Out Modal ── */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={handleAuthSuccess}
+        title={authModalTitle}
+        subtitle={authModalSubtitle}
+      />
 
     </div>
   );
