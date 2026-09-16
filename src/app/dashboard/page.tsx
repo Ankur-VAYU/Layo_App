@@ -2,7 +2,7 @@
 'use client';
 
 // ── Imports ──────────────────────────────────────────────────────────────
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
@@ -317,6 +317,28 @@ export default function Dashboard() {
     return () => window.removeEventListener('popstate', handleUrlTab);
   }, []);
   const [currentStep, setCurrentStep] = useState(1);
+  const isFirstStepRender = useRef(true);
+
+  // Auto-scroll to top of step card smoothly on mobile / desktop whenever step changes
+  useEffect(() => {
+    if (isFirstStepRender.current) {
+      isFirstStepRender.current = false;
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      const el = document.getElementById('wizardStepCard');
+      if (el) {
+        const headerOffset = 80;
+        const elementPosition = el.getBoundingClientRect().top;
+        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+        window.scrollTo({
+          top: Math.max(0, offsetPosition),
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [currentStep]);
+
   const [isFetching, setIsFetching] = useState(true);
 
   // Loaded database items
@@ -3625,7 +3647,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             
             {/* Step Content Card */}
-            <div className="lg:col-span-8 bg-white rounded-3xl border border-black/5 p-6 md:p-8 space-y-8 shadow-sm relative text-[#0E1F38]">
+            <div id="wizardStepCard" className="lg:col-span-8 bg-white rounded-3xl border border-black/5 p-6 md:p-8 space-y-8 shadow-sm relative text-[#0E1F38] scroll-mt-24">
               
               {/* Process Bar Header */}
               <nav className="border-b border-black/5 pb-6">
