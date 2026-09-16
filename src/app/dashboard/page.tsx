@@ -583,11 +583,33 @@ export default function Dashboard() {
 
   // 1. Saved Draft Estimates
   const draftsList = useMemo(() => {
-    return shipments.filter(s => {
+    const raw = shipments.filter(s => {
       if (!s) return false;
       const st = String(s.status || '').toLowerCase();
       return st === 'draft' || st === 'draft estimate';
     });
+
+    const seen = new Set<string>();
+    const uniqueList: any[] = [];
+    raw.forEach(d => {
+      const normId = formatShipmentId(d.external_order_id || d.id || '');
+      if (normId && seen.has(normId)) return;
+
+      const itemsSummary = Array.isArray(d.items)
+        ? d.items.map((i: any) => `${i.quantity || 1}x${i.subcategory || i.name || i.category}`).sort().join(',')
+        : '';
+      const dest = String(d.destination_address || d.destination_city || '').trim().toLowerCase();
+      const wt = Number(d.total_weight || 0).toFixed(1);
+      const contentKey = `DRAFT_${dest}_${wt}_${itemsSummary}`;
+
+      if (contentKey !== 'DRAFT___0.0_' && seen.has(contentKey)) return;
+
+      if (normId) seen.add(normId);
+      if (contentKey !== 'DRAFT___0.0_') seen.add(contentKey);
+      uniqueList.push(d);
+    });
+
+    return uniqueList;
   }, [shipments]);
 
   // 2. Active Hold & Consolidation Groups
@@ -615,7 +637,12 @@ export default function Dashboard() {
     });
 
     const map = new Map<string, any[]>();
+    const seenHoldShipmentIds = new Set<string>();
     eligible.forEach(s => {
+      const normShipId = formatShipmentId(s.id);
+      if (normShipId && seenHoldShipmentIds.has(normShipId)) return;
+      if (normShipId) seenHoldShipmentIds.add(normShipId);
+
       const key = getHoldGroupKey(s) || (s.id ? `HOLD-${formatShipmentId(s.id)}` : 'HOLD-GROUP');
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(s);
@@ -691,7 +718,12 @@ export default function Dashboard() {
 
     // 2. Group by hold group key or individual shipment ID
     const map = new Map<string, any[]>();
+    const seenDuesShipmentIds = new Set<string>();
     eligible.forEach(s => {
+      const normShipId = formatShipmentId(s.id);
+      if (normShipId && seenDuesShipmentIds.has(normShipId)) return;
+      if (normShipId) seenDuesShipmentIds.add(normShipId);
+
       const isHold = s.warehouse_action === 'hold' || String(s.status || '').toLowerCase() === 'holding' || (s.hold_group_id && String(s.hold_group_id).trim() !== '');
       const holdKey = isHold ? getHoldGroupKey(s) : null;
       const key = holdKey || s.id;
@@ -759,9 +791,13 @@ export default function Dashboard() {
   // 4. My Shipments (Strictly only shipments whose all final payment has been done and nothing is dues)
   const myShipmentsList = useMemo(() => {
     try {
+      const seenSettledIds = new Set<string>();
       // 1. Only include shipments whose all final payment has been done and 0 dues remain
       const settled = shipments.filter(s => {
         if (!s) return false;
+        const normId = formatShipmentId(s.id);
+        if (normId && seenSettledIds.has(normId)) return false;
+
         const st = String(s.status || '').toLowerCase();
         const paySt = String(s.payment_status || '').toLowerCase();
         const remaining = Number(s.remaining_balance_cad ?? 0);
@@ -775,12 +811,15 @@ export default function Dashboard() {
 
         // Fully settled payments
         if (paySt === 'completed' || paySt === 'fully_paid' || paySt === 'paid_full') {
+          if (normId) seenSettledIds.add(normId);
           return true;
         }
 
         // Post-repack stages with verified 0 balance and completed payment
         if (['repacked', 'bulk_consolidated', 'in_transit', 'shipped', 'received_canada', 'out_for_delivery', 'delivered'].includes(st)) {
-          return remaining <= 0 && paySt !== 'awaiting_balance';
+          const isEligible = remaining <= 0 && paySt !== 'awaiting_balance';
+          if (isEligible && normId) seenSettledIds.add(normId);
+          return isEligible;
         }
 
         return false;
@@ -1072,6 +1111,11 @@ export default function Dashboard() {
                   );
                 }
 
+                // Delete any matching draft from draft_estimates now that shipment is confirmed
+                try {
+                  await deleteDraftEstimate(bookingTargetId);
+                } catch (e) {}
+
                 await supabase.from('transactions').insert({
                   shipment_id: bookingTargetId,
                   user_id: user?.id || null,
@@ -1213,16 +1257,33 @@ export default function Dashboard() {
       ]);
 
       const dbShips = shipsResult.data ?? [];
-      const dbDrafts = (draftsResult.data ?? []).map((d: any) => parseShipment({
-        ...d,
-        id: d.id || d.external_order_id,
-        status: 'Draft Estimate',
-        payment_status: 'draft',
-        total_weight: d.total_weight || 1.0,
-        total_cost: d.total_cost || 0,
-        estimated_cost_cad: d.estimated_cost_cad || 0,
-        items: d.items || [],
-      }));
+
+      // Extract all canonical IDs already known to shipments table
+      const existingShipKeys = new Set<string>();
+      dbShips.forEach((s: any) => {
+        if (s?.id) existingShipKeys.add(formatShipmentId(s.id));
+        if (s?.external_order_id) existingShipKeys.add(formatShipmentId(s.external_order_id));
+      });
+
+      // Filter drafts from draft_estimates: If already present in shipments table, skip to avoid duplicates
+      const dbDrafts = (draftsResult.data ?? [])
+        .filter((d: any) => {
+          const draftExt = d?.external_order_id ? formatShipmentId(d.external_order_id) : '';
+          const draftId = d?.id ? formatShipmentId(d.id) : '';
+          if (draftExt && existingShipKeys.has(draftExt)) return false;
+          if (draftId && existingShipKeys.has(draftId)) return false;
+          return true;
+        })
+        .map((d: any) => parseShipment({
+          ...d,
+          id: d.external_order_id ? formatShipmentId(d.external_order_id) : d.id,
+          status: 'Draft Estimate',
+          payment_status: 'draft',
+          total_weight: d.total_weight || 1.0,
+          total_cost: d.total_cost || 0,
+          estimated_cost_cad: d.estimated_cost_cad || 0,
+          items: d.items || [],
+        }));
 
       // Merge user-scoped local storage drafts — strictly only include shipments belonging to this user
       const userLocalKey = getLocalShipmentsKey(userId);
@@ -1237,29 +1298,39 @@ export default function Dashboard() {
         }
       } catch (e) {}
 
-      // Dual-sync merge: DB records take precedence, local backups fill any gaps
-      const mergedMap = new Map();
-      localShips.forEach(s => { if (s && s.id && s.payment_method !== 'demo_simulated') mergedMap.set(s.id, parseShipment(s) || s); });
-      dbDrafts.forEach((d: any) => { if (d && d.id && d.payment_method !== 'demo_simulated') mergedMap.set(d.id, d); });
-      dbShips.forEach(s => { if (s && s.id && s.payment_method !== 'demo_simulated') mergedMap.set(s.id, s); });
+      // Dual-sync merge with canonical key deduplication: DB records take precedence, local backups fill any gaps
+      const mergedMap = new Map<string, any>();
+      const getCanonicalKey = (item: any): string => {
+        if (!item) return '';
+        const ext = item.external_order_id ? formatShipmentId(item.external_order_id) : '';
+        const id = item.id ? formatShipmentId(item.id) : '';
+        return ext || id;
+      };
+
+      localShips.forEach(s => {
+        if (s && s.payment_method !== 'demo_simulated') {
+          const k = getCanonicalKey(s);
+          if (k) mergedMap.set(k, parseShipment(s) || s);
+        }
+      });
+      dbDrafts.forEach((d: any) => {
+        if (d && d.payment_method !== 'demo_simulated') {
+          const k = getCanonicalKey(d);
+          if (k) mergedMap.set(k, d);
+        }
+      });
+      dbShips.forEach(s => {
+        if (s && s.payment_method !== 'demo_simulated') {
+          const k = getCanonicalKey(s);
+          if (k) mergedMap.set(k, s);
+        }
+      });
 
       const mergedList = Array.from(mergedMap.values())
         .filter((s: any) => s && (!s.user_id || s.user_id === userId) && s.payment_method !== 'demo_simulated')
         .sort(
           (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         );
-
-      // Auto-sync any local drafts belonging strictly to this user up to draft_estimates table
-      if (userId && localShips.length > 0) {
-        const existingDbIds = new Set([...dbShips.map(s => s.id), ...dbDrafts.map((d: any) => d.id)]);
-        localShips.forEach(async (ls) => {
-          if (ls && ls.id && ls.user_id === userId && !existingDbIds.has(ls.id) && (ls.status === 'Draft Estimate' || ls.status === 'draft')) {
-            try {
-              await saveDraftEstimate({ ...ls, user_id: userId });
-            } catch (e) {}
-          }
-        });
-      }
 
       setShipments(mergedList);
       try {
@@ -1922,33 +1993,7 @@ export default function Dashboard() {
         }
       }
 
-      // 1. Dual-write to draft_estimates table in Supabase
-      try {
-        await saveDraftEstimate({
-          id: editingDraftId,
-          user_id: user?.id || null,
-          customer_email: user?.email || null,
-          mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
-          destination_city: destinationCity || 'Toronto (GTA)',
-          destination_address: destinationAddress || '',
-          india_warehouse: selectedWarehouse || null,
-          external_order_id: orderNumber || editingDraftId || null,
-          total_weight: totals.totalWeightKg,
-          total_cost: totals.totalPriceINR,
-          estimated_cost_cad: totals.totalPriceCAD,
-          advance_pct: 20,
-          advance_amount_cad: advanceCAD,
-          remaining_balance_cad: remainingCAD,
-          items: itemsPayload,
-          warehouse_action: warehouseAction || 'ship',
-          expected_packages: groupExpectedPackages,
-          status: 'Draft Estimate',
-        });
-      } catch (errDraft) {
-        console.warn('saveDraftEstimate notice:', errDraft);
-      }
-
-      // 2. Also save to shipments table in Supabase
+      // Save to shipments table (which synchronizes with draft_estimates using canonical ID)
       if (editingDraftId) {
         const updatePayload = {
           destination_city: destinationCity || 'Draft City',
@@ -1973,6 +2018,17 @@ export default function Dashboard() {
           .from('shipments')
           .update(updatePayload)
           .eq('id', editingDraftId);
+
+        try {
+          await saveDraftEstimate({
+            ...updatePayload,
+            id: editingDraftId,
+            user_id: user?.id || null,
+            customer_email: user?.email || null,
+            mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
+            external_order_id: orderNumber || editingDraftId,
+          });
+        } catch (e) {}
 
         setShipments(prev => {
           const nextList = prev.map(s =>

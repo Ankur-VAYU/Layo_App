@@ -108,6 +108,12 @@ export async function POST(request: NextRequest) {
               updated_at: nowIso,
             })
             .eq('id', shipmentId);
+
+          // Clean up any matching draft in draft_estimates
+          try {
+            await supabase.from('draft_estimates').delete().eq('id', shipmentId);
+            await supabase.from('draft_estimates').delete().eq('external_order_id', shipmentId);
+          } catch (e) {}
         } else {
           // Final balance payment completed
           const updatePayload: Record<string, any> = {

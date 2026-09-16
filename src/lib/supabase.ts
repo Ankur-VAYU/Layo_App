@@ -568,6 +568,17 @@ export async function saveDraftEstimate(payload: any) {
 
   if (validDraftId) {
     draftRow.id = validDraftId;
+  } else if (externalRef) {
+    try {
+      const { data: existing } = await supabase
+        .from('draft_estimates')
+        .select('id')
+        .eq('external_order_id', externalRef)
+        .maybeSingle();
+      if (existing?.id) {
+        draftRow.id = existing.id;
+      }
+    } catch (e) {}
   }
 
   try {
