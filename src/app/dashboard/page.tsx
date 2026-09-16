@@ -244,11 +244,11 @@ const MODAL_AGE_TO_DEMO: Record<string, string> = {
 const canadaCities = ['Toronto (GTA)', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa', 'Edmonton', 'Winnipeg'];
 
 const stepPills = [
-  { id: 1, label: 'Origin & Warehouse' },
-  { id: 2, label: 'Canada Destination' },
-  { id: 3, label: 'Select Categories' },
-  { id: 4, label: 'Configure Items' },
-  { id: 5, label: 'Review & Actions' }
+  { id: 1, label: 'Select Categories' },
+  { id: 2, label: 'Configure Items' },
+  { id: 3, label: 'Warehouse Handling' },
+  { id: 4, label: 'Origin & Warehouse' },
+  { id: 5, label: 'Destination & Payment' }
 ];
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -1256,8 +1256,8 @@ export default function Dashboard() {
               if (draft.storeName)   setStoreName(draft.storeName);
               if (draft.senderName)  setSenderName(draft.senderName);
               if (draft.orderNumber) setOrderNumber(draft.orderNumber);
-              if (draft.origin)      setOriginType(draft.origin);
-              setCurrentStep(1);
+              // Start on Step 2 (Configure Items) with preloaded items
+              setCurrentStep(2);
             }
 
             localStorage.removeItem('layo_pending_shipment_draft');
@@ -1344,8 +1344,8 @@ export default function Dashboard() {
             if (draft.senderName)  setSenderName(draft.senderName);
             if (draft.orderNumber) setOrderNumber(draft.orderNumber);
             if (draft.origin)      setOriginType(draft.origin);
-            // Start from Step 1 so user fills warehouse + delivery address
-            setCurrentStep(1);
+            // Start on Step 2 (Configure Items) with preloaded items
+            setCurrentStep(2);
           }
 
           localStorage.removeItem('layo_pending_shipment_draft');
@@ -1783,9 +1783,9 @@ export default function Dashboard() {
 
 
 
-  // Auto-select hold action and active hold group when entering Step 5 if active hold groups exist
+  // Auto-select hold action and active hold group when entering Step 3 if active hold groups exist
   useEffect(() => {
-    if (currentStep === 5 && activeHoldGroups.length > 0 && warehouseAction === null) {
+    if (currentStep === 3 && activeHoldGroups.length > 0 && warehouseAction === null) {
       setWarehouseAction('hold');
       setHoldOptionMode('existing');
       setSelectedHoldGroupId(activeHoldGroups[0].group_id);
@@ -2106,7 +2106,7 @@ export default function Dashboard() {
     }
 
     setActiveTab('new');
-    setCurrentStep(4);
+    setCurrentStep(2);
   };
 
   // Delete draft or shipment
@@ -3636,7 +3636,7 @@ export default function Dashboard() {
                     return (
                       <button
                         key={step.id}
-                        disabled={step.id > currentStep && activeItems.length === 0}
+                        disabled={step.id > currentStep && (step.id > 2 ? activeItems.length === 0 : selectedCategories.length === 0)}
                         onClick={() => setCurrentStep(step.id)}
                         className={`flex flex-col items-center gap-2 flex-1 outline-none focus:outline-none transition-all cursor-pointer ${
                           isCurrent ? 'step-active' : ''
@@ -3664,316 +3664,14 @@ export default function Dashboard() {
                 </div>
               </nav>
 
-              {/* STEP 1: Origin & Warehouse */}
+              {/* STEP 1: Category Grid Selection */}
               {currentStep === 1 && (
                 <section className="space-y-6 animate-fade-in">
                   <div>
                     <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
-                      1. Setup Virtual Address &amp; Origin
+                      1. Item Categories
                     </h3>
-                    <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Specify drop-off point and details of incoming items.</p>
-                  </div>
-
-                  {/* Radios */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      onClick={() => setOriginType('online')}
-                      className={`p-4 rounded-2xl border text-left font-bold text-xs uppercase tracking-wider transition-all flex flex-col gap-1 cursor-pointer shadow-sm ${
-                        originType === 'online'
-                          ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
-                          : 'border-black/10 bg-[#FAF8EE] text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-lg">shopping_cart</span>
-                      Online Retailer Store
-                    </button>
-                    <button
-                      onClick={() => setOriginType('personal')}
-                      className={`p-4 rounded-2xl border text-left font-bold text-xs uppercase tracking-wider transition-all flex flex-col gap-1 cursor-pointer shadow-sm ${
-                        originType === 'personal'
-                          ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
-                          : 'border-black/10 bg-[#FAF8EE] text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-lg">house</span>
-                      Personal Courier / Home
-                    </button>
-                  </div>
-
-                  {/* Form Inputs */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {originType === 'online' ? (
-                      <>
-                        <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Store Name</label>
-                          <input
-                            type="text"
-                            placeholder="Amazon, Myntra, Ajio, etc."
-                            value={storeName}
-                            onChange={e => setStoreName(e.target.value)}
-                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
-                          />
-                        </div>
-                        <div className="space-y-1 relative" id="orderNumberField">
-                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Order Number</label>
-                          <div className="relative">
-                            <input
-                              type="text"
-                              placeholder="Order ID or Reference ID"
-                              value={orderNumber}
-                              onChange={e => {
-                                setOrderNumber(e.target.value);
-                                setShowOrderNumberError(false);
-                              }}
-                              className={`w-full bg-[#FAF8EE] border rounded-xl pl-4 pr-12 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm ${
-                                showOrderNumberError ? 'border-red-500' : 'border-black/10'
-                              }`}
-                            />
-                            <button
-                              type="button"
-                              onClick={handlePaste}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#FF5A65] hover:text-[#e24550] text-sm p-1 cursor-pointer"
-                              title="Paste from clipboard"
-                            >
-                              📋
-                            </button>
-                          </div>
-                          {showOrderNumberError && (
-                            <p className="text-[10px] text-red-500 font-semibold mt-1">
-                              Please supply your Retailer Order Number so the hub can verify receipt.
-                            </p>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Sender's Full Name</label>
-                          <input
-                            type="text"
-                            placeholder="John Doe"
-                            value={senderName}
-                            onChange={e => setSenderName(e.target.value)}
-                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Origin City</label>
-                          <input
-                            type="text"
-                            placeholder="Delhi, Mumbai, Jaipur, etc."
-                            value={originCity}
-                            onChange={e => setOriginCity(e.target.value)}
-                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* India Warehouse Select */}
-                  <div className="space-y-4 pt-4 border-t border-black/5">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Select India Warehouse Hub</label>
-                      <select
-                        value={selectedWarehouse}
-                        onChange={e => setSelectedWarehouse(e.target.value)}
-                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
-                      >
-                        <option value="" disabled>Select nearest warehouse</option>
-                        {warehouses.map(wh => (
-                          <option key={wh.id} value={wh.id}>
-                            {wh.city} ({wh.pincode || 'Hub'})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Virtual address preview */}
-                    {selectedWarehouseObject && (
-                      <div className="p-5 rounded-2xl border border-[#FF5A65]/30 bg-[#FAF8EE] space-y-3 animate-fade-in relative overflow-hidden text-[#0E1F38]">
-                        <span className="material-symbols-outlined absolute top-4 right-4 text-7xl text-[#FF5A65] opacity-5 pointer-events-none">
-                          location_on
-                        </span>
-                        
-                        <div className="flex items-center justify-between gap-2 relative z-10">
-                          <div className="inline-block text-[9px] uppercase tracking-wider font-bold bg-[#FF5A65]/15 text-[#FF5A65] px-2.5 py-1 rounded">
-                            Preview of your Virtual Address
-                          </div>
-                          
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const nameStr = `${user?.user_metadata?.full_name || 'Customer'} / LAYO-${user?.id?.substring(0, 5).toUpperCase() || 'LOCK'}`;
-                              const addrStr = `Name: ${nameStr}\nAddress: ${selectedWarehouseObject.address}\nCity/Pincode: ${selectedWarehouseObject.city} - ${selectedWarehouseObject.pincode || ''}\nPhone: ${selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'}`;
-                              navigator.clipboard.writeText(addrStr);
-                              setCopiedAddress(true);
-                              setTimeout(() => setCopiedAddress(false), 2000);
-                            }}
-                            className={`text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
-                              copiedAddress
-                                ? 'bg-green-600 text-white'
-                                : 'bg-[#FF5A65] hover:bg-[#e24550] text-white active:scale-95'
-                            }`}
-                          >
-                            <span className="material-symbols-outlined text-sm leading-none">
-                              {copiedAddress ? 'check' : 'content_copy'}
-                            </span>
-                            <span>{copiedAddress ? 'Copied!' : 'Copy Address'}</span>
-                          </button>
-                        </div>
-
-                        <div className="text-xs space-y-1.5 text-[#0E1F38] leading-relaxed pt-1 font-mono relative z-10">
-                          <p><strong>Name:</strong> {user?.user_metadata?.full_name || 'Customer'} / LAYO-{user?.id?.substring(0, 5).toUpperCase() || 'LOCK'}</p>
-                          <p><strong>Address:</strong> {selectedWarehouseObject.address}</p>
-                          <p><strong>City/Pincode:</strong> {selectedWarehouseObject.city} - {selectedWarehouseObject.pincode || ''}</p>
-                          <p><strong>Phone Number:</strong> {selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'} <span className="text-[10px] text-[#FF5A65] font-sans font-semibold">(for courier &amp; order updates)</span></p>
-                        </div>
-                        <p className="text-[10px] text-[#0E1F38]/60 italic pt-1 relative z-10">
-                          Copy coordinates and tags. Full instructions will be shared on successful payment.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => setCurrentStep(2)}
-                    disabled={!selectedWarehouse}
-                    className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Continue to Canada Destination
-                  </button>
-                </section>
-              )}
-
-              {/* STEP 2: Canada Destination */}
-              {currentStep === 2 && (
-                <section className="space-y-6 animate-fade-in">
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
-                        2. Delivery Address in Canada
-                      </h3>
-                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Provide drop-off address coordinates inside Canada.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowManageAddressesModal(true)}
-                        className="text-xs text-[#2E7D32] font-bold hover:underline flex items-center gap-1 cursor-pointer bg-[#2E7D32]/10 px-2.5 py-1 rounded-lg border border-[#2E7D32]/20 transition-all"
-                      >
-                        📍 My Addresses ({savedAddresses.length})
-                      </button>
-                      <button onClick={() => setCurrentStep(1)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
-                        Back
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* Saved Addresses Dropdown Selector */}
-                    {savedAddresses.length > 0 && (
-                      <div className="bg-[#FF5A65]/5 border border-[#FF5A65]/20 p-3.5 rounded-2xl space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[10px] uppercase font-bold text-[#FF5A65] tracking-wider flex items-center gap-1">
-                            <span>📍 Select Saved Address</span>
-                          </label>
-                          <span className="text-[9px] font-semibold text-[#0E1F38]/60">
-                            {savedAddresses.length} address{savedAddresses.length > 1 ? 'es' : ''} saved
-                          </span>
-                        </div>
-                        <select
-                          value={selectedSavedAddressId}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setSelectedSavedAddressId(val);
-                            if (val === 'new') {
-                              setDestinationAddress('');
-                            } else {
-                              const found = savedAddresses.find(a => a.id === val);
-                              if (found) {
-                                if (found.city) setDestinationCity(found.city);
-                                const fullText = found.line1 + (found.line2 ? `, ${found.line2}` : '') + (found.postal ? ` ${found.postal}` : '');
-                                setDestinationAddress(fullText || found.line1);
-                              }
-                            }
-                          }}
-                          className="w-full bg-white border border-[#FF5A65]/30 rounded-xl px-4 py-3 text-xs text-[#0E1F38] font-bold focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
-                        >
-                          <option value="">-- Select from My Addresses --</option>
-                          {savedAddresses.map(addr => {
-                            const labelText = addr.label ? `[${addr.label}] ` : '';
-                            const detailText = addr.line1 + (addr.city ? `, ${addr.city}` : '');
-                            return (
-                              <option key={addr.id} value={addr.id}>
-                                {labelText}{detailText} {addr.isDefault ? '★ (Default)' : ''}
-                              </option>
-                            );
-                          })}
-                          <option value="new">+ Enter A New Address</option>
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Destination Region / City</label>
-                      <select
-                        value={destinationCity}
-                        onChange={e => setDestinationCity(e.target.value)}
-                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
-                      >
-                        <option value="" disabled>Select Canada region</option>
-                        {canadaCities.map(city => (
-                          <option key={city} value={city}>{city}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Full Delivery Street Address</label>
-                        {destinationAddress && (
-                          <span className="text-[9px] text-[#2E7D32] font-semibold flex items-center gap-0.5">
-                            ✓ Auto-saves to My Addresses
-                          </span>
-                        )}
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="Suite #, Street name, City, Postal Code"
-                        value={destinationAddress}
-                        onChange={e => {
-                          setDestinationAddress(e.target.value);
-                          setSelectedSavedAddressId('');
-                        }}
-                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3.5 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setCurrentStep(3)}
-                    disabled={!destinationCity || !destinationAddress}
-                    className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Continue to Category Selection
-                  </button>
-                </section>
-              )}
-
-              {/* STEP 3: Category Grid Selection */}
-              {currentStep === 3 && (
-                <section className="space-y-6 animate-fade-in">
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
-                        3. Item Categories
-                      </h3>
-                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Select all categories containing items you wish to calculate.</p>
-                    </div>
-                    <button onClick={() => setCurrentStep(2)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
-                      Back
-                    </button>
+                    <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Select all categories containing items you wish to calculate.</p>
                   </div>
 
                   {/* 3x3 Grid */}
@@ -4005,26 +3703,26 @@ export default function Dashboard() {
                   </div>
 
                   <button
-                    onClick={() => setCurrentStep(4)}
+                    onClick={() => setCurrentStep(2)}
                     disabled={selectedCategories.length === 0}
                     className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    Continue to Configuration
+                    Continue to Item Configuration
                   </button>
                 </section>
               )}
 
-              {/* STEP 4: Configure Items */}
-              {currentStep === 4 && (
+              {/* STEP 2: Configure Items */}
+              {currentStep === 2 && (
                 <section className="space-y-6 animate-fade-in">
                   <div className="flex justify-between items-end">
                     <div>
                       <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
-                        4. Item Details &amp; Variables
+                        2. Item Details &amp; Variables
                       </h3>
                       <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Configure subcategory quantity and optional details.</p>
                     </div>
-                    <button onClick={() => setCurrentStep(3)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
+                    <button onClick={() => setCurrentStep(1)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
                       Back
                     </button>
                   </div>
@@ -4210,26 +3908,26 @@ export default function Dashboard() {
                   )}
 
                   <button
-                    onClick={() => setCurrentStep(5)}
+                    onClick={() => setCurrentStep(3)}
                     disabled={activeItems.length === 0}
                     className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    Continue to Summary
+                    Continue to Warehouse Handling
                   </button>
                 </section>
               )}
 
-              {/* STEP 5: Summary & Final Actions */}
-              {currentStep === 5 && (
+              {/* STEP 3: Warehouse Handling & Consolidation */}
+              {currentStep === 3 && (
                 <section className="space-y-6 animate-fade-in">
                   <div className="flex justify-between items-end">
                     <div>
                       <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
-                        5. Final Review &amp; Warehouse Actions
+                        3. Warehouse Handling &amp; Consolidation
                       </h3>
-                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Choose locker dispatch action before booking checkout.</p>
+                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Choose locker dispatch action before finalizing delivery address.</p>
                     </div>
-                    <button onClick={() => setCurrentStep(4)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
+                    <button onClick={() => setCurrentStep(2)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
                       Back
                     </button>
                   </div>
@@ -4450,6 +4148,308 @@ export default function Dashboard() {
                         )}
                       </div>
                     )}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentStep(4)}
+                    disabled={warehouseAction === null}
+                    className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Continue to Origin &amp; Warehouse
+                  </button>
+                </section>
+              )}
+
+              {/* STEP 4: Origin & Warehouse */}
+              {currentStep === 4 && (
+                <section className="space-y-6 animate-fade-in">
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
+                        4. Setup Virtual Address &amp; Origin
+                      </h3>
+                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Specify drop-off point and details of incoming items in India.</p>
+                    </div>
+                    <button onClick={() => setCurrentStep(3)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
+                      Back
+                    </button>
+                  </div>
+
+                  {/* Radios */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      onClick={() => setOriginType('online')}
+                      className={`p-4 rounded-2xl border text-left font-bold text-xs uppercase tracking-wider transition-all flex flex-col gap-1 cursor-pointer shadow-sm ${
+                        originType === 'online'
+                          ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
+                          : 'border-black/10 bg-[#FAF8EE] text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-lg">shopping_cart</span>
+                      Online Retailer Store
+                    </button>
+                    <button
+                      onClick={() => setOriginType('personal')}
+                      className={`p-4 rounded-2xl border text-left font-bold text-xs uppercase tracking-wider transition-all flex flex-col gap-1 cursor-pointer shadow-sm ${
+                        originType === 'personal'
+                          ? 'border-[#FF5A65] bg-[#FF5A65]/10 text-[#FF5A65] ring-2 ring-[#FF5A65]/20'
+                          : 'border-black/10 bg-[#FAF8EE] text-[#0E1F38]/70 hover:border-black/20 hover:text-[#0E1F38]'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-lg">house</span>
+                      Personal Courier / Home
+                    </button>
+                  </div>
+
+                  {/* Form Inputs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {originType === 'online' ? (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Store Name</label>
+                          <input
+                            type="text"
+                            placeholder="Amazon, Myntra, Ajio, etc."
+                            value={storeName}
+                            onChange={e => setStoreName(e.target.value)}
+                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                        <div className="space-y-1 relative" id="orderNumberField">
+                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Order Number</label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              placeholder="Order ID or Reference ID"
+                              value={orderNumber}
+                              onChange={e => {
+                                setOrderNumber(e.target.value);
+                                setShowOrderNumberError(false);
+                              }}
+                              className={`w-full bg-[#FAF8EE] border rounded-xl pl-4 pr-12 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm ${
+                                showOrderNumberError ? 'border-red-500' : 'border-black/10'
+                              }`}
+                            />
+                            <button
+                              type="button"
+                              onClick={handlePaste}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#FF5A65] hover:text-[#e24550] text-sm p-1 cursor-pointer"
+                              title="Paste from clipboard"
+                            >
+                              📋
+                            </button>
+                          </div>
+                          {showOrderNumberError && (
+                            <p className="text-[10px] text-red-500 font-semibold mt-1">
+                              Please supply your Retailer Order Number so the hub can verify receipt.
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Sender's Full Name</label>
+                          <input
+                            type="text"
+                            placeholder="John Doe"
+                            value={senderName}
+                            onChange={e => setSenderName(e.target.value)}
+                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Origin City</label>
+                          <input
+                            type="text"
+                            placeholder="Delhi, Mumbai, Jaipur, etc."
+                            value={originCity}
+                            onChange={e => setOriginCity(e.target.value)}
+                            className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* India Warehouse Select */}
+                  <div className="space-y-4 pt-4 border-t border-black/5">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Select India Warehouse Hub</label>
+                      <select
+                        value={selectedWarehouse}
+                        onChange={e => setSelectedWarehouse(e.target.value)}
+                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
+                      >
+                        <option value="" disabled>Select nearest warehouse</option>
+                        {warehouses.map(wh => (
+                          <option key={wh.id} value={wh.id}>
+                            {wh.city} ({wh.pincode || 'Hub'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Virtual address preview */}
+                    {selectedWarehouseObject && (
+                      <div className="p-5 rounded-2xl border border-[#FF5A65]/30 bg-[#FAF8EE] space-y-3 animate-fade-in relative overflow-hidden text-[#0E1F38]">
+                        <span className="material-symbols-outlined absolute top-4 right-4 text-7xl text-[#FF5A65] opacity-5 pointer-events-none">
+                          location_on
+                        </span>
+                        
+                        <div className="flex items-center justify-between gap-2 relative z-10">
+                          <div className="inline-block text-[9px] uppercase tracking-wider font-bold bg-[#FF5A65]/15 text-[#FF5A65] px-2.5 py-1 rounded">
+                            Preview of your Virtual Address
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nameStr = `${user?.user_metadata?.full_name || 'Customer'} / LAYO-${user?.id?.substring(0, 5).toUpperCase() || 'LOCK'}`;
+                              const addrStr = `Name: ${nameStr}\nAddress: ${selectedWarehouseObject.address}\nCity/Pincode: ${selectedWarehouseObject.city} - ${selectedWarehouseObject.pincode || ''}\nPhone: ${selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'}`;
+                              navigator.clipboard.writeText(addrStr);
+                              setCopiedAddress(true);
+                              setTimeout(() => setCopiedAddress(false), 2000);
+                            }}
+                            className={`text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                              copiedAddress
+                                ? 'bg-green-600 text-white'
+                                : 'bg-[#FF5A65] hover:bg-[#e24550] text-white active:scale-95'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-sm leading-none">
+                              {copiedAddress ? 'check' : 'content_copy'}
+                            </span>
+                            <span>{copiedAddress ? 'Copied!' : 'Copy Address'}</span>
+                          </button>
+                        </div>
+
+                        <div className="text-xs space-y-1.5 text-[#0E1F38] leading-relaxed pt-1 font-mono relative z-10">
+                          <p><strong>Name:</strong> {user?.user_metadata?.full_name || 'Customer'} / LAYO-{user?.id?.substring(0, 5).toUpperCase() || 'LOCK'}</p>
+                          <p><strong>Address:</strong> {selectedWarehouseObject.address}</p>
+                          <p><strong>City/Pincode:</strong> {selectedWarehouseObject.city} - {selectedWarehouseObject.pincode || ''}</p>
+                          <p><strong>Phone Number:</strong> {selectedWarehouseObject.contact || selectedWarehouseObject.phone || '+91 98100 12345'} <span className="text-[10px] text-[#FF5A65] font-sans font-semibold">(for courier &amp; order updates)</span></p>
+                        </div>
+                        <p className="text-[10px] text-[#0E1F38]/60 italic pt-1 relative z-10">
+                          Copy coordinates and tags. Full instructions will be shared on successful payment.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentStep(5)}
+                    disabled={!selectedWarehouse}
+                    className="w-full py-4 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-[#e24550] active:scale-[0.98] transition-all shadow-md shadow-[#FF5A65]/20 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Continue to Canada Destination &amp; Payment
+                  </button>
+                </section>
+              )}
+
+              {/* STEP 5: Canada Destination & Payment */}
+              {currentStep === 5 && (
+                <section className="space-y-6 animate-fade-in">
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <h3 className="text-lg font-black text-[#0E1F38] uppercase tracking-wider border-l-4 border-[#FF5A65] pl-3">
+                        5. Canada Destination &amp; Payment
+                      </h3>
+                      <p className="text-[#0E1F38]/60 text-xs mt-1 font-light">Provide drop-off address coordinates inside Canada and complete payment.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowManageAddressesModal(true)}
+                        className="text-xs text-[#2E7D32] font-bold hover:underline flex items-center gap-1 cursor-pointer bg-[#2E7D32]/10 px-2.5 py-1 rounded-lg border border-[#2E7D32]/20 transition-all"
+                      >
+                        📍 My Addresses ({savedAddresses.length})
+                      </button>
+                      <button onClick={() => setCurrentStep(4)} className="text-xs text-[#FF5A65] font-bold hover:underline cursor-pointer">
+                        Back
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Saved Addresses Dropdown Selector */}
+                    {savedAddresses.length > 0 && (
+                      <div className="bg-[#FF5A65]/5 border border-[#FF5A65]/20 p-3.5 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] uppercase font-bold text-[#FF5A65] tracking-wider flex items-center gap-1">
+                            <span>📍 Select Saved Address</span>
+                          </label>
+                          <span className="text-[9px] font-semibold text-[#0E1F38]/60">
+                            {savedAddresses.length} address{savedAddresses.length > 1 ? 'es' : ''} saved
+                          </span>
+                        </div>
+                        <select
+                          value={selectedSavedAddressId}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setSelectedSavedAddressId(val);
+                            if (val === 'new') {
+                              setDestinationAddress('');
+                            } else {
+                              const found = savedAddresses.find(a => a.id === val);
+                              if (found) {
+                                if (found.city) setDestinationCity(found.city);
+                                const fullText = found.line1 + (found.line2 ? `, ${found.line2}` : '') + (found.postal ? ` ${found.postal}` : '');
+                                setDestinationAddress(fullText || found.line1);
+                              }
+                            }
+                          }}
+                          className="w-full bg-white border border-[#FF5A65]/30 rounded-xl px-4 py-3 text-xs text-[#0E1F38] font-bold focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
+                        >
+                          <option value="">-- Select from My Addresses --</option>
+                          {savedAddresses.map(addr => {
+                            const labelText = addr.label ? `[${addr.label}] ` : '';
+                            const detailText = addr.line1 + (addr.city ? `, ${addr.city}` : '');
+                            return (
+                              <option key={addr.id} value={addr.id}>
+                                {labelText}{detailText} {addr.isDefault ? '★ (Default)' : ''}
+                              </option>
+                            );
+                          })}
+                          <option value="new">+ Enter A New Address</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Destination Region / City</label>
+                      <select
+                        value={destinationCity}
+                        onChange={e => setDestinationCity(e.target.value)}
+                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3 text-xs text-[#0E1F38] focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm cursor-pointer"
+                      >
+                        <option value="" disabled>Select Canada region</option>
+                        {canadaCities.map(city => (
+                          <option key={city} value={city}>{city}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] uppercase font-bold text-[#0E1F38]/60">Full Delivery Street Address</label>
+                        {destinationAddress && (
+                          <span className="text-[9px] text-[#2E7D32] font-semibold flex items-center gap-0.5">
+                            ✓ Auto-saves to My Addresses
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Suite #, Street name, City, Postal Code"
+                        value={destinationAddress}
+                        onChange={e => {
+                          setDestinationAddress(e.target.value);
+                          setSelectedSavedAddressId('');
+                        }}
+                        className="w-full bg-[#FAF8EE] border border-black/10 rounded-xl px-4 py-3.5 text-xs text-[#0E1F38] placeholder:text-black/35 focus:border-[#FF5A65] focus:ring-1 focus:ring-[#FF5A65] focus:outline-none transition-all shadow-sm"
+                      />
+                    </div>
                   </div>
 
                   {/* 20% Advance Explanation Banner */}
