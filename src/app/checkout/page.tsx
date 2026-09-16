@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { supabase, insertShipment, getCurrentUser } from '@/lib/supabase';
-import { getPricingSettings } from '@/lib/delhiveryRates';
+import { getPricingSettings, fetchLiveCadToInrRate, getActiveConversionRate } from '@/lib/delhiveryRates';
 
 
 
@@ -57,30 +57,17 @@ export default function Checkout() {
   const [currentUser, setCurrentUser]     = useState<any>(null);
 
   // Exchange rate & pricing
-  const [cadToInrRate, setCadToInrRate] = useState<number>(() => {
-    try {
-      return getPricingSettings().cadToInrRate || 68.0;
-    } catch (e) {
-      return 68.0;
-    }
-  });
+  const [cadToInrRate, setCadToInrRate] = useState<number>(() => getActiveConversionRate());
 
   useEffect(() => {
-    // 1. Fetch live CAD to INR exchange rate
-    const fetchRate = async () => {
-      try {
-        const res = await fetch('https://open.er-api.com/v6/latest/CAD', { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.rates?.INR) {
-            setCadToInrRate(data.rates.INR);
-          }
-        }
-      } catch (err) {
-        console.warn('Using fallback exchange rate (1 CAD = 68.0 INR):', err);
+    // 1. Fetch live CAD to INR exchange rate with safety spread protection
+    fetchLiveCadToInrRate().then(rate => {
+      if (rate && rate > 0) {
+        setCadToInrRate(rate);
       }
-    };
-    fetchRate();
+    }).catch(err => {
+      console.warn('Using fallback exchange rate (1 CAD = 68.0 INR):', err);
+    });
 
     // 2. Fetch authenticated user safely
     getCurrentUser().then(user => {

@@ -8,7 +8,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession, saveDraftEstimate, deleteDraftEstimate, fetchDraftEstimates, stringToUuid, isValidUuid } from '@/lib/supabase';
-import { calculateLayoDeliveryCost, getPricingSettings } from '@/lib/delhiveryRates';
+import { calculateLayoDeliveryCost, getPricingSettings, fetchLiveCadToInrRate, getActiveConversionRate } from '@/lib/delhiveryRates';
 import { formatShipmentId, formatTransactionId, formatUserId, formatWarehouseId } from '@/lib/idGenerator';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
 
@@ -480,29 +480,16 @@ export default function Dashboard() {
   };
 
   // Financial and math helpers
-  const [cadToInrRate, setCadToInrRate] = useState<number>(() => {
-    try {
-      return getPricingSettings().cadToInrRate || 68.0;
-    } catch (e) {
-      return 68.0;
-    }
-  });
+  const [cadToInrRate, setCadToInrRate] = useState<number>(() => getActiveConversionRate());
 
   useEffect(() => {
-    const fetchExchangeRate = async () => {
-      try {
-        const res = await fetch('https://open.er-api.com/v6/latest/CAD', { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.rates && data.rates.INR) {
-            setCadToInrRate(data.rates.INR);
-          }
-        }
-      } catch (err) {
-        console.warn('Using fallback exchange rate (1 CAD = 68.0 INR):', err);
+    fetchLiveCadToInrRate().then(rate => {
+      if (rate && rate > 0) {
+        setCadToInrRate(rate);
       }
-    };
-    fetchExchangeRate();
+    }).catch(err => {
+      console.warn('Could not fetch live CAD to INR rate in dashboard:', err);
+    });
   }, []);
 
   // Load saved flow state from localStorage if exists

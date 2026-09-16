@@ -74,16 +74,45 @@ export default function AdminPortal() {
     opsFeeThreshold: 2500,
     grossMarginPercent: 20,
     gstPercent: 18,
+    cadToInrRate: 68.0,
+    rateMode: 'live',
+    forexBuffer: 0.90,
   });
   const [pricingSavedNotice, setPricingSavedNotice] = useState(false);
+  const [liveForexData, setLiveForexData] = useState<{
+    spotRate: number;
+    buffer: number;
+    effectiveRate: number;
+    source: string;
+    lastUpdated: string;
+  } | null>(null);
+  const [fetchingLiveForex, setFetchingLiveForex] = useState(false);
 
   // Category Matrix Settings
   const [masterCategories, setMasterCategories] = useState<MasterCategoryGroup[]>([]);
   const [categorySavedNotice, setCategorySavedNotice] = useState(false);
 
+  const fetchForex = async (buf?: number) => {
+    setFetchingLiveForex(true);
+    try {
+      const bufferToUse = buf ?? pricingSettings.forexBuffer ?? 0.90;
+      const res = await fetch(`/api/rates/cad-to-inr?buffer=${bufferToUse}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLiveForexData(data);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch live forex rate in admin:', e);
+    } finally {
+      setFetchingLiveForex(false);
+    }
+  };
+
   useEffect(() => {
-    setPricingSettings(getPricingSettings());
+    const current = getPricingSettings();
+    setPricingSettings(current);
     setMasterCategories(loadMasterCategories());
+    fetchForex(current.forexBuffer);
   }, []);
 
   const handleSavePricingSettings = async () => {
@@ -1368,22 +1397,86 @@ export default function AdminPortal() {
                   <p className="text-[9px] text-on-surface-variant/60">Added at last before customer rate.</p>
                 </div>
 
-                {/* CAD to INR Conversion Index */}
-                <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
-                    Conversion Index (1 CAD)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-amber-400">₹</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={pricingSettings.cadToInrRate ?? 68.0}
-                      onChange={e => setPricingSettings(prev => ({ ...prev, cadToInrRate: Number(e.target.value) }))}
-                      className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-amber-400"
-                    />
+                {/* CAD to INR Conversion Index & Mode */}
+                <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm">currency_exchange</span>
+                      Conversion Index
+                    </label>
+                    <div className="flex bg-black/40 rounded-lg p-0.5 border border-white/10 text-[9px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setPricingSettings(prev => ({ ...prev, rateMode: 'live' }))}
+                        className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
+                          pricingSettings.rateMode !== 'manual'
+                            ? 'bg-[#8BC34A] text-[#1B250F]'
+                            : 'text-on-surface-variant hover:text-white'
+                        }`}
+                      >
+                        Live Online
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPricingSettings(prev => ({ ...prev, rateMode: 'manual' }))}
+                        className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
+                          pricingSettings.rateMode === 'manual'
+                            ? 'bg-amber-400 text-black'
+                            : 'text-on-surface-variant hover:text-white'
+                        }`}
+                      >
+                        Manual
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-[9px] text-on-surface-variant/60">1 CAD in INR (₹68.0 protects against loss).</p>
+
+                  {pricingSettings.rateMode === 'manual' ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-amber-400">₹</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={pricingSettings.cadToInrRate ?? 68.0}
+                          onChange={e => setPricingSettings(prev => ({ ...prev, cadToInrRate: Number(e.target.value) }))}
+                          className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+                      <p className="text-[9px] text-amber-300/70">Fixed lock rate (bypasses live market feed).</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between text-[11px] bg-black/30 px-2.5 py-1.5 rounded-xl border border-white/5 font-mono">
+                        <span className="text-white/60">Live Spot Rate:</span>
+                        <span className="text-emerald-400 font-bold">
+                          {fetchingLiveForex ? 'Syncing…' : `₹${liveForexData ? liveForexData.spotRate.toFixed(2) : '68.90'} INR`}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <span className="text-white/70">Stripe/Bank Fee Buffer:</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-amber-400 font-bold">-₹</span>
+                          <input
+                            type="number"
+                            step="0.05"
+                            value={pricingSettings.forexBuffer ?? 0.90}
+                            onChange={e => {
+                              const val = Number(e.target.value);
+                              setPricingSettings(prev => ({ ...prev, forexBuffer: val }));
+                              fetchForex(val);
+                            }}
+                            className="w-16 bg-surface border border-white/10 rounded-lg px-2 py-0.5 text-xs font-bold text-white focus:outline-none focus:border-primary text-right"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] pt-1 text-amber-300 font-bold border-t border-white/5">
+                        <span>Customer Index:</span>
+                        <span className="font-mono text-xs text-white">
+                          1 CAD = ₹{(liveForexData?.effectiveRate || pricingSettings.cachedLiveRate || 68.0).toFixed(2)} INR
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1413,7 +1506,7 @@ export default function AdminPortal() {
                 </div>
                 <div className="bg-black/20 p-3 rounded-2xl border border-white/5 space-y-1">
                   <span className="font-bold text-white block">Step 5: Customer View</span>
-                  <p className="text-[11px]">Customer sees ONLY final rate ($ CAD = Final INR / ₹{pricingSettings.cadToInrRate ?? 68.0}). Internal breakdowns are hidden.</p>
+                  <p className="text-[11px]">Customer sees ONLY final rate ($ CAD = Final INR / ₹{(pricingSettings.rateMode === 'manual' ? (pricingSettings.cadToInrRate || 68.0) : (liveForexData?.effectiveRate || pricingSettings.cachedLiveRate || 68.0)).toFixed(2)}). Mode: {pricingSettings.rateMode === 'manual' ? 'Manual Lock' : 'Live Online with Spread Buffer'}.</p>
                 </div>
               </div>
             </div>
@@ -1447,11 +1540,15 @@ export default function AdminPortal() {
                   </thead>
                   <tbody className="divide-y divide-white/5 text-on-surface">
                     {[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0].map(wt => {
+                      const effectiveIndex = pricingSettings.rateMode === 'manual'
+                        ? (pricingSettings.cadToInrRate || 68.0)
+                        : (liveForexData?.effectiveRate || pricingSettings.cachedLiveRate || 68.0);
+
                       const nCalc = calculateLayoDeliveryCost({
                         weightKg: wt,
                         deliveryType: 'normal',
                         isDocument: false,
-                        cadToInrRate: pricingSettings.cadToInrRate || 68.0,
+                        cadToInrRate: effectiveIndex,
                         opsFeeLow: pricingSettings.opsFeeLow,
                         opsFeeHigh: pricingSettings.opsFeeHigh,
                         opsFeeThreshold: pricingSettings.opsFeeThreshold,
@@ -1463,7 +1560,7 @@ export default function AdminPortal() {
                         weightKg: wt,
                         deliveryType: 'express',
                         isDocument: false,
-                        cadToInrRate: pricingSettings.cadToInrRate || 68.0,
+                        cadToInrRate: effectiveIndex,
                         opsFeeLow: pricingSettings.opsFeeLow,
                         opsFeeHigh: pricingSettings.opsFeeHigh,
                         opsFeeThreshold: pricingSettings.opsFeeThreshold,

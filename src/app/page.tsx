@@ -9,7 +9,7 @@ import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, clearUserSession } from '@/lib/supabase';
-import { calculateLayoDeliveryCost, getPricingSettings } from '@/lib/delhiveryRates';
+import { calculateLayoDeliveryCost, fetchLiveCadToInrRate, getActiveConversionRate } from '@/lib/delhiveryRates';
 
 // Define category configuration for the dynamic Essentials stacked card
 interface CategoryConfig {
@@ -149,6 +149,19 @@ export default function Home() {
   const [activeCatIndex, setActiveCatIndex] = useState(2); // Default to Teens (index 2)
   const activeCategory = CATEGORIES_CONFIG[activeCatIndex] || CATEGORIES_CONFIG[0];
 
+  // Live CAD-to-INR Conversion Rate
+  const [conversionRate, setConversionRate] = useState<number>(() => getActiveConversionRate());
+
+  useEffect(() => {
+    fetchLiveCadToInrRate().then(rate => {
+      if (rate && rate > 0) {
+        setConversionRate(rate);
+      }
+    }).catch(err => {
+      console.warn("Could not fetch live CAD to INR rate on home:", err);
+    });
+  }, []);
+
   // Dynamic Quantities state per category
   const [categoryQtys, setCategoryQtys] = useState<Record<string, { tops: number; bottoms: number; extras: number }>>({
     baby:    { tops: 14, bottoms: 10, extras: 5 },
@@ -221,7 +234,7 @@ export default function Home() {
     weightKg: grossWeightKg,
     deliveryType: 'normal',
     isDocument: false,
-    cadToInrRate: getPricingSettings().cadToInrRate || 68.0,
+    cadToInrRate: conversionRate,
   });
 
   const shippingPrice = topsQty + bottomsQty === 0 ? 0 : Math.round(costCalc.finalPriceCAD);

@@ -129,7 +129,11 @@ export interface LayoPricingSettings {
   opsFeeThreshold: number; // default 2500
   grossMarginPercent: number; // default 20
   gstPercent: number;      // default 18
-  cadToInrRate?: number;   // default 68.0 (Conversion Index)
+  cadToInrRate: number;    // Manual rate / fallback (default: 68.0)
+  rateMode: 'live' | 'manual'; // default: 'live'
+  forexBuffer: number;     // default: 0.90 (INR deducted from live spot rate)
+  cachedLiveRate?: number; // cached effective live rate
+  lastRateFetch?: number;  // timestamp of last live fetch
 }
 
 export const DEFAULT_PRICING_SETTINGS: LayoPricingSettings = {
@@ -139,6 +143,8 @@ export const DEFAULT_PRICING_SETTINGS: LayoPricingSettings = {
   grossMarginPercent: 20,
   gstPercent: 18,
   cadToInrRate: 68.0,
+  rateMode: 'live',
+  forexBuffer: 0.90,
 };
 
 export function getPricingSettings(): LayoPricingSettings {
@@ -151,6 +157,8 @@ export function getPricingSettings(): LayoPricingSettings {
           ...DEFAULT_PRICING_SETTINGS,
           ...parsed,
           cadToInrRate: parsed.cadToInrRate ?? DEFAULT_PRICING_SETTINGS.cadToInrRate,
+          rateMode: parsed.rateMode ?? DEFAULT_PRICING_SETTINGS.rateMode,
+          forexBuffer: parsed.forexBuffer ?? DEFAULT_PRICING_SETTINGS.forexBuffer,
         };
       }
     } catch (e) {
@@ -167,13 +175,52 @@ export function savePricingSettings(settings: LayoPricingSettings) {
 }
 
 /**
+ * Returns currently active conversion rate based on rateMode (Live vs Manual)
+ */
+export function getActiveConversionRate(): number {
+  const settings = getPricingSettings();
+  if (settings.rateMode === 'manual') {
+    return settings.cadToInrRate || 68.0;
+  }
+  return settings.cachedLiveRate || settings.cadToInrRate || 68.0;
+}
+
+/**
+ * Fetches real-time rate from centralized /api/rates/cad-to-inr and caches result
+ */
+export async function fetchLiveCadToInrRate(): Promise<number> {
+  const settings = getPricingSettings();
+  const buffer = settings.forexBuffer ?? 0.90;
+  try {
+    const res = await fetch(`/api/rates/cad-to-inr?buffer=${buffer}`, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      const effectiveRate = Number(data.effectiveRate);
+      if (!isNaN(effectiveRate) && effectiveRate > 50) {
+        if (typeof window !== 'undefined') {
+          savePricingSettings({
+            ...settings,
+            cachedLiveRate: effectiveRate,
+            lastRateFetch: Date.now(),
+          });
+        }
+        return effectiveRate;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch live CAD to INR rate from API, using fallback:', err);
+  }
+  return getActiveConversionRate();
+}
+
+/**
  * Calculate Layo Customer Delivery Price based on:
  * 1. Delivery Type: 'normal' | 'express'
  * 2. Document vs Non-Document parcel
  * 3. Ops Expense: Rs. 300 if carrier cost < Rs. 2,500; Rs. 500 if carrier cost >= Rs. 2,500
  * 4. Gross Margin on (Carrier cost + Ops expense)
  * 5. 18% GST added before final price to customer
- * 6. CAD Conversion Index (Default: 68.0 INR / CAD)
+ * 6. CAD Conversion Index (Default: 68.0 INR / CAD or live rate)
  */
 export function calculateLayoDeliveryCost(params: {
   weightKg: number;
@@ -188,7 +235,7 @@ export function calculateLayoDeliveryCost(params: {
 }): LayoDeliveryCalculation {
   const settings = getPricingSettings();
   const { weightKg, deliveryType, isDocument = false } = params;
-  const cadToInrRate = params.cadToInrRate ?? settings.cadToInrRate ?? 68.0;
+  const cadToInrRate = params.cadToInrRate ?? getActiveConversionRate();
   
   const opsFeeLow = params.opsFeeLow ?? settings.opsFeeLow;
   const opsFeeHigh = params.opsFeeHigh ?? settings.opsFeeHigh;

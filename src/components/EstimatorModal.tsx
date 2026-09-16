@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import { calculateLayoDeliveryCost, getPricingSettings } from '@/lib/delhiveryRates';
+import { calculateLayoDeliveryCost, getPricingSettings, fetchLiveCadToInrRate, getActiveConversionRate } from '@/lib/delhiveryRates';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
 
 /* ── Weight matrix ── */
@@ -135,6 +135,20 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
   const [ageGroups, setAgeGroups] = useState<Record<string, string>>({});
   /* ── Expanded category panels ── */
   const [openCats, setOpenCats]   = useState<string[]>([]);
+
+  /* ── Live CAD-to-INR Conversion Rate ── */
+  const [conversionRate, setConversionRate] = useState<number>(() => getActiveConversionRate());
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchLiveCadToInrRate().then(rate => {
+      if (rate && rate > 0) {
+        setConversionRate(rate);
+      }
+    }).catch(err => {
+      console.warn("Could not fetch live CAD to INR rate:", err);
+    });
+  }, [isOpen]);
 
   /* ── Booking state ── */
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
@@ -283,14 +297,13 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
   const deliveryResult = useMemo(() => {
     const weightKg = calc.effectiveWeight / 1000;
     const isDoc = Object.keys(qtys).some(k => k.startsWith('books-0') && (qtys[k] || 0) > 0);
-    const settings = getPricingSettings();
     return calculateLayoDeliveryCost({
       weightKg,
       deliveryType,
       isDocument: isDoc,
-      cadToInrRate: settings.cadToInrRate || 68.0,
+      cadToInrRate: conversionRate,
     });
-  }, [calc.effectiveWeight, deliveryType, qtys]);
+  }, [calc.effectiveWeight, deliveryType, qtys, conversionRate]);
 
   const totalItemCount = Object.values(qtys).reduce((s, n) => s + n, 0);
 
@@ -695,8 +708,11 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
                     </p>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs font-mono font-bold text-[#0E1F38]/80">
+                    <span className="text-xs font-mono font-bold text-[#0E1F38]/80 block">
                       ≈ ₹{deliveryResult.finalPriceINR.toLocaleString('en-IN')} INR
+                    </span>
+                    <span className="text-[10px] text-[#0E1F38]/50 font-mono">
+                      (1 CAD ≈ ₹{conversionRate.toFixed(2)} INR)
                     </span>
                   </div>
                 </div>
