@@ -24,8 +24,38 @@ const normalizeHoldGroupId = (raw: any): string => {
   return `HOLD-${str}`;
 };
 
+export const isValidOpsShipment = (s: any): boolean => {
+  if (!s || !s.id) return false;
+  const id = String(s.id).trim();
+  const st = String(s.status || '').toLowerCase().trim();
+
+  // 1. Exclude test IDs and mock records
+  if (id.startsWith('TEST-') || id.startsWith('LYS-TEST-') || id === 'test' || st === 'test') {
+    return false;
+  }
+
+  // 2. Exclude demo simulated payments
+  if (s.payment_method === 'demo_simulated') {
+    return false;
+  }
+
+  // 3. Exclude unconfirmed orders, abandoned checkouts, and drafts - Ops is warehouse floor only
+  if (
+    st === 'draft estimate' ||
+    st === 'draft' ||
+    st === 'advance_pending' ||
+    st === 'pending' ||
+    st === 'initiated' ||
+    st === 'cancelled'
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 const getHoldGroupKey = (s: any): string | null => {
-  if (!s) return null;
+  if (!s || !isValidOpsShipment(s)) return null;
   const st = String(s.status || '').toLowerCase();
 
   const rawHold = s.raw_hold_group_id || s.stage_timestamps?.raw_hold_group_id || s.items?.raw_hold_group_id;
@@ -157,28 +187,23 @@ export default function WarehouseOpsPortal() {
     if (!isQuiet) setIsFetching(true);
     try {
       const { data } = await fetchShipments();
-      const dbShips = data ?? [];
+      const rawDb = data ?? [];
 
-      let localShips: any[] = [];
+      const cleanShips = rawDb
+        .filter(isValidOpsShipment)
+        .sort(
+          (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
+
+      // Overwrite local storage so any legacy test, dummy, or unconfirmed data is purged from client browser
       try {
-        const rawLocal = localStorage.getItem('layo_ops_shipments');
-        if (rawLocal) {
-          localShips = JSON.parse(rawLocal);
-        }
+        localStorage.setItem('layo_ops_shipments', JSON.stringify(cleanShips));
       } catch (e) {}
 
-      const mergedMap = new Map();
-      localShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
-      dbShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
-
-      const mergedList = Array.from(mergedMap.values()).sort(
-        (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-      );
-
-      setShipments(mergedList);
+      setShipments(cleanShips);
 
       // Check for fully paid shipments
-      const fullyPaidShipments = mergedList.filter(s => isShipmentFullyPaid(s));
+      const fullyPaidShipments = cleanShips.filter(s => isShipmentFullyPaid(s));
       const currentPaidIds = new Set(fullyPaidShipments.map(s => s.id));
 
       if (!initialFetchDone.current) {
@@ -229,8 +254,12 @@ export default function WarehouseOpsPortal() {
       }
 
       if (selectedShipment) {
-        const updated = mergedList.find(s => s.id === selectedShipment.id);
-        if (updated) setSelectedShipment((prev: any) => ({ ...prev, ...updated }));
+        const updated = cleanShips.find(s => s.id === selectedShipment.id);
+        if (updated) {
+          setSelectedShipment((prev: any) => ({ ...prev, ...updated }));
+        } else {
+          setSelectedShipment(null);
+        }
       }
     } catch (err) {
       console.error('Failed to load shipments for ops', err);
@@ -261,7 +290,7 @@ export default function WarehouseOpsPortal() {
 
     if (activeTab === 'inward') {
       return shipments
-        .filter(s => (s.status === 'paid' || s.status === 'draft' || s.status === 'advance_paid') && matchesSearch(s))
+        .filter(s => isValidOpsShipment(s) && (s.status === 'paid' || s.status === 'advance_paid') && matchesSearch(s))
         .map(s => ({
           ...s,
           isCombinedGroup: false,
@@ -271,7 +300,7 @@ export default function WarehouseOpsPortal() {
 
     if (activeTab === 'qc') {
       return shipments
-        .filter(s => (s.status === 'inwarded' || s.status === 'arrived') && matchesSearch(s))
+        .filter(s => isValidOpsShipment(s) && (s.status === 'inwarded' || s.status === 'arrived') && matchesSearch(s))
         .map(s => ({
           ...s,
           isCombinedGroup: false,
@@ -284,6 +313,7 @@ export default function WarehouseOpsPortal() {
     const nonHoldList: any[] = [];
 
     shipments.forEach(s => {
+      if (!isValidOpsShipment(s)) return;
       const holdKey = getHoldGroupKey(s);
       if (holdKey) {
         if (!holdMap.has(holdKey)) holdMap.set(holdKey, []);
@@ -392,6 +422,7 @@ export default function WarehouseOpsPortal() {
     const holdMap = new Map<string, any[]>();
     const nonHoldList: any[] = [];
     shipments.forEach(s => {
+      if (!isValidOpsShipment(s)) return;
       const holdKey = getHoldGroupKey(s);
       if (holdKey) {
         if (!holdMap.has(holdKey)) holdMap.set(holdKey, []);
@@ -423,9 +454,8 @@ export default function WarehouseOpsPortal() {
   // Hold & Combine groups — group by user_id or hold_group_id for the hold_combine tab
   const holdGroups = useMemo(() => {
     const holdShipments = shipments.filter(s =>
-      getHoldGroupKey(s) !== null &&
-      s.status !== 'Draft Estimate' &&
-      s.status !== 'draft'
+      isValidOpsShipment(s) &&
+      getHoldGroupKey(s) !== null
     );
     const groups: Record<string, any[]> = {};
     holdShipments.forEach(s => {
@@ -1157,6 +1187,20 @@ export default function WarehouseOpsPortal() {
         </div>
 
         <div className="flex items-center gap-2 relative">
+          <button
+            onClick={() => {
+              try {
+                localStorage.removeItem('layo_ops_shipments');
+              } catch (e) {}
+              loadOpsData(false);
+            }}
+            className="text-xs bg-white/10 hover:bg-white/20 text-white font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Purge cache and sync directly with database"
+          >
+            <span className={`material-symbols-outlined text-sm ${isFetching ? 'animate-spin' : ''}`}>sync</span>
+            <span className="hidden sm:inline">Sync</span>
+          </button>
+
           {/* Notification Bell with Badge */}
           <div className="relative">
             <button
