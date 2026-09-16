@@ -586,7 +586,7 @@ export default function WarehouseOpsPortal() {
     const totalAdvancePaidCAD = groupShipments.reduce((sum: number, s: any) => {
       const adv = s?.advance_amount_cad;
       if (adv !== undefined && adv !== null) return sum + Number(adv);
-      const est = Number(s?.estimated_cost_cad || (s?.total_cost ? s.total_cost / 70.4 : 25.0));
+      const est = Number(s?.estimated_cost_cad || (s?.total_cost ? s.total_cost / 68.0 : 25.0));
       return sum + Math.round(est * 0.20 * 100) / 100;
     }, 0);
 
@@ -1920,7 +1920,7 @@ export default function WarehouseOpsPortal() {
                       const totalAdvancePaidCAD = (groupShipments || []).reduce((sum: number, s: any) => {
                         const adv = s?.advance_amount_cad;
                         if (adv !== undefined && adv !== null) return sum + Number(adv);
-                        const est = Number(s?.estimated_cost_cad || (s?.total_cost ? s.total_cost / 70.4 : 25.0));
+                        const est = Number(s?.estimated_cost_cad || (s?.total_cost ? s.total_cost / 68.0 : 25.0));
                         return sum + Math.round(est * 0.20 * 100) / 100;
                       }, 0);
                       const remainingBalanceCAD = Math.max(0, Math.round((finalCostCAD - totalAdvancePaidCAD) * 100) / 100);

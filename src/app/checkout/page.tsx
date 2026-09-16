@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { supabase, insertShipment, getCurrentUser } from '@/lib/supabase';
+import { getPricingSettings } from '@/lib/delhiveryRates';
 
 
 
@@ -56,7 +57,13 @@ export default function Checkout() {
   const [currentUser, setCurrentUser]     = useState<any>(null);
 
   // Exchange rate & pricing
-  const [cadToInrRate, setCadToInrRate] = useState<number>(70.4);
+  const [cadToInrRate, setCadToInrRate] = useState<number>(() => {
+    try {
+      return getPricingSettings().cadToInrRate || 68.0;
+    } catch (e) {
+      return 68.0;
+    }
+  });
 
   useEffect(() => {
     // 1. Fetch live CAD to INR exchange rate
@@ -70,7 +77,7 @@ export default function Checkout() {
           }
         }
       } catch (err) {
-        console.warn('Using fallback exchange rate (1 CAD = 70.4 INR):', err);
+        console.warn('Using fallback exchange rate (1 CAD = 68.0 INR):', err);
       }
     };
     fetchRate();
@@ -143,7 +150,7 @@ export default function Checkout() {
   ) || warehouses[0];
 
   const costCAD = parseFloat(orderData?.totalCostCAD || orderData?.cost || '25.00');
-  const totalINR = Math.round(costCAD * (cadToInrRate || 70.4));
+  const totalINR = Math.round(costCAD * (cadToInrRate || 68.0));
   const totalWeightKg = parseFloat(orderData?.totalWeight || orderData?.weight || '1.00');
   const itemsList = orderData?.items || [];
 
@@ -154,7 +161,7 @@ export default function Checkout() {
   const advanceCAD = isBalancePayment 
     ? parseFloat(orderData?.remainingBalanceCAD || costCAD)
     : Math.round(costCAD * 0.20 * 100) / 100;
-  const advanceINR = Math.round(advanceCAD * (cadToInrRate || 70.4));
+  const advanceINR = Math.round(advanceCAD * (cadToInrRate || 68.0));
   const estimatedRemainingCAD = isBalancePayment 
     ? 0 
     : Math.round((costCAD - advanceCAD) * 100) / 100;

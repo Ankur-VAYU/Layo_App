@@ -8,7 +8,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, insertShipment, fetchShipments, parseShipment, updateShipmentStage, clearUserSession, saveDraftEstimate, deleteDraftEstimate, fetchDraftEstimates, stringToUuid, isValidUuid } from '@/lib/supabase';
-import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
+import { calculateLayoDeliveryCost, getPricingSettings } from '@/lib/delhiveryRates';
 import { formatShipmentId, formatTransactionId, formatUserId, formatWarehouseId } from '@/lib/idGenerator';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
 
@@ -480,7 +480,13 @@ export default function Dashboard() {
   };
 
   // Financial and math helpers
-  const [cadToInrRate, setCadToInrRate] = useState(70.4);
+  const [cadToInrRate, setCadToInrRate] = useState<number>(() => {
+    try {
+      return getPricingSettings().cadToInrRate || 68.0;
+    } catch (e) {
+      return 68.0;
+    }
+  });
 
   useEffect(() => {
     const fetchExchangeRate = async () => {
@@ -493,7 +499,7 @@ export default function Dashboard() {
           }
         }
       } catch (err) {
-        console.warn('Using fallback exchange rate (1 CAD = 70.4 INR):', err);
+        console.warn('Using fallback exchange rate (1 CAD = 68.0 INR):', err);
       }
     };
     fetchExchangeRate();
@@ -726,7 +732,7 @@ export default function Dashboard() {
       const combinedAdvancePaid = items.reduce((sum, it) => {
         const adv = Number(it.advance_amount_cad || 0);
         if (adv > 0) return sum + adv;
-        const est = Number(it.estimated_cost_cad || (it.total_cost ? it.total_cost / 70.4 : 0));
+        const est = Number(it.estimated_cost_cad || (it.total_cost ? it.total_cost / (cadToInrRate || 68.0) : 0));
         return sum + Math.round(est * 0.20 * 100) / 100;
       }, 0);
 
@@ -821,7 +827,7 @@ export default function Dashboard() {
           || items.reduce((sum, it) => sum + Number(it.total_weight || 1.0), 0);
 
         const combinedCost = items.reduce((max, it) => Math.max(max, Number(it.final_cost_cad || 0)), 0)
-          || items.reduce((sum, it) => sum + Number(it.total_cost ? it.total_cost / 70.4 : 25.0), 0);
+          || items.reduce((sum, it) => sum + Number(it.total_cost ? it.total_cost / (cadToInrRate || 68.0) : 25.0), 0);
 
         const allItems = items.flatMap(it => Array.isArray(it.items) ? it.items : []);
         const allPhotos = items.flatMap(it => Array.isArray(it.qc_photos) ? it.qc_photos : []);
@@ -928,74 +934,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleSimulateRemainingBalancePayment = async (grp: any) => {
-    setIsProcessingPayment(true);
-    try {
-      const targetId = grp.groupKey || (grp.items && grp.items[0]?.id);
-      const normalizedTargetKey = normalizeHoldGroupId(targetId);
-      const matchingShips = shipments.filter(s => (normalizedTargetKey && getHoldGroupKey(s) === normalizedTargetKey) || s.hold_group_id === targetId || s.id === targetId || formatShipmentId(s.id) === formatShipmentId(targetId));
-      
-      const dueCAD = grp.combinedRemainingBalance || 0;
-      const shipsToUpdate = matchingShips.length > 0 ? matchingShips : (grp.items || []);
-      
-      for (const ship of shipsToUpdate) {
-        await updateShipmentStage(
-          ship.id,
-          'repacked',
-          ship.stage_timestamps,
-          {
-            payment_status: 'completed',
-            remaining_balance_cad: 0,
-          },
-          { id: user?.id || null, email: user?.email || null, role: 'customer' },
-          `Remaining balance payment of $${dueCAD.toFixed(2)} CAD completed via Demo Simulation`
-        );
-      }
 
-      // Update local storage shipments list
-      try {
-        const localKey = getLocalShipmentsKey(user?.id);
-        const rawLocal = localStorage.getItem(localKey) || localStorage.getItem('layo_local_shipments');
-        if (rawLocal) {
-          const allLocal = JSON.parse(rawLocal);
-          const targetIds = new Set(shipsToUpdate.map((s: any) => s.id));
-          const updated = allLocal.map((s: any) => targetIds.has(s.id) ? { ...s, payment_status: 'completed', remaining_balance_cad: 0 } : s);
-          localStorage.setItem(localKey, JSON.stringify(updated));
-        }
-      } catch (e) {}
-
-      // Record transaction
-      if (shipsToUpdate[0]) {
-        await supabase.from('transactions').insert({
-          shipment_id: shipsToUpdate[0].id,
-          user_id: user?.id || null,
-          amount_cad: dueCAD,
-          amount_inr: Math.round(dueCAD * (cadToInrRate || 61)),
-          currency: 'CAD',
-          exchange_rate: cadToInrRate || 61,
-          payment_method: 'demo_simulated',
-          status: 'completed',
-          customer_email: user?.email || null,
-          customer_name: user?.email || null,
-          description: `Layo demo balance payment — ${grp.isHoldGroup ? 'Hold Group #' + targetId : 'Locker #' + formatShipmentId(shipsToUpdate[0].id)}`,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-      }
-
-      setPaymentBanner({
-        type: 'success',
-        message: `Simulated balance payment of $${dueCAD.toFixed(2)} CAD completed! Package is fully paid and queued for airfreight dispatch.`
-      });
-      setActiveTab('history');
-      if (user?.id) fetchDashboardData(user.id);
-    } catch (err: any) {
-      console.error('Demo balance payment error:', err);
-      alert('Error: ' + (err.message || 'Failed to simulate payment'));
-    } finally {
-      setIsProcessingPayment(false);
-    }
-  };
 
   // Check for return from Stripe Checkout
   useEffect(() => {
@@ -1049,9 +988,9 @@ export default function Dashboard() {
                     shipment_id: matchingShips[0].id,
                     user_id: user?.id || null,
                     amount_cad: data.amountTotal || 0,
-                    amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 61)) : 0,
+                    amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 68.0)) : 0,
                     currency: data.currency?.toUpperCase() || 'CAD',
-                    exchange_rate: cadToInrRate || 61,
+                    exchange_rate: cadToInrRate || 68.0,
                     payment_method: 'stripe',
                     stripe_session_id: sessionId,
                     stripe_payment_intent_id: data.paymentIntentId || null,
@@ -1100,7 +1039,7 @@ export default function Dashboard() {
                     destination_address: data.metadata?.destination_address || destinationAddress || 'Canada',
                     india_warehouse: selectedWarehouse || null,
                     total_weight: totalWeight,
-                    total_cost: Math.round(estCostCAD * (cadToInrRate || 70.4)),
+                    total_cost: Math.round(estCostCAD * (cadToInrRate || 68.0)),
                     payment_method: 'stripe',
                     warehouse_action: isHold ? 'hold' : 'ship',
                     expected_packages: 1,
@@ -1150,9 +1089,9 @@ export default function Dashboard() {
                   shipment_id: bookingTargetId,
                   user_id: user?.id || null,
                   amount_cad: data.amountTotal || 0,
-                  amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 61)) : 0,
+                  amount_inr: data.amountTotal ? Math.round(data.amountTotal * (cadToInrRate || 68.0)) : 0,
                   currency: data.currency?.toUpperCase() || 'CAD',
-                  exchange_rate: cadToInrRate || 61,
+                  exchange_rate: cadToInrRate || 68.0,
                   payment_method: 'stripe',
                   stripe_session_id: sessionId,
                   stripe_payment_intent_id: data.paymentIntentId || null,
@@ -1306,19 +1245,19 @@ export default function Dashboard() {
         if (rawLocal) {
           const allLocal = JSON.parse(rawLocal);
           if (Array.isArray(allLocal)) {
-            localShips = allLocal.filter((s: any) => s && s.user_id === userId);
+            localShips = allLocal.filter((s: any) => s && s.user_id === userId && s.payment_method !== 'demo_simulated');
           }
         }
       } catch (e) {}
 
       // Dual-sync merge: DB records take precedence, local backups fill any gaps
       const mergedMap = new Map();
-      localShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, parseShipment(s) || s); });
-      dbDrafts.forEach((d: any) => { if (d && d.id) mergedMap.set(d.id, d); });
-      dbShips.forEach(s => { if (s && s.id) mergedMap.set(s.id, s); });
+      localShips.forEach(s => { if (s && s.id && s.payment_method !== 'demo_simulated') mergedMap.set(s.id, parseShipment(s) || s); });
+      dbDrafts.forEach((d: any) => { if (d && d.id && d.payment_method !== 'demo_simulated') mergedMap.set(d.id, d); });
+      dbShips.forEach(s => { if (s && s.id && s.payment_method !== 'demo_simulated') mergedMap.set(s.id, s); });
 
       const mergedList = Array.from(mergedMap.values())
-        .filter((s: any) => s && (!s.user_id || s.user_id === userId))
+        .filter((s: any) => s && (!s.user_id || s.user_id === userId) && s.payment_method !== 'demo_simulated')
         .sort(
           (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         );
@@ -1805,150 +1744,12 @@ export default function Dashboard() {
     }
   };
 
-  // Demo / Test Payment simulation (Bypasses Stripe for testing)
-  const handleSimulatedPayment = async () => {
-    if (activeItems.length === 0 || !selectedWarehouse || !destinationAddress) {
-      return;
-    }
 
-    setIsProcessingPayment(true);
-    autoSaveAddress(destinationCity, destinationAddress);
-
-    const itemsPayload = activeItems.map(i => ({
-      category: i.category,
-      subcategory: i.subcategory,
-      quantity: i.qty,
-      demographic: i.demo,
-      weight: i.weightGrams / 1000,
-    }));
-
-    if (promoQty > 0) {
-      itemsPayload.push({
-        category: 'promo',
-        subcategory: 'Free light weight items (max 50 gm)',
-        quantity: promoQty,
-        demographic: null,
-        weight: 0,
-      });
-    }
-
-    try {
-      const totalCostCAD = totals.totalPriceCAD > 0 ? totals.totalPriceCAD : 25.0;
-      const advanceCAD = Math.round(totalCostCAD * 0.20 * 100) / 100;
-      const advanceINR = Math.round(totals.totalPriceINR * 0.20);
-      const remainingCAD = Math.round((totalCostCAD - advanceCAD) * 100) / 100;
-
-      const resolvedHoldGroupId = warehouseAction === 'hold'
-        ? (holdOptionMode === 'existing' && selectedHoldGroupId ? normalizeHoldGroupId(selectedHoldGroupId) : normalizeHoldGroupId(`HOLD-${orderNumber || 'LYS' + Math.floor(1000 + Math.random() * 9000)}`))
-        : null;
-
-      let groupExpectedPackages = morePackages || 1;
-      if (warehouseAction === 'hold' && holdOptionMode === 'existing' && resolvedHoldGroupId) {
-        const existingGroup = activeHoldGroups.find(g => g.group_id === resolvedHoldGroupId || g.groupKey === resolvedHoldGroupId);
-        if (existingGroup) {
-          groupExpectedPackages = existingGroup.expectedPackages;
-        } else {
-          const groupShips = shipments.filter(s => getHoldGroupKey(s) === resolvedHoldGroupId);
-          groupExpectedPackages = groupShips.reduce((max, it) => Math.max(max, Number(it.expected_packages || 0)), 1);
-        }
-      }
-
-      const targetStatus = warehouseAction === 'hold' ? 'holding' : 'paid';
-      let targetShipmentId = editingDraftId;
-      let newOrUpdatedShipment: any = null;
-
-      if (editingDraftId) {
-        const updatePayload = {
-          destination_city: destinationCity || 'Toronto (GTA)',
-          destination_address: destinationAddress || '',
-          india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
-          external_order_id: orderNumber || null,
-          total_weight: totals.totalWeightKg,
-          total_cost: totals.totalPriceINR,
-          items: itemsPayload,
-          payment_method: 'demo_simulated',
-          status: targetStatus,
-          payment_status: 'advance_paid',
-          advance_pct: 20,
-          advance_amount_cad: advanceCAD,
-          advance_paid_inr: advanceINR,
-          estimated_weight: totals.totalWeightKg,
-          estimated_cost_cad: totalCostCAD,
-          remaining_balance_cad: remainingCAD,
-          warehouse_action: warehouseAction || 'ship',
-          expected_packages: groupExpectedPackages,
-          hold_group_id: resolvedHoldGroupId,
-          updated_at: new Date().toISOString()
-        };
-
-        await supabase
-          .from('shipments')
-          .update(updatePayload)
-          .eq('id', editingDraftId);
-
-        newOrUpdatedShipment = { id: editingDraftId, user_id: user?.id, ...updatePayload };
-      } else {
-        const { data } = await insertShipment({
-          user_id: user?.id,
-          mode: originType === 'online' ? 'Online Retailer' : 'Personal Goods',
-          destination_city: destinationCity || 'Toronto (GTA)',
-          destination_address: destinationAddress || 'Canada',
-          india_warehouse: selectedWarehouse || 'Delhi NCR Hub',
-          external_order_id: orderNumber || null,
-          total_weight: totals.totalWeightKg,
-          total_cost: totals.totalPriceINR,
-          items: itemsPayload,
-          status: targetStatus,
-          payment_status: 'advance_paid',
-          advance_pct: 20,
-          advance_amount_cad: advanceCAD,
-          advance_paid_inr: advanceINR,
-          estimated_weight: totals.totalWeightKg,
-          estimated_cost_cad: totalCostCAD,
-          remaining_balance_cad: remainingCAD,
-          payment_method: 'demo_simulated',
-          warehouse_action: warehouseAction || 'ship',
-          expected_packages: groupExpectedPackages,
-          hold_group_id: resolvedHoldGroupId,
-        }, { id: user?.id, email: user?.email, role: 'customer' });
-
-        if (data && data[0]) {
-          targetShipmentId = data[0].id;
-          newOrUpdatedShipment = parseShipment(data[0]);
-        }
-      }
-
-      if (newOrUpdatedShipment) {
-        setShipments(prev => {
-          const nextList = [newOrUpdatedShipment, ...prev.filter(x => x.id !== newOrUpdatedShipment.id)];
-          try {
-            localStorage.setItem(getLocalShipmentsKey(user?.id), JSON.stringify(nextList));
-          } catch (e) {}
-          return nextList;
-        });
-      }
-
-      setPaymentBanner({
-        type: 'success',
-        message: `🧪 Demo Payment Complete! Order status updated to "${targetStatus}". You can now test Order #2.`
-      });
-
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('layo_dashboard_flow_state');
-      }
-      handleStartNewOrder();
-      if (user?.id) fetchDashboardData(user.id);
-    } catch (err) {
-      console.error('Demo payment simulation failed:', err);
-    } finally {
-      setIsProcessingPayment(false);
-    }
-  };
 
   // Pay existing draft directly via Stripe (20% Advance)
   const handlePayDraftWithStripe = async (s: any) => {
     try {
-      const inrRate = cadToInrRate > 0 ? cadToInrRate : 70.4;
+      const inrRate = cadToInrRate > 0 ? cadToInrRate : 68.0;
       const totalINR = Number(s.total_cost) || 0;
       let totalCAD = totalINR > 0 ? Number((totalINR / inrRate).toFixed(2)) : 25.0;
       if (s.estimated_cost_cad && Number(s.estimated_cost_cad) > 0 && Number(s.estimated_cost_cad) < (totalINR > 100 ? totalINR / 10 : 5000)) {
@@ -2994,14 +2795,6 @@ export default function Dashboard() {
                             <span className="material-symbols-outlined text-sm">lock_open</span>
                             <span>Pay Remaining Balance (${(Number(grp.combinedRemainingBalance) || 0).toFixed(2)} CAD)</span>
                           </button>
-                          <button
-                            onClick={() => handleSimulateRemainingBalancePayment(grp)}
-                            disabled={isProcessingPayment}
-                            className="w-full py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-amber-500/20 active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <span className="material-symbols-outlined text-xs text-amber-700">science</span>
-                            <span>🧪 Demo Mode: Simulate Balance Payment (Bypass Stripe for Testing)</span>
-                          </button>
                         </div>
                       ) : (
                         <button
@@ -3401,7 +3194,7 @@ export default function Dashboard() {
 
                       {/* Shipment Pricing & Action Controls */}
                       {(() => {
-                        const inrRate = cadToInrRate > 0 ? cadToInrRate : 70.4;
+                        const inrRate = cadToInrRate > 0 ? cadToInrRate : 68.0;
                         const totalINR = Number(s.total_cost) || 0;
                         let totalCAD = totalINR > 0 ? Number((totalINR / inrRate).toFixed(2)) : 25.0;
                         if (s.estimated_cost_cad && Number(s.estimated_cost_cad) > 0 && Number(s.estimated_cost_cad) < (totalINR > 100 ? totalINR / 10 : 5000)) {
@@ -4348,16 +4141,6 @@ export default function Dashboard() {
                         )}
                       </button>
                     </div>
-
-                    {/* Demo / Testing payment button */}
-                    <button
-                      onClick={handleSimulatedPayment}
-                      disabled={activeItems.length === 0 || !selectedWarehouse || !destinationAddress || isProcessingPayment}
-                      className="w-full py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 font-bold text-[11px] uppercase tracking-wider rounded-xl hover:bg-amber-500/20 active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <span className="material-symbols-outlined text-xs text-amber-700">science</span>
-                      <span>🧪 Demo Mode: Simulate 20% Advance (Bypass Stripe for Testing)</span>
-                    </button>
                   </div>
                 </section>
               )}
@@ -4538,7 +4321,7 @@ export default function Dashboard() {
 
       {/* ── Order Details Popup Modal ── */}
       {selectedOrderDetails && (() => {
-        const inrRate = cadToInrRate > 0 ? cadToInrRate : 70.4;
+        const inrRate = cadToInrRate > 0 ? cadToInrRate : 68.0;
         const statusNormalized = String(selectedOrderDetails.status || '').toLowerCase();
         const isDraft = statusNormalized === 'draft' || statusNormalized === 'draft estimate';
         const isHold = selectedOrderDetails.isHoldGroup || selectedOrderDetails.warehouse_action === 'hold' || statusNormalized === 'holding';

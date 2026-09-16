@@ -9,7 +9,7 @@ import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, clearUserSession } from '@/lib/supabase';
-import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
+import { calculateLayoDeliveryCost, getPricingSettings } from '@/lib/delhiveryRates';
 
 // Define category configuration for the dynamic Essentials stacked card
 interface CategoryConfig {
@@ -221,7 +221,7 @@ export default function Home() {
     weightKg: grossWeightKg,
     deliveryType: 'normal',
     isDocument: false,
-    cadToInrRate: 70.4,
+    cadToInrRate: getPricingSettings().cadToInrRate || 68.0,
   });
 
   const shippingPrice = topsQty + bottomsQty === 0 ? 0 : Math.round(costCalc.finalPriceCAD);

@@ -129,6 +129,7 @@ export interface LayoPricingSettings {
   opsFeeThreshold: number; // default 2500
   grossMarginPercent: number; // default 20
   gstPercent: number;      // default 18
+  cadToInrRate?: number;   // default 68.0 (Conversion Index)
 }
 
 export const DEFAULT_PRICING_SETTINGS: LayoPricingSettings = {
@@ -137,13 +138,21 @@ export const DEFAULT_PRICING_SETTINGS: LayoPricingSettings = {
   opsFeeThreshold: 2500,
   grossMarginPercent: 20,
   gstPercent: 18,
+  cadToInrRate: 68.0,
 };
 
 export function getPricingSettings(): LayoPricingSettings {
   if (typeof window !== 'undefined') {
     try {
       const saved = localStorage.getItem('layo_pricing_settings');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_PRICING_SETTINGS,
+          ...parsed,
+          cadToInrRate: parsed.cadToInrRate ?? DEFAULT_PRICING_SETTINGS.cadToInrRate,
+        };
+      }
     } catch (e) {
       console.error('Failed to parse pricing settings', e);
     }
@@ -164,6 +173,7 @@ export function savePricingSettings(settings: LayoPricingSettings) {
  * 3. Ops Expense: Rs. 300 if carrier cost < Rs. 2,500; Rs. 500 if carrier cost >= Rs. 2,500
  * 4. Gross Margin on (Carrier cost + Ops expense)
  * 5. 18% GST added before final price to customer
+ * 6. CAD Conversion Index (Default: 68.0 INR / CAD)
  */
 export function calculateLayoDeliveryCost(params: {
   weightKg: number;
@@ -176,9 +186,10 @@ export function calculateLayoDeliveryCost(params: {
   grossMarginPercent?: number;
   gstPercent?: number;
 }): LayoDeliveryCalculation {
-  const { weightKg, deliveryType, isDocument = false, cadToInrRate = 70.4 } = params;
-  
   const settings = getPricingSettings();
+  const { weightKg, deliveryType, isDocument = false } = params;
+  const cadToInrRate = params.cadToInrRate ?? settings.cadToInrRate ?? 68.0;
+  
   const opsFeeLow = params.opsFeeLow ?? settings.opsFeeLow;
   const opsFeeHigh = params.opsFeeHigh ?? settings.opsFeeHigh;
   const opsFeeThreshold = params.opsFeeThreshold ?? settings.opsFeeThreshold;
@@ -215,7 +226,8 @@ export function calculateLayoDeliveryCost(params: {
   const gstINR = Math.round(subtotalINR * (gstPercent / 100));
   const finalPriceINR = subtotalINR + gstINR;
   
-  const finalPriceCAD = Number((finalPriceINR / (cadToInrRate || 70.4)).toFixed(2));
+  const effectiveRate = cadToInrRate > 0 ? cadToInrRate : 68.0;
+  const finalPriceCAD = Number((finalPriceINR / effectiveRate).toFixed(2));
 
   return {
     weightKg: effectiveWeightKg,

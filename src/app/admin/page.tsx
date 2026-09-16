@@ -1282,7 +1282,7 @@ export default function AdminPortal() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 {/* Ops Expense Low */}
                 <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block">
@@ -1367,6 +1367,24 @@ export default function AdminPortal() {
                   </div>
                   <p className="text-[9px] text-on-surface-variant/60">Added at last before customer rate.</p>
                 </div>
+
+                {/* CAD to INR Conversion Index */}
+                <div className="space-y-1.5 bg-black/20 p-4 rounded-2xl border border-white/5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
+                    Conversion Index (1 CAD)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-amber-400">₹</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={pricingSettings.cadToInrRate ?? 68.0}
+                      onChange={e => setPricingSettings(prev => ({ ...prev, cadToInrRate: Number(e.target.value) }))}
+                      className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <p className="text-[9px] text-on-surface-variant/60">1 CAD in INR (₹68.0 protects against loss).</p>
+                </div>
               </div>
             </div>
 
@@ -1395,7 +1413,7 @@ export default function AdminPortal() {
                 </div>
                 <div className="bg-black/20 p-3 rounded-2xl border border-white/5 space-y-1">
                   <span className="font-bold text-white block">Step 5: Customer View</span>
-                  <p className="text-[11px]">Customer sees ONLY final rate ($ CAD = Final INR / 70.4). Internal breakdowns are hidden.</p>
+                  <p className="text-[11px]">Customer sees ONLY final rate ($ CAD = Final INR / ₹{pricingSettings.cadToInrRate ?? 68.0}). Internal breakdowns are hidden.</p>
                 </div>
               </div>
             </div>
@@ -1433,7 +1451,7 @@ export default function AdminPortal() {
                         weightKg: wt,
                         deliveryType: 'normal',
                         isDocument: false,
-                        cadToInrRate: 70.4,
+                        cadToInrRate: pricingSettings.cadToInrRate || 68.0,
                         opsFeeLow: pricingSettings.opsFeeLow,
                         opsFeeHigh: pricingSettings.opsFeeHigh,
                         opsFeeThreshold: pricingSettings.opsFeeThreshold,
@@ -1445,7 +1463,7 @@ export default function AdminPortal() {
                         weightKg: wt,
                         deliveryType: 'express',
                         isDocument: false,
-                        cadToInrRate: 70.4,
+                        cadToInrRate: pricingSettings.cadToInrRate || 68.0,
                         opsFeeLow: pricingSettings.opsFeeLow,
                         opsFeeHigh: pricingSettings.opsFeeHigh,
                         opsFeeThreshold: pricingSettings.opsFeeThreshold,

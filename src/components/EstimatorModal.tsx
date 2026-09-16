@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import { calculateLayoDeliveryCost } from '@/lib/delhiveryRates';
+import { calculateLayoDeliveryCost, getPricingSettings } from '@/lib/delhiveryRates';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
 
 /* ── Weight matrix ── */
@@ -283,11 +283,12 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
   const deliveryResult = useMemo(() => {
     const weightKg = calc.effectiveWeight / 1000;
     const isDoc = Object.keys(qtys).some(k => k.startsWith('books-0') && (qtys[k] || 0) > 0);
+    const settings = getPricingSettings();
     return calculateLayoDeliveryCost({
       weightKg,
       deliveryType,
       isDocument: isDoc,
-      cadToInrRate: 70.4
+      cadToInrRate: settings.cadToInrRate || 68.0,
     });
   }, [calc.effectiveWeight, deliveryType, qtys]);
 
