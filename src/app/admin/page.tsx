@@ -777,7 +777,8 @@ export default function AdminPortal() {
                   const isPhone = inq.contact && !isEmail && /\d/.test(inq.contact);
                   const cleanPhone = isPhone ? inq.contact.replace(/[^\d+]/g, '') : '';
                   const formattedDate = inq.created_at
-                    ? new Date(inq.created_at).toLocaleString('en-IN', {
+                    ? new Date(inq.created_at).toLocaleString('en-US', {
+                        timeZone: 'America/Toronto',
                         day: '2-digit',
                         month: 'short',
                         year: 'numeric',
@@ -801,7 +802,7 @@ export default function AdminPortal() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <h3 className="text-sm font-bold text-white">{inq.name || 'Anonymous Visitor'}</h3>
                               <span className="text-[10px] text-on-surface-variant bg-white/5 px-2 py-0.5 rounded font-mono">
-                                📅 {formattedDate} IST
+                                📅 {formattedDate} EST
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1">
