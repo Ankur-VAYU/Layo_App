@@ -10,6 +10,7 @@ import EstimatorModal from '@/components/EstimatorModal';
 import { useAuth } from '@/components/AuthProvider';
 import { supabase, clearUserSession } from '@/lib/supabase';
 import { calculateLayoDeliveryCost, fetchLiveCadToInrRate, getActiveConversionRate } from '@/lib/delhiveryRates';
+import { trackCTA } from '@/lib/analytics';
 
 // Define category configuration for the dynamic Essentials stacked card
 interface CategoryConfig {
@@ -560,6 +561,7 @@ export default function Home() {
             <Link
               href="/dashboard?tab=new"
               onClick={() => {
+                trackCTA('cta_start_shipping', { location: 'hero' });
                 if (typeof window !== 'undefined') {
                   try {
                     localStorage.removeItem('layo_dashboard_flow_state');
@@ -572,6 +574,7 @@ export default function Home() {
             </Link>
             <a
               href="https://wa.me/19058070163?text=Hi%20Layo%2C%20I%20would%20like%20to%20use%20the%20Buy%20for%20Me%20service."
+              onClick={() => trackCTA('cta_buy_for_me', { location: 'hero' })}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-block px-8 py-3.5 bg-[#FF5A65]/10 text-[#FF5A65] border-2 border-[#FF5A65] hover:bg-[#FF5A65]/20 font-bold text-base md:text-lg rounded-full transition-all cursor-pointer text-center shadow-sm"
@@ -812,7 +815,10 @@ export default function Home() {
                 return (
                   <button
                     key={cat.id}
-                    onClick={() => setActiveCatIndex(idx)}
+                    onClick={() => {
+                      trackCTA('cta_category_select', { category_id: cat.id, category_name: cat.tabLabel });
+                      setActiveCatIndex(idx);
+                    }}
                     className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-[#0E1F38] text-white shadow-md scale-105 ring-2 ring-[#0E1F38]/20'
@@ -1088,7 +1094,10 @@ export default function Home() {
             </div>
 
             <button
-              onClick={() => setModalOpen(true)}
+              onClick={() => {
+                trackCTA('cta_send_orders_open_calculator', { location: 'savings_card' });
+                setModalOpen(true);
+              }}
               className="w-full md:w-auto px-10 py-4 bg-[#FF5A65] text-white font-bold text-sm uppercase tracking-wider rounded-xl hover:bg-[#E24550] transition-colors shadow-md shadow-[#FF5A65]/10 cursor-pointer"
             >
               Send My Orders Here
@@ -1098,13 +1107,17 @@ export default function Home() {
           {/* Bottom calculator links */}
           <div className="flex gap-4 w-full justify-center pt-4">
             <button
-              onClick={() => setModalOpen(true)}
+              onClick={() => {
+                trackCTA('cta_calculate_shipping', { location: 'page_bottom' });
+                setModalOpen(true);
+              }}
               className="px-8 py-3.5 bg-[#0E1F38] text-white hover:bg-[#060D18] font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
             >
               Calculate Shipping
             </button>
             <Link
               href="/know-more"
+              onClick={() => trackCTA('cta_know_more', { location: 'page_bottom' })}
               className="px-8 py-3.5 border-2 border-[#0E1F38] text-[#0E1F38] hover:bg-black/5 font-bold text-xs uppercase tracking-wider rounded-xl transition-all text-center"
             >
               Know More
@@ -1141,7 +1154,7 @@ export default function Home() {
                 <ul className="space-y-3 font-semibold text-xs md:text-sm text-[#0E1F38]/70">
                   <li><Link href="/about" className="hover:text-[#FF5A65] transition-colors">About Layo</Link></li>
                   <li><Link href="/know-more" className="hover:text-[#FF5A65] transition-colors text-left">How It Works</Link></li>
-                  <li><button onClick={() => setModalOpen(true)} className="hover:text-[#FF5A65] transition-colors text-left">Shipping Calculator</button></li>
+                  <li><button onClick={() => { trackCTA('cta_calculate_shipping', { location: 'footer' }); setModalOpen(true); }} className="hover:text-[#FF5A65] transition-colors text-left">Shipping Calculator</button></li>
                   <li><Link href="/tracking" className="hover:text-[#FF5A65] transition-colors">Track Shipment</Link></li>
                 </ul>
 

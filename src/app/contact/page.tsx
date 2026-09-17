@@ -3,6 +3,7 @@
 
 import { useRouter } from 'next/navigation';
 import Logo from '@/components/Logo';
+import { trackCTA } from '@/lib/analytics';
 
 const PHONE = '9058070163';
 const WHATSAPP_MSG = encodeURIComponent('Hi Layo! I have a question about shipping from India to Canada.');
@@ -37,6 +38,7 @@ export default function ContactPage() {
         <div className="grid grid-cols-2 gap-3">
           <a
             href={`tel:+1${PHONE}`}
+            onClick={() => trackCTA('cta_contact_call')}
             className="flex flex-col items-center gap-2 bg-[#1a1a1a] border border-white/10 rounded-2xl py-5 hover:border-primary/30 hover:bg-primary/5 active:scale-95 transition-all"
           >
             <span className="material-symbols-outlined text-primary text-3xl">call</span>
@@ -45,6 +47,7 @@ export default function ContactPage() {
           </a>
           <a
             href={`https://wa.me/1${PHONE}?text=${WHATSAPP_MSG}`}
+            onClick={() => trackCTA('cta_contact_whatsapp', { location: 'card' })}
             target="_blank"
             rel="noopener noreferrer"
             className="flex flex-col items-center gap-2 bg-[#1a1a1a] border border-white/10 rounded-2xl py-5 hover:border-[#25D366]/30 hover:bg-[#25D366]/5 active:scale-95 transition-all"
@@ -77,7 +80,7 @@ export default function ContactPage() {
             <span className="material-symbols-outlined text-primary text-xl leading-none flex-shrink-0 mt-0.5">mail</span>
             <div>
               <p className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-0.5">Email</p>
-              <a href="mailto:layohq@gmail.com" className="text-sm font-bold text-white hover:text-primary transition-colors">
+              <a href="mailto:layohq@gmail.com" onClick={() => trackCTA('cta_contact_email')} className="text-sm font-bold text-white hover:text-primary transition-colors">
                 layohq@gmail.com
               </a>
               <p className="text-[10px] text-on-surface-variant mt-0.5">Response typically within 2 hours</p>
@@ -131,6 +134,7 @@ export default function ContactPage() {
         {/* Quick WhatsApp CTA */}
         <a
           href={`https://wa.me/91${PHONE}?text=${WHATSAPP_MSG}`}
+          onClick={() => trackCTA('cta_contact_whatsapp', { location: 'bottom_button' })}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 w-full py-4 bg-[#25D366] text-white font-bold text-sm uppercase tracking-widest rounded-2xl hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_8px_30px_rgba(37,211,102,0.2)]"

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { calculateLayoDeliveryCost, getPricingSettings, fetchLiveCadToInrRate, getActiveConversionRate } from '@/lib/delhiveryRates';
 import { loadMasterCategories } from '@/lib/categoryMatrix';
+import { trackCTA } from '@/lib/analytics';
 
 /* ── Weight matrix ── */
 const CATEGORIES = [
@@ -326,6 +327,13 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
 
   /* ── Proceed action ── */
   const handleProceed = () => {
+    trackCTA('cta_estimator_proceed_clicked', {
+      total_items: totalItemCount,
+      total_weight_kg: calc.effectiveWeight / 1000,
+      price_cad: deliveryResult.finalPriceCAD,
+      origin,
+    });
+
     if (calc.isPromoOnly) {
       setPromoOnlyError(true);
       return;
@@ -333,6 +341,7 @@ export default function EstimatorModal({ isOpen, onClose }: Props) {
     setPromoOnlyError(false);
 
     if (!user) {
+      trackCTA('cta_estimator_login_prompt_shown');
       setShowLoginPrompt(true);
       return;
     }

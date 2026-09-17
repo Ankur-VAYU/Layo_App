@@ -6,6 +6,7 @@ import Image from 'next/image';
 import Logo from '@/components/Logo';
 import EstimatorModal from '@/components/EstimatorModal';
 import { supabase } from '@/lib/supabase';
+import { trackCTA } from '@/lib/analytics';
 
 // Step item structure for timeline
 interface TimelineStep {
@@ -307,7 +308,10 @@ export default function KnowMorePage() {
 
           <div className="text-center pt-4">
             <button
-              onClick={() => setModalOpen(true)}
+              onClick={() => {
+                trackCTA('cta_calculate_shipping', { location: 'know_more_page' });
+                setModalOpen(true);
+              }}
               className="px-8 py-3.5 bg-[#FF5A65] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-[#E24550] transition-all shadow-sm cursor-pointer"
             >
               Calculate Your Shipping
