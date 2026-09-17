@@ -119,27 +119,44 @@ export default function KnowMorePage() {
     if (!contactForm.name || !contactForm.contact) return;
 
     try {
-      // 1. Save to Database
-      const { error } = await supabase
-        .from('contact_submissions')
-        .insert([
+      // 1. Submit via backend API to save to DB and trigger instant email alert to layohq@gmail.com
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: contactForm.name,
+          contact: contactForm.contact,
+          message: contactForm.message,
+        }),
+      });
+
+      if (!res.ok) {
+        // Direct Supabase fallback if API route failed
+        await supabase.from('contact_submissions').insert([
           {
             name: contactForm.name,
             contact: contactForm.contact,
             message: contactForm.message,
           }
         ]);
-
-      if (error) {
-        console.error('Error saving contact submission to database:', error);
       }
     } catch (err) {
       console.error('Failed to submit contact form:', err);
+      // Fallback: direct Supabase insert
+      try {
+        await supabase.from('contact_submissions').insert([
+          {
+            name: contactForm.name,
+            contact: contactForm.contact,
+            message: contactForm.message,
+          }
+        ]);
+      } catch (dbErr) {
+        console.error('Direct fallback insert failed:', dbErr);
+      }
     }
 
-
-
-    // 3. Update UI state
+    // 2. Update UI state
     setContactSubmitted(true);
     setTimeout(() => {
       setContactForm({ name: '', contact: '', message: '' });

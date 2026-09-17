@@ -49,7 +49,7 @@ const STATUS_COLORS: Record<string, string> = {
   delivered: '#10b981',
 };
 
-type AdminTab = 'orders' | 'warehouses' | 'ops_team' | 'analytics' | 'cards' | 'pricing' | 'categories';
+type AdminTab = 'orders' | 'inquiries' | 'warehouses' | 'ops_team' | 'analytics' | 'cards' | 'pricing' | 'categories';
 
 const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com', 'ankur.iitd.nita@gmail.com'];
 
@@ -61,9 +61,11 @@ export default function AdminPortal() {
   const [shipments, setShipments] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [opsStaffList, setOpsStaffList] = useState<any[]>([]);
+  const [contactSubmissions, setContactSubmissions] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [inquirySearch, setInquirySearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -207,17 +209,30 @@ export default function AdminPortal() {
 
   const fetchAllData = async () => {
     setIsFetching(true);
-    const [shipsResult, whs, cards, staff] = await Promise.all([
+    const [shipsResult, whs, cards, staff, inquiriesResult] = await Promise.all([
       fetchShipments(),
       supabase.from('warehouses').select('*').order('created_at', { ascending: true }),
       fetchHaulCardsFromDb(),
       supabase.from('ops_staff').select('*').order('created_at', { ascending: false }),
+      supabase.from('contact_submissions').select('*').order('created_at', { ascending: false }),
     ]);
     if (shipsResult.data) setShipments(shipsResult.data);
     if (whs.data) setWarehouses(whs.data);
     if (cards) setHaulCards(cards);
     if (staff.data) setOpsStaffList(staff.data);
+    if (inquiriesResult.data) setContactSubmissions(inquiriesResult.data);
     setIsFetching(false);
+  };
+
+  const handleDeleteInquiry = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this customer inquiry?')) return;
+    try {
+      const { error } = await supabase.from('contact_submissions').delete().eq('id', id);
+      if (error) throw error;
+      setContactSubmissions(prev => prev.filter(i => i.id !== id));
+    } catch (err: any) {
+      alert(`Failed to delete inquiry: ${err.message}`);
+    }
   };
 
   const handleApproveStaff = async (staffId: string, staffEmail: string) => {
@@ -317,6 +332,16 @@ export default function AdminPortal() {
     });
   }, [shipments, searchQuery, statusFilter]);
 
+  const filteredInquiries = useMemo(() => {
+    if (!inquirySearch.trim()) return contactSubmissions;
+    const q = inquirySearch.toLowerCase();
+    return contactSubmissions.filter(i =>
+      (i.name && i.name.toLowerCase().includes(q)) ||
+      (i.contact && i.contact.toLowerCase().includes(q)) ||
+      (i.message && i.message.toLowerCase().includes(q))
+    );
+  }, [contactSubmissions, inquirySearch]);
+
   // Analytics
   const stats = useMemo(() => {
     const total = shipments.length;
@@ -374,16 +399,21 @@ export default function AdminPortal() {
             <p className="text-[9px] uppercase font-bold tracking-widest text-on-surface-variant mb-3">Main Menu</p>
             {(
               [
-                { id: 'orders',     icon: 'package_2',    label: 'Orders' },
-                { id: 'pricing',    icon: 'calculate',    label: 'Pricing & Tariff' },
-                { id: 'categories', icon: 'category',     label: 'Weight Matrix' },
-                { id: 'ops_team',   icon: 'badge',        label: 'Ops Staff' },
-                { id: 'warehouses', icon: 'home_storage', label: 'Warehouses' },
-                { id: 'analytics',  icon: 'bar_chart',    label: 'Analytics' },
-                { id: 'cards',      icon: 'style',        label: 'Haul Cards' },
+                { id: 'orders',     icon: 'package_2',          label: 'Orders' },
+                { id: 'inquiries',  icon: 'mark_email_unread',  label: 'Inquiries' },
+                { id: 'pricing',    icon: 'calculate',          label: 'Pricing & Tariff' },
+                { id: 'categories', icon: 'category',           label: 'Weight Matrix' },
+                { id: 'ops_team',   icon: 'badge',              label: 'Ops Staff' },
+                { id: 'warehouses', icon: 'home_storage',       label: 'Warehouses' },
+                { id: 'analytics',  icon: 'bar_chart',          label: 'Analytics' },
+                { id: 'cards',      icon: 'style',              label: 'Haul Cards' },
               ] as { id: AdminTab; icon: string; label: string }[]
             ).map(item => {
-              const pendingCount = item.id === 'ops_team' ? opsStaffList.filter(s => s.status === 'pending').length : 0;
+              const pendingCount = item.id === 'ops_team' 
+                ? opsStaffList.filter(s => s.status === 'pending').length 
+                : item.id === 'inquiries' 
+                  ? contactSubmissions.length 
+                  : 0;
               return (
                 <button
                   key={item.id}
@@ -663,6 +693,182 @@ export default function AdminPortal() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ──────────── INQUIRIES TAB ──────────── */}
+        {activeTab === 'inquiries' && (
+          <section className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-6 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-xl font-extrabold text-white">Customer Inquiries &amp; Leads</h2>
+                  <span className="bg-primary/20 text-primary border border-primary/30 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono">
+                    {contactSubmissions.length} Total
+                  </span>
+                </div>
+                <p className="text-on-surface-variant text-xs mt-1">
+                  Messages submitted via the website contact form ("Get In Touch With Us Here"). Alerts auto-forwarded to <strong className="text-white">layohq@gmail.com</strong>.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={fetchAllData}
+                  disabled={isFetching}
+                  className="px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Refresh Inquiries"
+                >
+                  <span className={`material-symbols-outlined text-sm ${isFetching ? 'animate-spin' : ''}`}>refresh</span>
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            {/* Search Filter */}
+            {contactSubmissions.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-surface p-3 rounded-xl border border-white/5">
+                <div className="relative w-full sm:w-80">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">
+                    search
+                  </span>
+                  <input
+                    type="text"
+                    value={inquirySearch}
+                    onChange={e => setInquirySearch(e.target.value)}
+                    placeholder="Search by name, email, phone, message..."
+                    className="w-full pl-9 pr-8 py-2 bg-background border border-white/10 rounded-lg text-xs text-white placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
+                  />
+                  {inquirySearch && (
+                    <button
+                      type="button"
+                      onClick={() => setInquirySearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="text-xs text-on-surface-variant font-bold">
+                  Showing {filteredInquiries.length} of {contactSubmissions.length} inquiries
+                </div>
+              </div>
+            )}
+
+            {/* Inquiries list */}
+            {filteredInquiries.length === 0 ? (
+              <div className="py-16 text-center space-y-3 bg-surface/50 border border-dashed border-white/10 rounded-2xl">
+                <span className="material-symbols-outlined text-4xl text-on-surface-variant/40">inbox</span>
+                <p className="text-sm text-on-surface-variant font-medium">
+                  {inquirySearch ? 'No inquiries matching your search.' : 'No customer inquiries received yet.'}
+                </p>
+                <p className="text-xs text-on-surface-variant/60">
+                  New submissions from the website contact form will appear here and trigger instant email alerts to layohq@gmail.com.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {filteredInquiries.map((inq: any) => {
+                  const isEmail = inq.contact && inq.contact.includes('@');
+                  const isPhone = inq.contact && !isEmail && /\d/.test(inq.contact);
+                  const cleanPhone = isPhone ? inq.contact.replace(/[^\d+]/g, '') : '';
+                  const formattedDate = inq.created_at
+                    ? new Date(inq.created_at).toLocaleString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                      })
+                    : 'Recent';
+
+                  return (
+                    <div
+                      key={inq.id}
+                      className="bg-surface border border-white/10 rounded-2xl p-5 hover:border-white/20 transition-all space-y-4 relative shadow-sm"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-base flex-shrink-0">
+                            {inq.name ? inq.name[0].toUpperCase() : 'C'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-sm font-bold text-white">{inq.name || 'Anonymous Visitor'}</h3>
+                              <span className="text-[10px] text-on-surface-variant bg-white/5 px-2 py-0.5 rounded font-mono">
+                                📅 {formattedDate} IST
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-primary font-bold flex items-center gap-1 font-mono">
+                                <span className="material-symbols-outlined text-xs">
+                                  {isEmail ? 'mail' : 'call'}
+                                </span>
+                                {inq.contact}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quick action buttons */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {isEmail && (
+                            <a
+                              href={`mailto:${inq.contact}?subject=Re: Your Inquiry with Layo`}
+                              className="px-3 py-1.5 bg-primary/15 hover:bg-primary text-primary hover:text-black border border-primary/30 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer"
+                            >
+                              <span className="material-symbols-outlined text-xs">reply</span>
+                              Reply Email
+                            </a>
+                          )}
+                          {cleanPhone && (
+                            <>
+                              <a
+                                href={`tel:${cleanPhone}`}
+                                className="px-3 py-1.5 bg-white/5 hover:bg-white/15 text-white border border-white/10 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-xs">call</span>
+                                Call
+                              </a>
+                              <a
+                                href={`https://wa.me/${cleanPhone.replace('+', '')}?text=Hi%20${encodeURIComponent(inq.name || '')},%20thank%20you%20for%20contacting%20Layo!`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-black border border-emerald-500/30 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-xs">chat</span>
+                                WhatsApp
+                              </a>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteInquiry(inq.id)}
+                            className="p-1.5 text-on-surface-variant hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
+                            title="Delete this inquiry"
+                          >
+                            <span className="material-symbols-outlined text-base leading-none">delete</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Message Content */}
+                      <div className="bg-background/80 rounded-xl p-4 border border-white/5 text-xs text-white/90 leading-relaxed space-y-1">
+                        <span className="text-[9px] uppercase tracking-wider text-on-surface-variant font-bold block">
+                          Message / Inquiry Details:
+                        </span>
+                        <p className="whitespace-pre-wrap font-sans text-sm text-gray-200">
+                          {inq.message || <em className="text-gray-500 font-normal">No additional message provided.</em>}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
