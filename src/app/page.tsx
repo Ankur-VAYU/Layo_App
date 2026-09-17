@@ -1210,7 +1210,7 @@ export default function Home() {
 
                 <div className="space-y-1">
                   <span className="text-[10px] font-black uppercase tracking-wider text-[#0E1F38]/50 block">Business hours</span>
-                  <p className="font-medium">Mon – Sat: 10 AM – 7 PM IST</p>
+                  <p className="font-medium">Mon – Sat: 10 AM – 7 PM EST</p>
                 </div>
 
                 <div className="space-y-1">

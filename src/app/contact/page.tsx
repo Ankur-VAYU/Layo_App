@@ -69,7 +69,7 @@ export default function ContactPage() {
               <a href={`tel:+1${PHONE}`} className="text-sm font-bold text-white hover:text-primary transition-colors">
                 +1 {PHONE}
               </a>
-              <p className="text-[10px] text-on-surface-variant mt-0.5">Available Mon–Sat, 10 AM – 7 PM IST</p>
+              <p className="text-[10px] text-on-surface-variant mt-0.5">Available Mon–Sat, 10 AM – 7 PM EST</p>
             </div>
           </div>
 
