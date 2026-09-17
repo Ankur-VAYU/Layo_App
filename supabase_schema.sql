@@ -483,6 +483,33 @@ BEGIN
   END IF;
 END $$;
 
+-- =========================================================
+-- 14. Website Analytics & CTA Events Table
+-- =========================================================
+CREATE TABLE IF NOT EXISTS website_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_name VARCHAR NOT NULL,
+  event_type VARCHAR DEFAULT 'cta_click', -- 'page_view' | 'cta_click'
+  page_path VARCHAR,
+  properties JSONB DEFAULT '{}'::jsonb,
+  session_id VARCHAR,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
+-- Indexes for efficient analytics queries
+CREATE INDEX IF NOT EXISTS idx_website_events_name ON website_events(event_name);
+CREATE INDEX IF NOT EXISTS idx_website_events_type ON website_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_website_events_created_at ON website_events(created_at);
 
+-- Enable RLS
+ALTER TABLE website_events ENABLE ROW LEVEL SECURITY;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='website_events' AND policyname='Allow public insert website_events') THEN
+    CREATE POLICY "Allow public insert website_events" ON website_events FOR INSERT WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='website_events' AND policyname='Allow admin read website_events') THEN
+    CREATE POLICY "Allow admin read website_events" ON website_events FOR SELECT USING (true);
+  END IF;
+END $$;

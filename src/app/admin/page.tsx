@@ -51,6 +51,20 @@ const STATUS_COLORS: Record<string, string> = {
 
 type AdminTab = 'orders' | 'inquiries' | 'warehouses' | 'ops_team' | 'analytics' | 'cards' | 'pricing' | 'categories';
 
+const CTA_FRIENDLY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
+  cta_start_shipping: { label: 'Start Shipping (Hero)', icon: 'local_shipping', color: '#FF5A65' },
+  cta_buy_for_me: { label: 'Buy for Me (WhatsApp)', icon: 'chat', color: '#25D366' },
+  cta_category_select: { label: 'Category Switcher', icon: 'category', color: '#6366f1' },
+  cta_send_orders_open_calculator: { label: 'Send Orders (Open Calculator)', icon: 'calculate', color: '#f59e0b' },
+  cta_calculate_shipping: { label: 'Calculate Shipping', icon: 'calculate', color: '#3b82f6' },
+  cta_know_more: { label: 'Know More', icon: 'info', color: '#8b5cf6' },
+  cta_estimator_proceed_clicked: { label: 'Estimator: Proceed to Book', icon: 'shopping_cart_checkout', color: '#10b981' },
+  cta_estimator_login_prompt_shown: { label: 'Estimator: Login Prompt', icon: 'lock_open', color: '#ec4899' },
+  cta_contact_whatsapp: { label: 'WhatsApp Inquiry', icon: 'support_agent', color: '#25D366' },
+  cta_contact_call: { label: 'Direct Phone Call', icon: 'call', color: '#06b6d4' },
+  cta_contact_email: { label: 'Direct Email', icon: 'mail', color: '#a855f7' },
+};
+
 const ADMIN_EMAILS = ['admin@layo.com', 'ankur@layo.com', 'ankur.iitd.nita@gmail.com'];
 
 export default function AdminPortal() {
@@ -68,6 +82,11 @@ export default function AdminPortal() {
   const [inquirySearch, setInquirySearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Website Events & Analytics
+  const [websiteEvents, setWebsiteEvents] = useState<any[]>([]);
+  const [analyticsTimeRange, setAnalyticsTimeRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
+  const [eventsLoading, setEventsLoading] = useState(false);
 
   // Pricing Settings
   const [pricingSettings, setPricingSettings] = useState<LayoPricingSettings>({
@@ -207,20 +226,40 @@ export default function AdminPortal() {
     }
   }, [user, loading, router]);
 
+  const fetchWebsiteEvents = async () => {
+    setEventsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('website_events')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      if (!error && data) {
+        setWebsiteEvents(data);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch website events:', e);
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
   const fetchAllData = async () => {
     setIsFetching(true);
-    const [shipsResult, whs, cards, staff, inquiriesResult] = await Promise.all([
+    const [shipsResult, whs, cards, staff, inquiriesResult, eventsResult] = await Promise.all([
       fetchShipments(),
       supabase.from('warehouses').select('*').order('created_at', { ascending: true }),
       fetchHaulCardsFromDb(),
       supabase.from('ops_staff').select('*').order('created_at', { ascending: false }),
       supabase.from('contact_submissions').select('*').order('created_at', { ascending: false }),
+      supabase.from('website_events').select('*').order('created_at', { ascending: false }).limit(1000),
     ]);
     if (shipsResult.data) setShipments(shipsResult.data);
     if (whs.data) setWarehouses(whs.data);
     if (cards) setHaulCards(cards);
     if (staff.data) setOpsStaffList(staff.data);
     if (inquiriesResult.data) setContactSubmissions(inquiriesResult.data);
+    if (eventsResult?.data) setWebsiteEvents(eventsResult.data);
     setIsFetching(false);
   };
 
@@ -976,94 +1015,370 @@ export default function AdminPortal() {
         )}
 
         {/* ──────────── ANALYTICS TAB ──────────── */}
-        {activeTab === 'analytics' && (
-          <section className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-6">
-            <div>
-              <h2 className="text-xl font-extrabold text-white">Aggregated Analytics</h2>
-              <p className="text-on-surface-variant text-xs mt-1">Detailed metric visualizations and activity logs.</p>
-            </div>
+        {activeTab === 'analytics' && (() => {
+          // Filter website events by selected time range
+          const now = Date.now();
+          const filteredEvents = websiteEvents.filter((ev) => {
+            if (!ev.created_at) return false;
+            const evTime = new Date(ev.created_at).getTime();
+            if (analyticsTimeRange === 'today') {
+              const startOfDay = new Date().setHours(0, 0, 0, 0);
+              return evTime >= startOfDay;
+            }
+            if (analyticsTimeRange === '7d') {
+              return now - evTime <= 7 * 24 * 60 * 60 * 1000;
+            }
+            if (analyticsTimeRange === '30d') {
+              return now - evTime <= 30 * 24 * 60 * 60 * 1000;
+            }
+            return true;
+          });
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              
-              {/* Status Breakdown */}
-              <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Orders by Status</h3>
-                <div className="space-y-3.5">
-                  {STATUS_STEPS.map(st => {
-                    const count = stats.byStatus[st] || 0;
-                    const pct = stats.total ? Math.round((count / stats.total) * 100) : 0;
-                    return (
-                      <div key={st} className="space-y-1 text-xs">
-                        <div className="flex justify-between font-bold">
-                          <span className="text-on-surface-variant">{STATUS_LABELS[st]}</span>
-                          <span style={{ color: STATUS_COLORS[st] }}>{count}</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%`, backgroundColor: STATUS_COLORS[st] }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+          let pageViews = 0;
+          let ctaClicks = 0;
+          const sessions = new Set<string>();
+          const ctaCounts: Record<string, number> = {};
+          const pageCounts: Record<string, number> = {};
 
-              {/* Top Destinations */}
-              <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Top Destinations</h3>
-                <div className="space-y-3 text-xs">
-                  {(() => {
-                    const counts: Record<string, number> = {};
-                    shipments.forEach(s => {
-                      if (s.destination_city) counts[s.destination_city] = (counts[s.destination_city] || 0) + 1;
-                    });
-                    return Object.entries(counts)
-                      .sort((a, b) => b[1] - a[1])
-                      .slice(0, 6)
-                      .map(([city, count]) => (
-                        <div key={city} className="flex justify-between items-center py-2 border-b border-white/5 last:border-b-0">
-                          <span className="text-white font-bold">{city}</span>
-                          <span className="text-primary font-bold">{count} shipments</span>
-                        </div>
-                      ));
-                  })()}
-                </div>
-              </div>
+          filteredEvents.forEach((ev) => {
+            if (ev.session_id) sessions.add(ev.session_id);
+            if (ev.event_type === 'page_view' || ev.event_name === 'page_view') {
+              pageViews++;
+              const p = ev.page_path || '/';
+              pageCounts[p] = (pageCounts[p] || 0) + 1;
+            } else {
+              ctaClicks++;
+              ctaCounts[ev.event_name] = (ctaCounts[ev.event_name] || 0) + 1;
+            }
+          });
 
-              {/* Recent Activity List */}
-              <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4 md:col-span-2">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Recent Activity Logs</h3>
-                <div className="space-y-3 text-xs">
-                  {shipments.slice(0, 10).map(s => (
-                    <div key={s.id} className="flex justify-between items-center border-b border-white/5 pb-2 last:border-b-0 last:pb-0">
-                      <div className="flex items-center gap-2">
-                        <span 
-                          className="w-2.5 h-2.5 rounded-full" 
-                          style={{ backgroundColor: STATUS_COLORS[s.status] || '#64748b' }}
-                        />
-                        <span className="text-white">
-                          Order to <strong className="text-primary">{s.destination_city}</strong> — {s.total_weight}kg
-                        </span>
-                      </div>
-                      <div className="flex gap-4 items-center">
-                        <span 
-                          className="font-bold text-[10px] uppercase tracking-wider"
-                          style={{ color: STATUS_COLORS[s.status] || '#64748b' }}
-                        >
-                          {STATUS_LABELS[s.status]}
-                        </span>
-                        <span className="text-on-surface-variant text-[11px]">{new Date(s.created_at).toLocaleDateString()}</span>
-                      </div>
+          const sortedCtas = Object.entries(ctaCounts).sort((a, b) => b[1] - a[1]);
+          const sortedPages = Object.entries(pageCounts).sort((a, b) => b[1] - a[1]);
+          const topCta = sortedCtas[0] ? sortedCtas[0] : null;
+
+          return (
+            <div className="space-y-8">
+              {/* 1. Website Traffic & CTA Engagement Section */}
+              <section className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-2xl">monitoring</span>
+                      <h2 className="text-xl font-extrabold text-white">Website Traffic & CTA Engagement</h2>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <p className="text-on-surface-variant text-xs mt-1">
+                      Real-time user views and CTA button clicks logged directly to your Supabase database.
+                    </p>
+                  </div>
 
+                  {/* Range Selector & Refresh */}
+                  <div className="flex items-center gap-2">
+                    <div className="bg-background border border-white/10 rounded-xl p-1 flex text-xs">
+                      {(['today', '7d', '30d', 'all'] as const).map((rng) => (
+                        <button
+                          key={rng}
+                          onClick={() => setAnalyticsTimeRange(rng)}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                            analyticsTimeRange === rng
+                              ? 'bg-primary text-white shadow-sm'
+                              : 'text-on-surface-variant hover:text-white'
+                          }`}
+                        >
+                          {rng === 'today' ? 'Today' : rng === '7d' ? '7 Days' : rng === '30d' ? '30 Days' : 'All Time'}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={fetchWebsiteEvents}
+                      disabled={eventsLoading}
+                      title="Refresh analytics data"
+                      className="w-9 h-9 rounded-xl border border-white/10 bg-background flex items-center justify-center text-on-surface-variant hover:text-white hover:border-primary/50 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <span className={`material-symbols-outlined text-base ${eventsLoading ? 'animate-spin' : ''}`}>
+                        refresh
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4 KPI Summary Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-background border border-white/5 rounded-xl p-4 space-y-1">
+                    <div className="flex items-center justify-between text-on-surface-variant">
+                      <span className="text-[11px] font-bold uppercase tracking-wider">Page Views</span>
+                      <span className="material-symbols-outlined text-primary text-lg">visibility</span>
+                    </div>
+                    <p className="text-2xl font-black text-white">{pageViews}</p>
+                    <p className="text-[10px] text-on-surface-variant">Total route visits</p>
+                  </div>
+
+                  <div className="bg-background border border-white/5 rounded-xl p-4 space-y-1">
+                    <div className="flex items-center justify-between text-on-surface-variant">
+                      <span className="text-[11px] font-bold uppercase tracking-wider">CTA Clicks</span>
+                      <span className="material-symbols-outlined text-emerald-400 text-lg">touch_app</span>
+                    </div>
+                    <p className="text-2xl font-black text-white">{ctaClicks}</p>
+                    <p className="text-[10px] text-on-surface-variant">Button & link interactions</p>
+                  </div>
+
+                  <div className="bg-background border border-white/5 rounded-xl p-4 space-y-1">
+                    <div className="flex items-center justify-between text-on-surface-variant">
+                      <span className="text-[11px] font-bold uppercase tracking-wider">Visitor Sessions</span>
+                      <span className="material-symbols-outlined text-blue-400 text-lg">group</span>
+                    </div>
+                    <p className="text-2xl font-black text-white">{sessions.size}</p>
+                    <p className="text-[10px] text-on-surface-variant">Unique browsing sessions</p>
+                  </div>
+
+                  <div className="bg-background border border-white/5 rounded-xl p-4 space-y-1">
+                    <div className="flex items-center justify-between text-on-surface-variant">
+                      <span className="text-[11px] font-bold uppercase tracking-wider">Top CTA Action</span>
+                      <span className="material-symbols-outlined text-amber-400 text-lg">military_tech</span>
+                    </div>
+                    <p className="text-base font-black text-white truncate" title={topCta ? (CTA_FRIENDLY_LABELS[topCta[0]]?.label || topCta[0]) : 'None yet'}>
+                      {topCta ? (CTA_FRIENDLY_LABELS[topCta[0]]?.label || topCta[0]) : 'None yet'}
+                    </p>
+                    <p className="text-[10px] text-on-surface-variant">
+                      {topCta ? `${topCta[1]} clicks recorded` : 'Awaiting clicks'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2-Column Breakdown: CTA Performance + Top Pages */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Left: CTA Clicks Breakdown */}
+                  <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">CTA Button Performance</h3>
+                      <span className="text-[11px] text-on-surface-variant">{sortedCtas.length} buttons clicked</span>
+                    </div>
+
+                    {sortedCtas.length === 0 ? (
+                      <div className="py-8 text-center text-on-surface-variant text-xs space-y-1">
+                        <span className="material-symbols-outlined text-2xl opacity-40">ads_click</span>
+                        <p>No CTA clicks recorded in this timeframe.</p>
+                        <p className="text-[10px] opacity-75">Click buttons on the website to see live data here.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3.5">
+                        {sortedCtas.map(([evtName, count]) => {
+                          const meta = CTA_FRIENDLY_LABELS[evtName] || {
+                            label: evtName,
+                            icon: 'touch_app',
+                            color: '#FF5A65',
+                          };
+                          const pct = ctaClicks > 0 ? Math.round((count / ctaClicks) * 100) : 0;
+                          return (
+                            <div key={evtName} className="space-y-1 text-xs">
+                              <div className="flex justify-between items-center font-bold">
+                                <span className="text-white flex items-center gap-1.5">
+                                  <span className="material-symbols-outlined text-sm" style={{ color: meta.color }}>
+                                    {meta.icon}
+                                  </span>
+                                  {meta.label}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-on-surface-variant text-[10px] font-normal">{pct}%</span>
+                                  <span className="font-extrabold text-white">{count}</span>
+                                </div>
+                              </div>
+                              <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${pct}%`, backgroundColor: meta.color }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: Top Visited Pages */}
+                  <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Top Visited Pages</h3>
+                      <span className="text-[11px] text-on-surface-variant">{sortedPages.length} routes</span>
+                    </div>
+
+                    {sortedPages.length === 0 ? (
+                      <div className="py-8 text-center text-on-surface-variant text-xs space-y-1">
+                        <span className="material-symbols-outlined text-2xl opacity-40">tab</span>
+                        <p>No page views logged yet.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3.5">
+                        {sortedPages.map(([pagePath, count]) => {
+                          const pct = pageViews > 0 ? Math.round((count / pageViews) * 100) : 0;
+                          return (
+                            <div key={pagePath} className="space-y-1 text-xs">
+                              <div className="flex justify-between items-center font-bold">
+                                <span className="text-white font-mono text-[11px] truncate max-w-[200px]" title={pagePath}>
+                                  {pagePath === '/' ? '/ (Home)' : pagePath}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-on-surface-variant text-[10px] font-normal">{pct}%</span>
+                                  <span className="font-extrabold text-primary">{count} views</span>
+                                </div>
+                              </div>
+                              <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-primary transition-all duration-500"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live Event Stream */}
+                <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Recent Activity Stream</h3>
+                    <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Live Log
+                    </span>
+                  </div>
+
+                  {filteredEvents.length === 0 ? (
+                    <div className="py-6 text-center text-on-surface-variant text-xs">
+                      No recent activity found. Run the SQL script in Supabase if the table has not been created yet!
+                    </div>
+                  ) : (
+                    <div className="space-y-2 text-xs">
+                      {filteredEvents.slice(0, 10).map((ev) => {
+                        const isView = ev.event_type === 'page_view' || ev.event_name === 'page_view';
+                        const meta = CTA_FRIENDLY_LABELS[ev.event_name];
+                        return (
+                          <div
+                            key={ev.id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2 border-b border-white/5 last:border-b-0 text-[11px]"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                  isView
+                                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                    : 'bg-primary/20 text-primary border border-primary/30'
+                                }`}
+                              >
+                                {isView ? 'VIEW' : 'CTA'}
+                              </span>
+                              <span className="font-bold text-white">
+                                {isView ? (ev.page_path || '/') : (meta?.label || ev.event_name)}
+                              </span>
+                              {ev.page_path && !isView && (
+                                <span className="text-on-surface-variant font-mono text-[10px]">
+                                  on {ev.page_path}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-on-surface-variant text-[10px]">
+                              {new Date(ev.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} •{' '}
+                              {new Date(ev.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* 2. Operational Logistics & Shipments Analytics */}
+              <section className="bg-surface-container border border-white/10 rounded-2xl p-6 md:p-8 space-y-6">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white">Logistics & Order Analytics</h2>
+                  <p className="text-on-surface-variant text-xs mt-1">Operational breakdown of customer parcels and orders.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Status Breakdown */}
+                  <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Orders by Status</h3>
+                    <div className="space-y-3.5">
+                      {STATUS_STEPS.map(st => {
+                        const count = stats.byStatus[st] || 0;
+                        const pct = stats.total ? Math.round((count / stats.total) * 100) : 0;
+                        return (
+                          <div key={st} className="space-y-1 text-xs">
+                            <div className="flex justify-between font-bold">
+                              <span className="text-on-surface-variant">{STATUS_LABELS[st]}</span>
+                              <span style={{ color: STATUS_COLORS[st] }}>{count}</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${pct}%`, backgroundColor: STATUS_COLORS[st] }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Top Destinations */}
+                  <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Top Destinations</h3>
+                    <div className="space-y-3 text-xs">
+                      {(() => {
+                        const counts: Record<string, number> = {};
+                        shipments.forEach(s => {
+                          if (s.destination_city) counts[s.destination_city] = (counts[s.destination_city] || 0) + 1;
+                        });
+                        return Object.entries(counts)
+                          .sort((a, b) => b[1] - a[1])
+                          .slice(0, 6)
+                          .map(([city, count]) => (
+                            <div key={city} className="flex justify-between items-center py-2 border-b border-white/5 last:border-b-0">
+                              <span className="text-white font-bold">{city}</span>
+                              <span className="text-primary font-bold">{count} shipments</span>
+                            </div>
+                          ));
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Recent Activity List */}
+                  <div className="bg-background border border-white/5 rounded-2xl p-6 space-y-4 md:col-span-2">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Recent Shipment Activity</h3>
+                    <div className="space-y-3 text-xs">
+                      {shipments.slice(0, 10).map(s => (
+                        <div key={s.id} className="flex justify-between items-center border-b border-white/5 pb-2 last:border-b-0 last:pb-0">
+                          <div className="flex items-center gap-2">
+                            <span 
+                              className="w-2.5 h-2.5 rounded-full" 
+                              style={{ backgroundColor: STATUS_COLORS[s.status] || '#64748b' }}
+                            />
+                            <span className="text-white">
+                              Order to <strong className="text-primary">{s.destination_city}</strong> — {s.total_weight}kg
+                            </span>
+                          </div>
+                          <div className="flex gap-4 items-center">
+                            <span 
+                              className="font-bold text-[10px] uppercase tracking-wider"
+                              style={{ color: STATUS_COLORS[s.status] || '#64748b' }}
+                            >
+                              {STATUS_LABELS[s.status]}
+                            </span>
+                            <span className="text-on-surface-variant text-[11px]">{new Date(s.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
-          </section>
-        )}
+          );
+        })()}
 
         {/* ──────────── OPS STAFF & APPROVALS TAB ──────────── */}
         {activeTab === 'ops_team' && (
